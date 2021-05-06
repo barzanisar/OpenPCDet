@@ -84,16 +84,18 @@ class DataAugmentor(object):
         images = data_dict["images"]
         depth_maps = data_dict["depth_maps"]
         gt_boxes = data_dict['gt_boxes']
+        gt_boxes2d = data_dict["gt_boxes2d"]
         calib = data_dict["calib"]
         for cur_axis in config['ALONG_AXIS_LIST']:
             assert cur_axis in ['horizontal']
-            images, depth_maps, gt_boxes = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
-                images, depth_maps, gt_boxes, calib,
+            images, depth_maps, gt_boxes, gt_boxes2d = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
+                images, depth_maps, gt_boxes, gt_boxes2d, calib,
             )
 
         data_dict['images'] = images
         data_dict['depth_maps'] = depth_maps
         data_dict['gt_boxes'] = gt_boxes
+        data_dict['gt_boxes2d'] = gt_boxes2d
         return data_dict
 
     def forward(self, data_dict):
@@ -121,5 +123,8 @@ class DataAugmentor(object):
             gt_boxes_mask = data_dict['gt_boxes_mask']
             data_dict['gt_boxes'] = data_dict['gt_boxes'][gt_boxes_mask]
             data_dict['gt_names'] = data_dict['gt_names'][gt_boxes_mask]
+            if 'gt_boxes2d' in data_dict:
+                data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][gt_boxes_mask]
+
             data_dict.pop('gt_boxes_mask')
         return data_dict
