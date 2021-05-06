@@ -78,6 +78,24 @@ class DataAugmentor(object):
         data_dict['points'] = points
         return data_dict
 
+    def random_image_flip(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.random_image_flip, config=config)
+        images = data_dict["images"]
+        depth_maps = data_dict["depth_maps"]
+        gt_boxes = data_dict['gt_boxes']
+        calib = data_dict["calib"]
+        for cur_axis in config['ALONG_AXIS_LIST']:
+            assert cur_axis in ['horizontal']
+            images, depth_maps, gt_boxes = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
+                images, depth_maps, gt_boxes, calib,
+            )
+
+        data_dict['images'] = images
+        data_dict['depth_maps'] = depth_maps
+        data_dict['gt_boxes'] = gt_boxes
+        return data_dict
+
     def forward(self, data_dict):
         """
         Args:
