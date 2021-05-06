@@ -25,7 +25,7 @@ DATA_CONFIG:
     DEPTH_MAP:
         ENABLED: True
         DOWNSAMPLE_FACTOR: 4
-    CALIB:
+    CALIB_MATRICIES:
         ENABLED: True
 
 MODEL:
