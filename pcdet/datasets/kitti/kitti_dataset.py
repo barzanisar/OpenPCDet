@@ -398,6 +398,9 @@ class KittiDataset(DatasetTemplate):
                 'gt_names': gt_names,
                 'gt_boxes': gt_boxes_lidar
             })
+            if "gt_boxes2d" in self.dataset_cfg.GET_ITEM_LIST:
+                input_dict['gt_boxes2d'] = annos["bbox"]
+
             road_plane = self.get_road_plane(sample_idx)
             if road_plane is not None:
                 input_dict['road_plane'] = road_plane
