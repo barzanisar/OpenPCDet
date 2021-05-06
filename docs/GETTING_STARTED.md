@@ -94,6 +94,17 @@ python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_infos \
 
 Note that you do not need to install `waymo-open-dataset` if you have already processed the data before and do not need to evaluate with official Waymo Metrics. 
 
+## Pretrained Models
+In order to train [CaDDN](../tools/cfgs/kitti_models/CaDDN.yaml), download the pretrained [DeepLabV3 model](https://download.pytorch.org/models/deeplabv3_resnet101_coco-586e9e4e.pth) and place within the `checkpoints` directory
+```
+OpenPCDet
+├── checkpoints
+│   ├── deeplabv3_resnet101_coco-586e9e4e.pth
+├── data
+├── pcdet
+├── tools
+```
+
 ## Training & Testing
 
 
