@@ -100,7 +100,7 @@ class DatasetTemplate(torch_data.Dataset):
         """
         Args:
             data_dict:
-                points: (N, 3 + C_in)
+                points: optional, (N, 3 + C_in)
                 gt_boxes: optional, (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
                 gt_names: optional, (N), string
                 ...
@@ -136,7 +136,9 @@ class DatasetTemplate(torch_data.Dataset):
             gt_boxes = np.concatenate((data_dict['gt_boxes'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
             data_dict['gt_boxes'] = gt_boxes
 
-        data_dict = self.point_feature_encoder.forward(data_dict)
+
+        if data_dict.get('points', None) is not None:
+            data_dict = self.point_feature_encoder.forward(data_dict)
 
         data_dict = self.data_processor.forward(
             data_dict=data_dict
