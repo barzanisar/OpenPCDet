@@ -18,7 +18,7 @@ OpenPCDet
 │   ├── kitti
 │   │   │── ImageSets
 │   │   │── training
-│   │   │   ├──calib & velodyne & label_2 & image_2 & (optional: planes)
+│   │   │   ├──calib & velodyne & label_2 & image_2 & (optional: planes) & (optional: depth_2)
 │   │   │── testing
 │   │   │   ├──calib & velodyne & image_2
 ├── pcdet
