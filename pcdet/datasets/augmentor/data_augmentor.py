@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 
 from ...utils import common_utils
-from . import augmentor_utils, database_sampler
+from . import augmentor_utils, database_sampler, image_augmentor_utils
 
 
 class DataAugmentor(object):
