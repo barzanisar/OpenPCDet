@@ -6,7 +6,7 @@ import torch.nn as nn
 from ...ops.iou3d_nms import iou3d_nms_utils
 from .. import backbones_2d, backbones_3d, dense_heads, roi_heads
 from ..backbones_2d import map_to_bev
-from ..backbones_3d import pfe, vfe, ffe, f2v
+from ..backbones_3d import pfe, vfe, ffe, f2v, ife
 from ..model_utils import model_nms_utils
 
 
@@ -20,7 +20,7 @@ class Detector3DTemplate(nn.Module):
         self.register_buffer('global_step', torch.LongTensor(1).zero_())
 
         self.module_topology = [
-            'vfe', 'ffe', 'frustum_to_voxel', 'backbone_3d', 'map_to_bev_module', 'pfe',
+            'vfe', 'ffe', 'ife', 'frustum_to_voxel', 'backbone_3d', 'map_to_bev_module', 'pfe',
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
         ]
 
@@ -42,6 +42,9 @@ class Detector3DTemplate(nn.Module):
         }
         if hasattr(self.dataset, "depth_downsample_factor"):
             model_info_dict['downsample_factor'] = self.dataset.depth_downsample_factor
+
+        if hasattr(self.dataset, "segment_downsample_factor"):
+            model_info_dict['downsample_factor'] = self.dataset.segment_downsample_factor
 
         for module_name in self.module_topology:
             module, model_info_dict = getattr(self, 'build_%s' % module_name)(
@@ -76,6 +79,17 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['disc_cfg'] = ffe_module.disc_cfg
         model_info_dict['module_list'].append(ffe_module)
         return ffe_module, model_info_dict
+
+    def build_ife(self, model_info_dict):
+        if self.model_cfg.get('IFE', None) is None:
+            return None, model_info_dict
+
+        ife_module = ife.__all__[self.model_cfg.IFE.NAME](
+            model_cfg=self.model_cfg.IFE,
+            downsample_factor=model_info_dict["downsample_factor"]
+        )
+        model_info_dict['module_list'].append(ife_module)
+        return ife_module, model_info_dict
 
     def build_frustum_to_voxel(self, model_info_dict):
         if self.model_cfg.get('F2V', None) is None:

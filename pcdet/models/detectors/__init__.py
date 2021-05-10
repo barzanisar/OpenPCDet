@@ -5,6 +5,7 @@ from .pointpillar import PointPillar
 from .pv_rcnn import PVRCNN
 from .second_net import SECONDNet
 from .caddn import CaDDN
+from .pv_rcnn_image_segmentation import PVRCNNImageSegmentation
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -13,7 +14,8 @@ __all__ = {
     'PVRCNN': PVRCNN,
     'PointPillar': PointPillar,
     'PointRCNN': PointRCNN,
-    'CaDDN': CaDDN
+    'CaDDN': CaDDN,
+    'PVRCNNImageSegmentation': PVRCNNImageSegmentation
 }
 
 

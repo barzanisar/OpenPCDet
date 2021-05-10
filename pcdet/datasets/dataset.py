@@ -42,6 +42,9 @@ class DatasetTemplate(torch_data.Dataset):
         if "DEPTH_MAP" in self.dataset_cfg:
             self.depth_downsample_factor = self.dataset_cfg.DEPTH_MAP.DOWNSAMPLE_FACTOR
 
+        if "SEGMENTATION_MASK" in self.dataset_cfg:
+            self.segment_downsample_factor = self.dataset_cfg.SEGMENTATION_MASK.DOWNSAMPLE_FACTOR
+
     @property
     def mode(self):
         return 'train' if self.training else 'test'

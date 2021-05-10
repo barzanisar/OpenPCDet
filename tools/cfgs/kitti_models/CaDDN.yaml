@@ -32,10 +32,10 @@ MODEL:
         NAME: DepthFFE
         DDN:
             NAME: DDNDeepLabV3
-            BACKBONE_NAME: ResNet101
+            BACKBONE_NAME: ResNet50
             ARGS: {
                 "feat_extract_layer": "layer1",
-                "pretrained_path": "../checkpoints/deeplabv3_resnet101_coco-586e9e4e.pth"
+                "pretrained_path": "../checkpoints/deeplabv3_resnet50_coco-cd0a2569.pth"
             }
         CHANNEL_REDUCE: {
             "in_channels": 256,
