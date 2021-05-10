@@ -171,22 +171,11 @@ MODEL:
                 POOL_RADIUS: [2.4, 4.8]
                 NSAMPLE: [16, 32]
 
-    POINT_HEAD:
-        NAME: PointHeadSimple
-        CLS_FC: [256, 256]
-        CLASS_AGNOSTIC: True
-        USE_POINT_FEATURES_BEFORE_FUSION: True
-        TARGET_CONFIG:
-            GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
-        LOSS_CONFIG:
-            LOSS_REG: smooth-l1
-            LOSS_WEIGHTS: {
-                'point_cls_weight': 1.0,
-            }
 
     ROI_HEAD:
         NAME: PVRCNNHead
         CLASS_AGNOSTIC: True
+        IMAGE_BASED_KPW: True
 
         SHARED_FC: [256, 256]
         CLS_FC: [256, 256]

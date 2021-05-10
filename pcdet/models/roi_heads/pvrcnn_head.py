@@ -1,8 +1,11 @@
 import torch.nn as nn
+import torch
 
 from ...ops.pointnet2.pointnet2_stack import pointnet2_modules as pointnet2_stack_modules
-from ...utils import common_utils
+from ...utils import common_utils, transform_utils
 from .roi_head_template import RoIHeadTemplate
+import kornia
+import torch.nn.functional as F
 
 
 class PVRCNNHead(RoIHeadTemplate):
@@ -88,7 +91,12 @@ class PVRCNNHead(RoIHeadTemplate):
         point_coords = batch_dict['point_coords']
         point_features = batch_dict['point_features']
 
-        point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
+        # weighting based on foreground segmentation from image stream
+        if self.model_cfg.IMAGE_BASED_KPW:
+            keypoints_img_weights = self.get_kp_image_cls_scores(batch_dict)
+            point_features = point_features * keypoints_img_weights.view(-1, 1)
+        else:
+            point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
 
         global_roi_grid_points, local_roi_grid_points = self.get_global_grid_points_of_roi(
             rois, grid_size=self.model_cfg.ROI_GRID_POOL.GRID_SIZE
@@ -116,6 +124,52 @@ class PVRCNNHead(RoIHeadTemplate):
             pooled_features.shape[-1]
         )  # (BxN, 6x6x6, C)
         return pooled_features
+
+    def get_kp_image_cls_scores(self, batch_dict):
+        B = batch_dict['trans_lidar_to_cam'].shape[0]
+
+        # Create transformation matricies
+        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
+        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
+
+        # Reshape points coordinates from (N, 4) to (B, N, 3)
+        point_coords = batch_dict['point_coords'] # N
+        ## This assumes number of keypoints per batch is fixed
+        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
+        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            points_in_batch_b = (point_coords[..., 0].int() == b)
+            point_coords_kornia = point_coords[points_in_batch_b, 1:]
+
+        # Transform to camera frame
+        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+        # Project to image to get keypoint projection on image plane
+        I_C = I_C.reshape(B, 3, 4)
+        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+
+        # Get foreground weighting mask
+        segment_logits = batch_dict['segment_logits']
+        foreground_channel = 1
+        foreground_probs = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
+
+        # Extract foregound weights for keypoints
+        # Downsample coordinates of keypoint pixel coordinates to match reduced image dimensions
+        keypoints_img = keypoints_img / 4
+        # get weighting for each point
+        # TODO should interpolate instead of casting to int
+        keypoints_img = keypoints_img.long()
+        keypoints_img_weights = torch.zeros((B, num_keypoints_per_sample), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            u = keypoints_img[b, :, 0]
+            v = keypoints_img[b, :, 1]
+            keypoints_img_weights[b, ...] = foreground_probs[b, v, u]
+
+        return keypoints_img_weights
+
+
 
     def get_global_grid_points_of_roi(self, rois, grid_size):
         rois = rois.view(-1, rois.shape[-1])

@@ -24,9 +24,8 @@ class PVRCNNImageSegmentation(Detector3DTemplate):
     def get_training_loss(self):
         disp_dict = {}
         loss_rpn, tb_dict = self.dense_head.get_loss()
-        loss_point, tb_dict = self.point_head.get_loss(tb_dict)
         loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
         loss_segment, tb_dict_segment = self.ife.get_loss()
 
-        loss = loss_rpn + loss_point + loss_rcnn + 0.0*loss_segment
+        loss = loss_rpn + loss_rcnn + loss_segment
         return loss, tb_dict, disp_dict

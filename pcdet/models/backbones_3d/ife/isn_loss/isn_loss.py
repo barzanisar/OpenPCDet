@@ -60,9 +60,6 @@ class ISNLoss(nn.Module):
 
         segmentation_targets = torch.zeros(fg_mask.shape, dtype=torch.int64, device=fg_mask.device)
         segmentation_targets[fg_mask.long() == True] = 1
-        # targets = torch.squeeze(segmentation_targets, 0).cpu().numpy()
-        # plt.imshow(targets)
-        # plt.show()
 
         # Compute loss
         loss = self.loss_func(segment_logits, segmentation_targets)
