@@ -140,7 +140,7 @@ class PVRCNNHead(RoIHeadTemplate):
                                           device=point_coords.device)
         for b in range(B):
             points_in_batch_b = (point_coords[..., 0].int() == b)
-            point_coords_kornia = point_coords[points_in_batch_b, 1:]
+            point_coords_kornia[b,...] = point_coords[points_in_batch_b, 1:]
 
         # Transform to camera frame
         points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
