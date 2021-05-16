@@ -27,5 +27,11 @@ class PVRCNNImageSegmentation(Detector3DTemplate):
         loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
         loss_segment, tb_dict_segment = self.ife.get_loss()
 
+        tb_dict = {
+            'loss_segment': loss_segment.item(),
+            **tb_dict,
+            **tb_dict_segment
+        }
+
         loss = loss_rpn + loss_rcnn + loss_segment
         return loss, tb_dict, disp_dict
