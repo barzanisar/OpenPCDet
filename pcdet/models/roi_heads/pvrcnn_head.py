@@ -157,6 +157,7 @@ class PVRCNNHead(RoIHeadTemplate):
         # Extract foregound weights for keypoints
         # Downsample coordinates of keypoint pixel coordinates to match reduced image dimensions
         keypoints_img = keypoints_img / 4
+
         # get weighting for each point
         # TODO should interpolate instead of casting to int
         keypoints_img = keypoints_img.long()
@@ -166,6 +167,19 @@ class PVRCNNHead(RoIHeadTemplate):
             u = keypoints_img[b, :, 0]
             v = keypoints_img[b, :, 1]
             keypoints_img_weights[b, ...] = foreground_probs[b, v, u]
+
+        #### FOR DEBUGGING
+        VISUALIZE_MASK = False
+        if VISUALIZE_MASK:
+            import matplotlib.pyplot as plt
+            import numpy as np
+            kp_image = np.zeros(foreground_probs.size()).squeeze()
+            normalized_kp_depth = keypoints_depths / torch.max(keypoints_depths)
+            kp_image[keypoints_img.cpu().squeeze()[:, 1].long(), keypoints_img.cpu().squeeze()[:, 0].long()] = normalized_kp_depth.cpu().numpy()
+            empty = np.zeros(foreground_probs.size()).squeeze()
+            draw_vector = np.stack([kp_image, foreground_probs.cpu().numpy().squeeze(), empty])
+            plt.imshow(np.moveaxis(draw_vector, 0, -1))
+            plt.show()
 
         return keypoints_img_weights
 
