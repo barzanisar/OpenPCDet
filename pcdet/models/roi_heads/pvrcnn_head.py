@@ -142,6 +142,10 @@ class PVRCNNHead(RoIHeadTemplate):
             points_in_batch_b = (point_coords[..., 0].int() == b)
             point_coords_kornia[b,...] = point_coords[points_in_batch_b, 1:]
 
+        # # Undo augmentations
+        undo_global_transform = batch_dict['undo_global_transform']
+        point_coords_kornia = point_coords_kornia @ undo_global_transform
+
         # Transform to camera frame
         points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
 
@@ -173,17 +177,16 @@ class PVRCNNHead(RoIHeadTemplate):
         if VISUALIZE_MASK:
             import matplotlib.pyplot as plt
             import numpy as np
-            kp_image = np.zeros(foreground_probs.size()).squeeze()
-            normalized_kp_depth = keypoints_depths / torch.max(keypoints_depths)
-            kp_image[keypoints_img.cpu().squeeze()[:, 1].long(), keypoints_img.cpu().squeeze()[:, 0].long()] = normalized_kp_depth.cpu().numpy()
-            empty = np.zeros(foreground_probs.size()).squeeze()
-            draw_vector = np.stack([kp_image, foreground_probs.cpu().numpy().squeeze(), empty])
+            seg_mask = foreground_probs.cpu().detach().numpy().squeeze()
+            kp_image = np.zeros(seg_mask.shape).squeeze()
+            normalized_kp_depth = (keypoints_depths / torch.max(keypoints_depths)).cpu().detach().numpy()
+            kp_image[keypoints_img.cpu().squeeze()[:, 1].long(), keypoints_img.cpu().squeeze()[:, 0].long()] = normalized_kp_depth
+            empty = np.zeros(seg_mask.shape)
+            draw_vector = np.stack([kp_image, empty, empty])
             plt.imshow(np.moveaxis(draw_vector, 0, -1))
             plt.show()
 
         return keypoints_img_weights
-
-
 
     def get_global_grid_points_of_roi(self, rois, grid_size):
         rois = rois.view(-1, rois.shape[-1])

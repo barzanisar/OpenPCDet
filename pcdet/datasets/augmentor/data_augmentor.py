@@ -4,6 +4,7 @@ import numpy as np
 
 from ...utils import common_utils
 from . import augmentor_utils, database_sampler, image_augmentor_utils
+import torch
 
 
 class DataAugmentor(object):
@@ -44,14 +45,16 @@ class DataAugmentor(object):
         if data_dict is None:
             return partial(self.random_world_flip, config=config)
         gt_boxes, points = data_dict['gt_boxes'], data_dict['points']
+        enable_flag = False
         for cur_axis in config['ALONG_AXIS_LIST']:
             assert cur_axis in ['x', 'y']
-            gt_boxes, points = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
+            gt_boxes, points, enable_flag = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
                 gt_boxes, points,
             )
 
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['random_world_flip'] = enable_flag
         return data_dict
 
     def random_world_rotation(self, data_dict=None, config=None):
@@ -60,22 +63,24 @@ class DataAugmentor(object):
         rot_range = config['WORLD_ROT_ANGLE']
         if not isinstance(rot_range, list):
             rot_range = [-rot_range, rot_range]
-        gt_boxes, points = augmentor_utils.global_rotation(
+        gt_boxes, points, noise_rotation = augmentor_utils.global_rotation(
             data_dict['gt_boxes'], data_dict['points'], rot_range=rot_range
         )
 
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['random_world_rotation'] = noise_rotation
         return data_dict
 
     def random_world_scaling(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_world_scaling, config=config)
-        gt_boxes, points = augmentor_utils.global_scaling(
+        gt_boxes, points, noise_scale = augmentor_utils.global_scaling(
             data_dict['gt_boxes'], data_dict['points'], config['WORLD_SCALE_RANGE']
         )
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['random_world_scaling'] = noise_scale
         return data_dict
 
     def random_image_flip(self, data_dict=None, config=None):
@@ -109,9 +114,11 @@ class DataAugmentor(object):
 
         Returns:
         """
+        old_points = np.copy(data_dict['points'][:,0:3])
+        transformations = []
         for cur_augmentor in self.data_augmentor_queue:
             data_dict = cur_augmentor(data_dict=data_dict)
-
+            transformations.append(cur_augmentor.keywords['config'].NAME)
         data_dict['gt_boxes'][:, 6] = common_utils.limit_period(
             data_dict['gt_boxes'][:, 6], offset=0.5, period=2 * np.pi
         )
@@ -127,4 +134,48 @@ class DataAugmentor(object):
                 data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][gt_boxes_mask]
 
             data_dict.pop('gt_boxes_mask')
+
+        # Compute augmentation transformation matrix
+        aug_trans_matrix = np.eye(3, 3, dtype=np.float32)
+        aug_trans_matrix, _ = common_utils.check_numpy_to_torch(aug_trans_matrix)
+        for trans in transformations:
+            if trans == 'random_world_flip' and data_dict[trans] == True:
+                # assume flip around x
+                flip_trans_x = np.eye(3, 3, dtype=np.float32)
+                flip_trans_x, _ = common_utils.check_numpy_to_torch(flip_trans_x)
+                flip_trans_x[1, 1] = -1
+                aug_trans_matrix = aug_trans_matrix @ flip_trans_x
+            elif trans == 'random_world_rotation':
+                rotation_angle = np.array(data_dict[trans])
+                rotation_trans = common_utils.get_rotation_matrix_along_z(rotation_angle)
+                aug_trans_matrix = aug_trans_matrix @ rotation_trans
+            elif trans == 'random_world_scaling':
+                scale_val = np.array(data_dict[trans])
+                scale_val, _ = common_utils.check_numpy_to_torch(scale_val)
+                aug_trans_matrix = aug_trans_matrix * scale_val
+
+        # remove unwanted global transformation entries
+        if 'random_world_flip' in data_dict:
+            data_dict.pop('random_world_flip')
+        if 'random_world_rotation' in data_dict:
+            data_dict.pop('random_world_rotation')
+        if 'random_world_scaling' in data_dict:
+            data_dict.pop('random_world_scaling')
+
+        # add global transform matrix to undo augmentation for image projection
+        undo_global_transform = torch.linalg.inv(aug_trans_matrix)
+        data_dict['undo_global_transform'] = undo_global_transform
+
+        # Debug reverse transformation
+        DEBUG_REVERSE_TRANSFORM = False
+        if DEBUG_REVERSE_TRANSFORM:
+            new_points = data_dict['points']
+            points = np.array(new_points[:, 0:3])
+            points, _ = common_utils.check_numpy_to_torch(points)
+            before_transform = points @ undo_global_transform
+            before_transform = before_transform.detach().cpu().numpy()
+            max_diff = np.abs(old_points - before_transform).max()
+            print('max diff is: {}'.format(max_diff))
+            assert max_diff < 0.001
+
         return data_dict

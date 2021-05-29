@@ -19,7 +19,7 @@ def random_flip_along_x(gt_boxes, points):
         if gt_boxes.shape[1] > 7:
             gt_boxes[:, 8] = -gt_boxes[:, 8]
 
-    return gt_boxes, points
+    return gt_boxes, points, enable
 
 
 def random_flip_along_y(gt_boxes, points):
@@ -38,7 +38,7 @@ def random_flip_along_y(gt_boxes, points):
         if gt_boxes.shape[1] > 7:
             gt_boxes[:, 7] = -gt_boxes[:, 7]
 
-    return gt_boxes, points
+    return gt_boxes, points, enable
 
 
 def global_rotation(gt_boxes, points, rot_range):
@@ -59,7 +59,7 @@ def global_rotation(gt_boxes, points, rot_range):
             np.array([noise_rotation])
         )[0][:, 0:2]
 
-    return gt_boxes, points
+    return gt_boxes, points, noise_rotation
 
 
 def global_scaling(gt_boxes, points, scale_range):
@@ -75,4 +75,4 @@ def global_scaling(gt_boxes, points, scale_range):
     noise_scale = np.random.uniform(scale_range[0], scale_range[1])
     points[:, :3] *= noise_scale
     gt_boxes[:, :6] *= noise_scale
-    return gt_boxes, points
+    return gt_boxes, points, noise_scale
