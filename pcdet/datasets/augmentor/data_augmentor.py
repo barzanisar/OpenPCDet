@@ -83,7 +83,7 @@ class DataAugmentor(object):
         data_dict['random_world_scaling'] = noise_scale
         return data_dict
 
-    def random_image_flip(self, data_dict=None, config=None):
+    def random_image_depth_flip(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_image_flip, config=config)
         images = data_dict["images"]
@@ -101,6 +101,22 @@ class DataAugmentor(object):
         data_dict['depth_maps'] = depth_maps
         data_dict['gt_boxes'] = gt_boxes
         data_dict['gt_boxes2d'] = gt_boxes2d
+        return data_dict
+
+    def random_image_flip(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.random_image_flip, config=config)
+        images = data_dict["images"]
+        gt_boxes2d = data_dict["gt_boxes2d"]
+        for cur_axis in config['ALONG_AXIS_LIST']:
+            assert cur_axis in ['horizontal']
+            images, gt_boxes2d, enable_flag = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
+                images, gt_boxes2d
+            )
+
+        data_dict['images'] = images
+        data_dict['gt_boxes2d'] = gt_boxes2d
+        data_dict['image_flip'] = enable_flag
         return data_dict
 
     def forward(self, data_dict):

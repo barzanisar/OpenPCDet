@@ -157,6 +157,9 @@ class PVRCNNHead(RoIHeadTemplate):
         segment_logits = batch_dict['segment_logits']
         foreground_channel = 1
         foreground_probs = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
+        # Flip foreground mask if image is flipped for correct kp projection
+        if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
+            foreground_probs = torch.flip(foreground_probs, [2])
 
         # Extract foregound weights for keypoints
         # Downsample coordinates of keypoint pixel coordinates to match reduced image dimensions
@@ -185,6 +188,16 @@ class PVRCNNHead(RoIHeadTemplate):
             draw_vector = np.stack([kp_image, empty, empty])
             plt.imshow(np.moveaxis(draw_vector, 0, -1))
             plt.show()
+
+        VISUALIZE_FLIP = False
+        if VISUALIZE_FLIP:
+            if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
+                import matplotlib.pyplot as plt
+                import numpy as np
+                image_orig = batch_dict['images'].permute(0, 2, 3, 1).cpu().squeeze()
+                image_flipped = torch.fliplr(batch_dict['images'].permute(0, 2, 3, 1).squeeze()).cpu()
+                plt.imshow(np.concatenate([image_orig, image_flipped]))
+                plt.show()
 
         return keypoints_img_weights
 
