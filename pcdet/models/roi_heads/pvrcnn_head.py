@@ -143,8 +143,9 @@ class PVRCNNHead(RoIHeadTemplate):
             point_coords_kornia[b,...] = point_coords[points_in_batch_b, 1:]
 
         # # Undo augmentations
-        undo_global_transform = batch_dict['undo_global_transform']
-        point_coords_kornia = point_coords_kornia @ undo_global_transform
+        if self.training:
+            undo_global_transform = batch_dict['undo_global_transform']
+            point_coords_kornia = point_coords_kornia @ undo_global_transform
 
         # Transform to camera frame
         points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
@@ -158,8 +159,9 @@ class PVRCNNHead(RoIHeadTemplate):
         foreground_channel = 1
         foreground_probs = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
         # Flip foreground mask if image is flipped for correct kp projection
-        if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
-            foreground_probs = torch.flip(foreground_probs, [2])
+        if self.training:
+            if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
+                foreground_probs = torch.flip(foreground_probs, [2])
 
         # Extract foregound weights for keypoints
         # Downsample coordinates of keypoint pixel coordinates to match reduced image dimensions
@@ -180,12 +182,15 @@ class PVRCNNHead(RoIHeadTemplate):
         if VISUALIZE_MASK:
             import matplotlib.pyplot as plt
             import numpy as np
+            image_orig = batch_dict['images'].cpu()
+            image_reduced = F.interpolate(image_orig, size=[foreground_probs.size(1), foreground_probs.size(2)], mode="bilinear")
+            image_gray = (0.2989 * image_reduced[:, 0, :, :] + 0.5870 * image_reduced[:, 1, :, :] + 0.1140 * image_reduced[:, 2, :, :]).squeeze()
             seg_mask = foreground_probs.cpu().detach().numpy().squeeze()
             kp_image = np.zeros(seg_mask.shape).squeeze()
             normalized_kp_depth = (keypoints_depths / torch.max(keypoints_depths)).cpu().detach().numpy()
             kp_image[keypoints_img.cpu().squeeze()[:, 1].long(), keypoints_img.cpu().squeeze()[:, 0].long()] = normalized_kp_depth
             empty = np.zeros(seg_mask.shape)
-            draw_vector = np.stack([kp_image, empty, empty])
+            draw_vector = np.stack([kp_image, seg_mask, image_gray])
             plt.imshow(np.moveaxis(draw_vector, 0, -1))
             plt.show()
 
