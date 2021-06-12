@@ -105,6 +105,24 @@ def set_random_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def get_pad_params(desired_size, cur_size):
+    """
+    Get padding parameters for np.pad function
+    Args:
+        desired_size: int, Desired padded output size
+        cur_size: int, Current size. Should always be less than or equal to cur_size
+    Returns:
+        pad_params: tuple(int), Number of values padded to the edges (before, after)
+    """
+    assert desired_size >= cur_size
+
+    # Calculate amount to pad
+    diff = desired_size - cur_size
+    pad_params = (0, diff)
+
+    return pad_params
+
+
 def keep_arrays_by_name(gt_names, used_classes):
     inds = [i for i, x in enumerate(gt_names) if x in used_classes]
     inds = np.array(inds, dtype=np.int64)
@@ -193,3 +211,25 @@ def merge_results_dist(result_part, size, tmpdir):
     ordered_results = ordered_results[:size]
     shutil.rmtree(tmpdir)
     return ordered_results
+
+
+def scatter_point_inds(indices, point_inds, shape):
+    ret = -1 * torch.ones(*shape, dtype=point_inds.dtype, device=point_inds.device)
+    ndim = indices.shape[-1]
+    flattened_indices = indices.view(-1, ndim)
+    slices = [flattened_indices[:, i] for i in range(ndim)]
+    ret[slices] = point_inds
+    return ret
+
+
+def generate_voxel2pinds(sparse_tensor):
+    device = sparse_tensor.indices.device
+    batch_size = sparse_tensor.batch_size
+    spatial_shape = sparse_tensor.spatial_shape
+    indices = sparse_tensor.indices.long()
+    point_indices = torch.arange(indices.shape[0], device=device, dtype=torch.int32)
+    output_shape = [batch_size] + list(spatial_shape)
+    v2pinds_tensor = scatter_point_inds(indices, point_indices, output_shape)
+    return v2pinds_tensor
+
+
