@@ -20,7 +20,7 @@ def random_flip_along_x(gt_boxes, points):
         if gt_boxes.shape[1] > 7:
             gt_boxes[:, 8] = -gt_boxes[:, 8]
 
-    return gt_boxes, points
+    return gt_boxes, points, enable
 
 
 def random_flip_along_y(gt_boxes, points):
@@ -39,7 +39,7 @@ def random_flip_along_y(gt_boxes, points):
         if gt_boxes.shape[1] > 7:
             gt_boxes[:, 7] = -gt_boxes[:, 7]
 
-    return gt_boxes, points
+    return gt_boxes, points, enable
 
 
 def global_rotation(gt_boxes, points, rot_range):
@@ -60,7 +60,7 @@ def global_rotation(gt_boxes, points, rot_range):
             np.array([noise_rotation])
         )[0][:, 0:2]
 
-    return gt_boxes, points
+    return gt_boxes, points, noise_rotation
 
 
 def global_scaling(gt_boxes, points, scale_range):
@@ -76,9 +76,9 @@ def global_scaling(gt_boxes, points, scale_range):
     noise_scale = np.random.uniform(scale_range[0], scale_range[1])
     points[:, :3] *= noise_scale
     gt_boxes[:, :6] *= noise_scale
-    return gt_boxes, points
+    return gt_boxes, points, noise_scale
 
-def random_image_flip_horizontal(image, depth_map, gt_boxes, calib):
+def random_image_depth_flip_horizontal(image, depth_map, gt_boxes, calib):
     """
     Performs random horizontal flip augmentation
     Args:
@@ -116,3 +116,35 @@ def random_image_flip_horizontal(image, depth_map, gt_boxes, calib):
         aug_gt_boxes = gt_boxes
 
     return aug_image, aug_depth_map, aug_gt_boxes
+
+# apply fliping only on image and 2d bounding box
+def random_image_flip_horizontal(image, gt_boxes2d):
+    """
+    Performs random horizontal flip augmentation
+    Args:
+        image: (H_image, W_image, 3), Image
+        gt_boxes2d: (N, 4), 2D box labels in image coordinates [x1, y1, x2, y2]
+    Returns:
+        aug_image: (H_image, W_image, 3), Augmented image
+        aug_gt_boxes2d: (N, 4), Augmented 2D box labels in image coordinates [x1, y1, x2, y2]
+    """
+    # Randomly augment with 50% chance
+    enable = np.random.choice([False, True], replace=False, p=[0.5, 0.5])
+
+    if enable:
+        # Flip images
+        aug_image = np.fliplr(image)
+
+        # Flip 2D GT boxes
+        W = image.shape[1]
+        aug_gt_boxes2d = copy.copy(gt_boxes2d)
+        aug_gt_boxes2d[:, [2, 0]] = W - aug_gt_boxes2d[:, [0, 2]]
+    else:
+        aug_image = image
+        aug_gt_boxes2d = gt_boxes2d
+
+    if enable:
+        enable = 1
+    else:
+        enable = 0
+    return aug_image, aug_gt_boxes2d, enable

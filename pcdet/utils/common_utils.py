@@ -55,6 +55,20 @@ def rotate_points_along_z(points, angle):
     points_rot = torch.cat((points_rot, points[:, :, 3:]), dim=-1)
     return points_rot.numpy() if is_numpy else points_rot
 
+def get_rotation_matrix_along_z(angle):
+    """
+       Args:
+           angle: (B), angle along z-axis, angle increases x ==> y
+       Returns:
+
+       """
+    angle, _ = check_numpy_to_torch(angle)
+    cosa = torch.cos(angle)
+    sina = torch.sin(angle)
+    rot_matrix = torch.tensor([[cosa,  sina, 0],
+                               [-sina, cosa, 0],
+                               [0,     0,    1]]).float()
+    return rot_matrix
 
 def mask_points_by_range(points, limit_range):
     mask = (points[:, 0] >= limit_range[0]) & (points[:, 0] <= limit_range[3]) \
