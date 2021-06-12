@@ -6,11 +6,15 @@
 
 import os
 import pickle
+
+import matplotlib.pyplot as plt
 import numpy as np
 from ...utils import common_utils
 import tensorflow as tf
 from waymo_open_dataset.utils import frame_utils, transform_utils, range_image_utils
 from waymo_open_dataset import dataset_pb2
+from PIL import Image
+from ...utils import calibration_waymo
 
 try:
     tf.enable_eager_execution()
@@ -19,6 +23,20 @@ except:
 
 WAYMO_CLASSES = ['unknown', 'Vehicle', 'Pedestrian', 'Sign', 'Cyclist']
 
+
+def get_fov_flag(pts_img, image_shape):
+    """
+    Args:
+        pts_img: points in pixel coordinates (unbounded)
+        img_shape:
+    Returns:
+        val_flag_merge: flag corresponding to points in FOV of camera
+    """
+    val_flag_1 = np.logical_and(pts_img[:, 0] >= 0, pts_img[:, 0] < image_shape[1])
+    val_flag_2 = np.logical_and(pts_img[:, 1] >= 0, pts_img[:, 1] < image_shape[0])
+    val_flag_merge = np.logical_and(val_flag_1, val_flag_2)
+
+    return val_flag_merge
 
 def generate_labels(frame):
     obj_name, difficulty, dimensions, locations, heading_angles = [], [], [], [], []
@@ -146,7 +164,7 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
     return points, cp_points, points_NLZ, points_intensity, points_elongation
 
 
-def save_lidar_points(frame, cur_save_path):
+def save_lidar_points(frame, cur_save_path, front_camera_calibration: calibration_waymo.Calibration=None, image_shape=None):
     range_images, camera_projections, range_image_top_pose = \
         frame_utils.parse_range_image_and_camera_projection(frame)
 
@@ -164,12 +182,47 @@ def save_lidar_points(frame, cur_save_path):
         points_all, points_intensity, points_elongation, points_in_NLZ_flag
     ], axis=-1).astype(np.float32)
 
-    np.save(cur_save_path, save_points)
-    # print('saving to ', cur_save_path)
+    if front_camera_calibration is None:
+        np.save(cur_save_path, save_points)
+    else:
+        assert type(image_shape) is tuple
+        # only save points in front camera FOV from all lidar returns
+        # Only consider point cloud +x in vehicle frame
+        pts = save_points[np.where(save_points[:, 0] > front_camera_calibration.C2V[0, 3])]
+        pts_xyz = pts[:, 0:3]
+        # get points in image FOV
+        pts_img, pts_depth = front_camera_calibration.lidar_to_img(pts_xyz)
+        fov_flag = get_fov_flag(pts_img, image_shape)
+        pts_fov = pts[fov_flag]
+        np.save(cur_save_path, pts_fov)
     return num_points_of_each_lidar
 
 
-def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True):
+def save_images(frame, cur_save_path, resize=None, only_front=True):
+    images = sorted(frame.images, key=lambda i:i.name)
+    if only_front:
+        front_image = images[0].image
+        decoded_image = tf.io.decode_jpeg(front_image)
+        if resize is not None:
+            # Add "batch" dimension
+            decoded_image = decoded_image[tf.newaxis]
+            resized_image = tf.image.resize(
+                images=decoded_image, size=[resize[0], resize[1]], preserve_aspect_ratio=False,
+                antialias=False, name=None)
+            resized_image = tf.squeeze(tf.cast(resized_image, dtype=tf.uint8)).numpy()
+            im = Image.fromarray(resized_image)
+            im.save(cur_save_path)
+            import sys
+            sys.exit(-1)
+        else:
+            im = Image.fromarray(decoded_image.numpy())
+            im.save(cur_save_path)
+        # save front image
+    else:
+        raise NotImplementedError("Currently only saving front camera images")
+
+
+def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, save_front_cam_images=False):
     sequence_name = os.path.splitext(os.path.basename(sequence_file))[0]
 
     # print('Load record (sampled_interval=%d): %s' % (sampled_interval, sequence_name))
@@ -201,11 +254,37 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
 
         info['frame_id'] = sequence_name + ('_%03d' % cnt)
         image_info = {}
-        for j in range(5):
-            width = frame.context.camera_calibrations[j].width
-            height = frame.context.camera_calibrations[j].height
-            image_info.update({'image_shape_%d' % j: (height, width)})
-        info['image'] = image_info
+        calib_obj = None
+        # only save front view camera data
+        for c in frame.context.camera_calibrations:
+            cam_name_str = dataset_pb2.CameraName.Name.Name(c.name)
+            if save_front_cam_images and cam_name_str == 'FRONT':
+                calib_info = {}
+                width = c.width
+                height = c.height
+                image_info.update({'image_shape_%s' % cam_name_str: (height, width)})
+
+                # 1d Array of [f_u, f_v, c_u, c_v, k {1, 2}, p {1, 2}, k{3}].
+                cam_intrinsic = np.array(c.intrinsic, np.float32)
+                # Camera frame to vehicle frame - Transform 4 x 4 row major matrix for 3d point transform
+                cam_extrinsic = np.reshape(np.array(c.extrinsic.transform, np.float32), [4, 4])
+                calib_info.update({'image_intrinsic_%s' % cam_name_str: cam_intrinsic})
+                calib_info.update({'image_extrinsic_%s' % cam_name_str: cam_extrinsic})
+
+                info['image'] = image_info
+                info['camera_calib'] = calib_info
+                # create calibration object to save lidar points only in front camera FOV
+                camera_parameters = camera_parameters = {'intrinsics': cam_intrinsic,
+                                                         'extrinsics': cam_extrinsic}
+                calib_obj = calibration_waymo.Calibration(cam_params=camera_parameters)
+                break
+            else:
+                width = c.width
+                height = c.height
+                image_info.update({'image_shape_%s' % cam_name_str: (height, width)})
+
+        if not save_front_cam_images:
+            info['image'] = image_info
 
         pose = np.array(frame.pose.transform, dtype=np.float32).reshape(4, 4)
         info['pose'] = pose
@@ -214,7 +293,19 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
             annotations = generate_labels(frame)
             info['annos'] = annotations
 
-        num_points_of_each_lidar = save_lidar_points(frame, cur_save_dir / ('%04d.npy' % cnt))
+        if save_front_cam_images:
+            # only save lidar points in front camera FOV
+            num_points_of_each_lidar = save_lidar_points(frame, cur_save_dir / ('%04d.npy' % cnt),
+                                                         front_camera_calibration=calib_obj,
+                                                         image_shape=info['image']['image_shape_FRONT'])
+        else:
+            num_points_of_each_lidar = save_lidar_points(frame, cur_save_dir / ('%04d.npy' % cnt),
+                                                         front_camera_calibration=None,
+                                                         image_shape=None)
+
+        if save_front_cam_images:
+            save_images(frame, cur_save_path=cur_save_dir / ('%04d.png' % cnt),
+                        resize=None, only_front=True)
         info['num_points_of_each_lidar'] = num_points_of_each_lidar
 
         sequence_infos.append(info)
