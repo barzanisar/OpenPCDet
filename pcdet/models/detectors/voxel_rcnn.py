@@ -1,7 +1,7 @@
 from .detector3d_template import Detector3DTemplate
 
 
-class CaDDN(Detector3DTemplate):
+class VoxelRCNN(Detector3DTemplate):
     def __init__(self, model_cfg, num_class, dataset):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_list = self.build_networks()
@@ -23,16 +23,10 @@ class CaDDN(Detector3DTemplate):
 
     def get_training_loss(self):
         disp_dict = {}
+        loss = 0
+        
+        loss_rpn, tb_dict = self.dense_head.get_loss()
+        loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
 
-        loss_rpn, tb_dict_rpn = self.dense_head.get_loss()
-        loss_depth, tb_dict_depth = self.vfe.get_loss()
-
-        tb_dict = {
-            'loss_rpn': loss_rpn.item(),
-            'loss_depth': loss_depth.item(),
-            **tb_dict_rpn,
-            **tb_dict_depth
-        }
-
-        loss = loss_rpn + loss_depth
+        loss = loss + loss_rpn + loss_rcnn
         return loss, tb_dict, disp_dict

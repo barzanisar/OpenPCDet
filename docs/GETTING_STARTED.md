@@ -53,7 +53,7 @@ pip install nuscenes-devkit==1.0.5
 
 * Generate the data infos by running the following command (it may take several hours): 
 ```python 
-python -m pcdet.datasets.nuscenes.nuscenes_dataset --func create_nuscenes_infos \ 
+python -m pcdet.datasets.nuscenes.nuscenes_dataset --func create_nuscenes_infos \
     --cfg_file tools/cfgs/dataset_configs/nuscenes_dataset.yaml \
     --version v1.0-trainval
 ```
@@ -86,10 +86,17 @@ pip3 install --upgrade pip
 pip3 install waymo-open-dataset-tf-2-0-0==1.2.0 --user
 ```
 
-* Extract point cloud data from tfrecord and generate data infos by running the following command (it takes several hours, 
+* For 360 LIDAR points: Extract point cloud data from tfrecord and generate data infos by running the following command (it takes several hours, 
 and you could refer to `data/waymo/waymo_processed_data` to see how many records that have been processed): 
 ```python 
 python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_infos \
+    --cfg_file tools/cfgs/dataset_configs/waymo_dataset.yaml
+```
+
+* For front camera + FOV LIDAR point: Extract point cloud data from tfrecord and generate data infos by running the following command (it takes several hours, 
+and you could refer to `data/waymo/waymo_processed_data` to see how many records that have been processed): 
+```python 
+python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_infos_with_images \
     --cfg_file tools/cfgs/dataset_configs/waymo_dataset.yaml
 ```
 
@@ -127,7 +134,7 @@ sh scripts/dist_test.sh ${NUM_GPUS} \
 
 # or
 
-sh scripts/slurm_test_mgpu.sh ${PARTITION} ${NUM_GPUS} \ 
+sh scripts/slurm_test_mgpu.sh ${PARTITION} ${NUM_GPUS} \
     --cfg_file ${CONFIG_FILE} --batch_size ${BATCH_SIZE}
 ```
 

@@ -39,11 +39,15 @@ class DatasetTemplate(torch_data.Dataset):
         self.total_epochs = 0
         self._merge_all_iters_to_one_epoch = False
 
-        if "DEPTH_MAP" in self.dataset_cfg:
-            self.depth_downsample_factor = self.dataset_cfg.DEPTH_MAP.DOWNSAMPLE_FACTOR
+        if hasattr(self.data_processor, "depth_downsample_factor"):
+            self.depth_downsample_factor = self.data_processor.depth_downsample_factor
+        else:
+            self.depth_downsample_factor = None
 
-        if "SEGMENTATION_MASK" in self.dataset_cfg:
-            self.segment_downsample_factor = self.dataset_cfg.SEGMENTATION_MASK.DOWNSAMPLE_FACTOR
+        if hasattr(self.data_processor, "segment_downsample_factor"):
+            self.segment_downsample_factor = self.data_processor.segment_downsample_factor
+        else:
+            self.segment_downsample_factor = None
 
     @property
     def mode(self):

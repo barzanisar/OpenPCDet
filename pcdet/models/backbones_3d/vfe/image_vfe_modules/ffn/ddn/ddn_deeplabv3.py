@@ -9,7 +9,7 @@ class DDNDeepLabV3(DDNTemplate):
         """
         Initializes DDNDeepLabV3 model
         Args:
-            backbone_name [str]: ResNet Backbone Name
+            backbone_name: string, ResNet Backbone Name [ResNet50/ResNet101]
         """
         if backbone_name == "ResNet50":
             constructor = torchvision.models.segmentation.deeplabv3_resnet50

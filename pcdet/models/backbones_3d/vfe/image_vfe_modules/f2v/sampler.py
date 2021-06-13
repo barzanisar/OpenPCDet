@@ -9,8 +9,8 @@ class Sampler(nn.Module):
         """
         Initializes module
         Args:
-            mode [string]: Sampling mode [bilinear/nearest]
-            padding_mode [string]: Padding mode for outside grid values [zeros/border/reflection]
+            mode: string, Sampling mode [bilinear/nearest]
+            padding_mode: string, Padding mode for outside grid values [zeros/border/reflection]
         """
         super().__init__()
         self.mode = mode
@@ -20,10 +20,10 @@ class Sampler(nn.Module):
         """
         Samples input using sampling grid
         Args:
-            input_features [torch.Tensor(N, C, H_in, W_in)]: Input feature maps
-            grid [torch.Tensor(N, H_out, W,_out 2)]: Sampling grids for image features
+            input_features: (B, C, D, H, W), Input frustum features
+            grid: (B, X, Y, Z, 3), Sampling grids for input features
         Returns
-            output_features [torch.Tensor(N, C, H_out, W_out)]: Output feature maps
+            output_features: (B, C, X, Y, Z) Output voxel features
         """
         # Sample from grid
         output = F.grid_sample(input=input_features, grid=grid, mode=self.mode, padding_mode=self.padding_mode)

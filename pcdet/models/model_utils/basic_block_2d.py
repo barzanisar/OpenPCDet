@@ -5,10 +5,11 @@ class BasicBlock2D(nn.Module):
 
     def __init__(self, in_channels, out_channels, **kwargs):
         """
-        Initializes convolutional block for channel reduce
+        Initializes convolutional block
         Args:
-            out_channels [int]: Number of output channels of convolutional block
-            **kwargs [Dict]: Extra arguments for nn.Conv2d
+            in_channels: int, Number of input channels
+            out_channels: int, Number of output channels
+            **kwargs: Dict, Extra arguments for nn.Conv2d
         """
         super().__init__()
         self.in_channels = in_channels
@@ -23,9 +24,9 @@ class BasicBlock2D(nn.Module):
         """
         Applies convolutional block
         Args:
-            features [torch.Tensor(B, C_in, H, W)]: Input features
+            features: (B, C_in, H, W), Input features
         Returns:
-            x [torch.Tensor(B, C_out, H, W)]: Output features
+            x: (B, C_out, H, W), Output features
         """
         x = self.conv(features)
         x = self.bn(x)

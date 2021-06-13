@@ -76,7 +76,8 @@ class WaymoDataset(DatasetTemplate):
 
         return sequence_file
 
-    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True, sampled_interval=1):
+    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True,
+                  sampled_interval=1, save_front_cam_images=False):
         import concurrent.futures as futures
         from functools import partial
         from . import waymo_utils
@@ -85,7 +86,8 @@ class WaymoDataset(DatasetTemplate):
 
         process_single_sequence = partial(
             waymo_utils.process_single_sequence,
-            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label
+            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label,
+            save_front_cam_images=save_front_cam_images
         )
         sample_sequence_file_list = [
             self.check_sequence_name_with_all_version(raw_data_path / sequence_file)
@@ -308,7 +310,7 @@ class WaymoDataset(DatasetTemplate):
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
                        raw_data_tag='raw_data', processed_data_tag='waymo_processed_data',
-                       workers=multiprocessing.cpu_count()):
+                       workers=multiprocessing.cpu_count(), save_front_cam_images=False):
     dataset = WaymoDataset(
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
@@ -324,8 +326,10 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
+        sampled_interval=1,
+        save_front_cam_images=save_front_cam_images
     )
+
     with open(train_filename, 'wb') as f:
         pickle.dump(waymo_infos_train, f)
     print('----------------Waymo info train file is saved to %s----------------' % train_filename)
@@ -334,8 +338,10 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_val = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
+        sampled_interval=1,
+        save_front_cam_images=save_front_cam_images
     )
+
     with open(val_filename, 'wb') as f:
         pickle.dump(waymo_infos_val, f)
     print('----------------Waymo info val file is saved to %s----------------' % val_filename)
@@ -368,5 +374,20 @@ if __name__ == '__main__':
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
             raw_data_tag='raw_data',
-            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
+            save_front_cam_images=False
+        )
+    if args.func == 'create_waymo_infos_with_images':
+        import yaml
+        from easydict import EasyDict
+        dataset_cfg = EasyDict(yaml.load(open(args.cfg_file)))
+        ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+        create_waymo_infos(
+            dataset_cfg=dataset_cfg,
+            class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+            data_path=ROOT_DIR / 'data' / 'waymo',
+            save_path=ROOT_DIR / 'data' / 'waymo',
+            raw_data_tag='raw_data',
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
+            save_front_cam_images=True
         )

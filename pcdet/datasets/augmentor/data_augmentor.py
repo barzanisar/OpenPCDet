@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 
 from ...utils import common_utils
-from . import augmentor_utils, database_sampler, image_augmentor_utils
+from . import augmentor_utils, database_sampler
 import torch
 
 
@@ -40,7 +40,7 @@ class DataAugmentor(object):
 
     def __setstate__(self, d):
         self.__dict__.update(d)
-   
+
     def random_world_flip(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_world_flip, config=config)
@@ -93,14 +93,13 @@ class DataAugmentor(object):
         calib = data_dict["calib"]
         for cur_axis in config['ALONG_AXIS_LIST']:
             assert cur_axis in ['horizontal']
-            images, depth_maps, gt_boxes, gt_boxes2d = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
-                images, depth_maps, gt_boxes, gt_boxes2d, calib,
+            images, depth_maps, gt_boxes = getattr(augmentor_utils, 'random_image_depth_flip_%s' % cur_axis)(
+                images, depth_maps, gt_boxes, calib,
             )
 
         data_dict['images'] = images
         data_dict['depth_maps'] = depth_maps
         data_dict['gt_boxes'] = gt_boxes
-        data_dict['gt_boxes2d'] = gt_boxes2d
         return data_dict
 
     def random_image_flip(self, data_dict=None, config=None):
@@ -110,7 +109,7 @@ class DataAugmentor(object):
         gt_boxes2d = data_dict["gt_boxes2d"]
         for cur_axis in config['ALONG_AXIS_LIST']:
             assert cur_axis in ['horizontal']
-            images, gt_boxes2d, enable_flag = getattr(image_augmentor_utils, 'random_flip_%s' % cur_axis)(
+            images, gt_boxes2d, enable_flag = getattr(augmentor_utils, 'random_image_flip_%s' % cur_axis)(
                 images, gt_boxes2d
             )
 
@@ -130,7 +129,11 @@ class DataAugmentor(object):
 
         Returns:
         """
-        old_points = np.copy(data_dict['points'][:,0:3])
+        # Debug reverse transformation
+        DEBUG_REVERSE_TRANSFORM = False
+        if DEBUG_REVERSE_TRANSFORM:
+            old_points = np.copy(data_dict['points'][:,0:3])
+
         transformations = []
         for cur_augmentor in self.data_augmentor_queue:
             data_dict = cur_augmentor(data_dict=data_dict)
@@ -183,7 +186,6 @@ class DataAugmentor(object):
         data_dict['undo_global_transform'] = undo_global_transform
 
         # Debug reverse transformation
-        DEBUG_REVERSE_TRANSFORM = False
         if DEBUG_REVERSE_TRANSFORM:
             new_points = data_dict['points']
             points = np.array(new_points[:, 0:3])

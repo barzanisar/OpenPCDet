@@ -1,19 +1,18 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import ddn
-from .ddn_loss import DDNLoss
+from . import ddn, ddn_loss
 from pcdet.models.model_utils.basic_block_2d import BasicBlock2D
 
 
-class DepthFFE(nn.Module):
+class DepthFFN(nn.Module):
 
     def __init__(self, model_cfg, downsample_factor):
         """
-        Initialize depth classification network
+        Initialize frustum feature network via depth distribution estimation
         Args:
-            model_cfg [EasyDict]: Depth classification network config
-            downsample_factor [int]: Depth map downsample factor
+            model_cfg: EasyDict, Depth classification network config
+            downsample_factor: int, Depth map downsample factor
         """
         super().__init__()
         self.model_cfg = model_cfg
@@ -21,16 +20,17 @@ class DepthFFE(nn.Module):
         self.downsample_factor = downsample_factor
 
         # Create modules
-        ddn_cfg = model_cfg.DDN
-        self.ddn = ddn.__all__[ddn_cfg.NAME](
+        self.ddn = ddn.__all__[model_cfg.DDN.NAME](
             num_classes=self.disc_cfg["num_bins"] + 1,
-            backbone_name=ddn_cfg.BACKBONE_NAME,
-            **ddn_cfg.ARGS
+            backbone_name=model_cfg.DDN.BACKBONE_NAME,
+            **model_cfg.DDN.ARGS
         )
         self.channel_reduce = BasicBlock2D(**model_cfg.CHANNEL_REDUCE)
-        self.ddn_loss = DDNLoss(disc_cfg=self.disc_cfg,
-                                downsample_factor=downsample_factor,
-                                **model_cfg.DDN_LOSS)
+        self.ddn_loss = ddn_loss.__all__[model_cfg.LOSS.NAME](
+            disc_cfg=self.disc_cfg,
+            downsample_factor=downsample_factor,
+            **model_cfg.LOSS.ARGS
+        )
         self.forward_ret_dict = {}
 
     def get_output_feature_dim(self):
@@ -38,13 +38,13 @@ class DepthFFE(nn.Module):
 
     def forward(self, batch_dict):
         """
-        Predicts depths and creates image depth feature volume using depth classification scores
+        Predicts depths and creates image depth feature volume using depth distributions
         Args:
             batch_dict:
-                images [torch.Tensor(N, 3, H_in, W_in)]: Input images
+                images: (N, 3, H_in, W_in), Input images
         Returns:
             batch_dict:
-                frustum_features [torch.Tensor(N, C, D, H_out, W_out)]: Image depth features
+                frustum_features: (N, C, D, H_out, W_out), Image depth features
         """
         # Pixel-wise depth classification
         images = batch_dict["images"]
@@ -69,12 +69,12 @@ class DepthFFE(nn.Module):
 
     def create_frustum_features(self, image_features, depth_logits):
         """
-        Create image depth feature volume by multiplying image features with depth classification scores
+        Create image depth feature volume by multiplying image features with depth distributions
         Args:
-            image_features [torch.Tensor(N, C, H, W)]: Image features
-            depth_logits [torch.Tensor(N, D, H, W)]: Depth classification logits
+            image_features: (N, C, H, W), Image features
+            depth_logits: (N, D+1, H, W), Depth classification logits
         Returns:
-            frustum_features [torch.Tensor(N, C, D, H, W)]: Image features
+            frustum_features: (N, C, D, H, W), Image features
         """
         channel_dim = 1
         depth_dim = 2
@@ -92,5 +92,12 @@ class DepthFFE(nn.Module):
         return frustum_features
 
     def get_loss(self):
+        """
+        Gets DDN loss
+        Args:
+        Returns:
+            loss: (1), Depth distribution network loss
+            tb_dict: dict[float], All losses to log in tensorboard
+        """
         loss, tb_dict = self.ddn_loss(**self.forward_ret_dict)
         return loss, tb_dict

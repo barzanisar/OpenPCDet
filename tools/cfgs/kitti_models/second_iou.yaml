@@ -1,86 +1,30 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
-DATA_CONFIG:
+DATA_CONFIG: 
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-    POINT_CLOUD_RANGE: [2, -30.08, -3.0, 46.8, 30.08, 1.0]
-    GET_ITEM_LIST: ["images", "depth_maps", "calib_matricies", "gt_boxes2d"]
 
-    DATA_PROCESSOR:
-        - NAME: mask_points_and_boxes_outside_range
-          REMOVE_OUTSIDE_BOXES: True
-
-        - NAME: calculate_grid_size
-          VOXEL_SIZE: [0.16, 0.16, 0.16]
-
-        - NAME: downsample_depth_map
-          DOWNSAMPLE_FACTOR: 4
-
-    DATA_AUGMENTOR:
-        DISABLE_AUG_LIST: ['placeholder']
-        AUG_CONFIG_LIST:
-            - NAME: random_image_flip
-              ALONG_AXIS_LIST: ['horizontal']
 
 MODEL:
-    NAME: CaDDN
+    NAME: SECONDNetIoU
 
     VFE:
-        NAME: ImageVFE
-        FFN:
-            NAME: DepthFFN
-            DDN:
-                NAME: DDNDeepLabV3
-                BACKBONE_NAME: ResNet101
-                ARGS: {
-                    "feat_extract_layer": "layer1",
-                    "pretrained_path": "../checkpoints/deeplabv3_resnet101_coco-586e9e4e.pth"
-                }
-            CHANNEL_REDUCE: {
-                "in_channels": 256,
-                "out_channels": 64,
-                "kernel_size": 1,
-                "stride": 1,
-                "bias": False
-            }
-            DISCRETIZE: {
-                "mode": LID,
-                "num_bins": 80,
-                "depth_min": 2.0,
-                "depth_max": 46.8
-            }
-            LOSS:
-                NAME: DDNLoss
-                ARGS: {
-                    'weight': 3.0,
-                    'alpha': 0.25,
-                    'gamma': 2.0,
-                    'fg_weight': 13,
-                    'bg_weight': 1
-                }
-        F2V:
-            NAME: FrustumToVoxel
-            SAMPLER: {
-                "mode": "bilinear",
-                "padding_mode": "zeros"
-            }
-            
+        NAME: MeanVFE
+
+    BACKBONE_3D:
+        NAME: VoxelBackBone8x
 
     MAP_TO_BEV:
-        NAME: Conv2DCollapse
-        NUM_BEV_FEATURES: 64
-        ARGS: {
-            "kernel_size": 1,
-            "stride": 1,
-            "bias": False
-        }
+        NAME: HeightCompression
+        NUM_BEV_FEATURES: 256
 
     BACKBONE_2D:
         NAME: BaseBEVBackbone
-        LAYER_NUMS: [10, 10, 10]
-        LAYER_STRIDES: [2, 2, 2]
-        NUM_FILTERS: [64, 128, 256]
-        UPSAMPLE_STRIDES: [1, 2, 4]
-        NUM_UPSAMPLE_FILTERS: [128, 128, 128]
+
+        LAYER_NUMS: [5, 5]
+        LAYER_STRIDES: [1, 2]
+        NUM_FILTERS: [128, 256]
+        UPSAMPLE_STRIDES: [1, 2]
+        NUM_UPSAMPLE_FILTERS: [256, 256]
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -98,7 +42,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-1.78],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.6,
                 'unmatched_threshold': 0.45
             },
@@ -108,7 +52,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-0.6],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.5,
                 'unmatched_threshold': 0.35
             },
@@ -118,7 +62,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-0.6],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.5,
                 'unmatched_threshold': 0.35
             }
@@ -140,6 +84,55 @@ MODEL:
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
+    ROI_HEAD:
+        NAME: SECONDHead
+        CLASS_AGNOSTIC: True
+
+        SHARED_FC: [256, 256]
+        IOU_FC: [256, 256]
+        DP_RATIO: 0.3
+
+        NMS_CONFIG:
+            TRAIN:
+                NMS_TYPE: nms_gpu
+                MULTI_CLASSES_NMS: False
+                NMS_PRE_MAXSIZE: 9000
+                NMS_POST_MAXSIZE: 512
+                NMS_THRESH: 0.8
+            TEST:
+                NMS_TYPE: nms_gpu
+                MULTI_CLASSES_NMS: False
+                NMS_PRE_MAXSIZE: 1024
+                NMS_POST_MAXSIZE: 100
+                NMS_THRESH: 0.7
+
+        ROI_GRID_POOL:
+            GRID_SIZE: 7
+            IN_CHANNEL: 512
+            DOWNSAMPLE_RATIO: 8
+
+        TARGET_CONFIG:
+            BOX_CODER: ResidualCoder
+            ROI_PER_IMAGE: 128
+            FG_RATIO: 0.5
+
+            SAMPLE_ROI_BY_EACH_CLASS: True
+            CLS_SCORE_TYPE: roi_iou
+
+            CLS_FG_THRESH: 0.75
+            CLS_BG_THRESH: 0.25
+            CLS_BG_THRESH_LO: 0.1
+            HARD_BG_RATIO: 0.8
+
+            REG_FG_THRESH: 0.55
+
+        LOSS_CONFIG:
+            IOU_LOSS: BinaryCrossEntropy
+            LOSS_WEIGHTS: {
+                'rcnn_iou_weight': 1.0,
+                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            }
+
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
         SCORE_THRESH: 0.1
@@ -155,12 +148,13 @@ MODEL:
             NMS_POST_MAXSIZE: 500
 
 
+
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 4
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.001
+    LR: 0.003
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

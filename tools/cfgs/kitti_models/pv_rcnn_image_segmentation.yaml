@@ -4,16 +4,8 @@ DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
     GET_ITEM_LIST: ["images", "gt_boxes2d", "points", "calib_matricies"]
 
-    IMAGE:
-      COLLATE:
-        MODE: Pad
-        CONSTANT_VALUES: [ 0.485, 0.456, 0.406 ]
-
-    SEGMENTATION_MASK:
-      DOWNSAMPLE_FACTOR: 4
-
     DATA_AUGMENTOR:
-        DISABLE_AUG_LIST: ['gt_sampling', 'random_world_flip', 'random_world_rotation', 'random_world_scaling']
+        DISABLE_AUG_LIST: ['gt_sampling']
         AUG_CONFIG_LIST:
             - NAME: gt_sampling
               USE_ROAD_PLANE: True
@@ -38,6 +30,9 @@ DATA_CONFIG:
 
             - NAME: random_world_scaling
               WORLD_SCALE_RANGE: [0.95, 1.05]
+              
+            - NAME: random_image_flip
+              ALONG_AXIS_LIST: ['horizontal']
 
 MODEL:
     NAME: PVRCNNImageSegmentation
@@ -53,11 +48,12 @@ MODEL:
         }
 
       ISN_LOSS: {
-        'weight': 3.0,
+        'weight': 1.0,
         'alpha': 0.25,
         'gamma': 2.0,
         'fg_weight': 13,
-        'bg_weight': 1
+        'bg_weight': 1,
+        'downsample_gt_mask': 4
       }
 
     VFE:

@@ -4,16 +4,14 @@ from pcdet.models.backbones_3d.ife.isn_loss import ISNLoss
 
 
 class ImageSegmentation(nn.Module):
-    def __init__(self, model_cfg, downsample_factor):
+    def __init__(self, model_cfg):
         """
             Initialize foreground classification network
             Args:
                 model_cfg [EasyDict]: Foreground classification network config
-                downsample_factor [int]: Foreground mask downsample factor
         """
         super().__init__()
         self.model_cfg = model_cfg
-        self.downsample_factor = downsample_factor
         self.num_classes = 1
         # Create modules
 
@@ -26,8 +24,7 @@ class ImageSegmentation(nn.Module):
         )
 
         # loss
-        self.isn_loss = ISNLoss(downsample_factor=self.downsample_factor,
-                                **model_cfg.ISN_LOSS)
+        self.isn_loss = ISNLoss(**model_cfg.ISN_LOSS)
 
         self.forward_ret_dict = {}
 

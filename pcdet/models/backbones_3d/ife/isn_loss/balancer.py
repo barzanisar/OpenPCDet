@@ -11,7 +11,7 @@ class Balancer(nn.Module):
         Args:
             fg_weight [float]: Foreground loss weight
             bg_weight [float]: Background loss weight
-            downsample_factor [int]: Depth map downsample factor
+            downsample_factor [int]: foreground mask downsample factor
         """
         super().__init__()
         self.fg_weight = fg_weight

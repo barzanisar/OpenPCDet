@@ -1,8 +1,14 @@
 import torch
 import torch.nn as nn
-import kornia
 
-from pcdet.utils import transform_utils, grid_utils, depth_utils
+try:
+    from kornia.utils.grid import create_meshgrid3d
+    from kornia.geometry.linalg import transform_points
+except Exception as e:
+    # Note: Kornia team will fix this import issue to try to allow the usage of lower torch versions.
+    print('Warning: kornia is not installed correctly, please ignore this warning if you do not use CaDDN. Otherwise, it is recommended to use torch version greater than 1.2 to use kornia properly.')
+
+from pcdet.utils import transform_utils
 
 
 class FrustumGridGenerator(nn.Module):
@@ -11,13 +17,13 @@ class FrustumGridGenerator(nn.Module):
         """
         Initializes Grid Generator for frustum features
         Args:
-            grid_size [np.array(3)]: Voxel grid shape [X, Y, Z]
-            pc_range [list]: Voxelization point cloud range [X_min, Y_min, Z_min, X_max, Y_max, Z_max]
-            disc_cfg [int]: Depth discretiziation configuration
+            grid_size: [X, Y, Z], Voxel grid size
+            pc_range: [x_min, y_min, z_min, x_max, y_max, z_max], Voxelization point cloud range (m)
+            disc_cfg: EasyDict, Depth discretiziation configuration
         """
         super().__init__()
         self.dtype = torch.float32
-        self.grid_size = torch.as_tensor(grid_size)
+        self.grid_size = torch.as_tensor(grid_size, dtype=self.dtype)
         self.pc_range = pc_range
         self.out_of_bounds_val = -2
         self.disc_cfg = disc_cfg
@@ -30,7 +36,7 @@ class FrustumGridGenerator(nn.Module):
 
         # Create voxel grid
         self.depth, self.width, self.height = self.grid_size.int()
-        self.voxel_grid = kornia.utils.create_meshgrid3d(depth=self.depth,
+        self.voxel_grid = create_meshgrid3d(depth=self.depth,
                                                          height=self.height,
                                                          width=self.width,
                                                          normalized_coordinates=False)
@@ -46,10 +52,10 @@ class FrustumGridGenerator(nn.Module):
         """
         Calculate grid to LiDAR unprojection for each plane
         Args:
-            pc_min [torch.Tensor(3)]: Minimum of point cloud range [X, Y, Z] (m)
-            voxel_size [torch.Tensor(3)]: Size of each voxel [X, Y, Z] (m)
+            pc_min: [x_min, y_min, z_min], Minimum of point cloud range (m)
+            voxel_size: [x, y, z], Size of each voxel (m)
         Returns:
-            unproject [torch.Tensor(4, 4)]: Voxel grid to LiDAR unprojection matrix
+            unproject: (4, 4), Voxel grid to LiDAR unprojection matrix
         """
         x_size, y_size, z_size = voxel_size
         x_min, y_min, z_min = pc_min
@@ -65,12 +71,12 @@ class FrustumGridGenerator(nn.Module):
         """
         Transforms voxel sampling grid into frustum sampling grid
         Args:
-            grid [torch.Tensor(B, X, Y, Z, 3)]: Voxel sampling grid
-            grid_to_lidar [torch.Tensor(4, 4)]: Voxel grid to LiDAR unprojection matrix
-            lidar_to_cam [torch.Tensor(B, 4, 4)]: LiDAR to camera frame transformation
-            cam_to_img [torch.Tensor(B, 3, 4)]: Camera projection matrix
+            grid: (B, X, Y, Z, 3), Voxel sampling grid
+            grid_to_lidar: (4, 4), Voxel grid to LiDAR unprojection matrix
+            lidar_to_cam: (B, 4, 4), LiDAR to camera frame transformation
+            cam_to_img: (B, 3, 4), Camera projection matrix
         Returns:
-            frustum_grid [torch.Tensor(B, X, Y, Z, 3)]: Frustum sampling grid
+            frustum_grid: (B, X, Y, Z, 3), Frustum sampling grid
         """
         B = lidar_to_cam.shape[0]
 
@@ -85,14 +91,14 @@ class FrustumGridGenerator(nn.Module):
         voxel_grid = voxel_grid.repeat_interleave(repeats=B, dim=0)
 
         # Transform to camera frame
-        camera_grid = kornia.transform_points(trans_01=trans, points_1=voxel_grid)
+        camera_grid = transform_points(trans_01=trans, points_1=voxel_grid)
 
         # Project to image
         I_C = I_C.reshape(B, 1, 1, 3, 4)
         image_grid, image_depths = transform_utils.project_to_image(project=I_C, points=camera_grid)
 
         # Convert depths to depth bins
-        image_depths = depth_utils.bin_depths(depth_map=image_depths, **self.disc_cfg)
+        image_depths = transform_utils.bin_depths(depth_map=image_depths, **self.disc_cfg)
 
         # Stack to form frustum grid
         image_depths = image_depths.unsqueeze(-1)
@@ -103,11 +109,11 @@ class FrustumGridGenerator(nn.Module):
         """
         Generates sampling grid for frustum features
         Args:
-            lidar_to_cam [torch.Tensor(B, 4, 4)]: LiDAR to camera frame transformation
-            cam_to_img [torch.Tensor(B, 3, 4)]: Camera projection matrix
-            image_shape [torch.Tensor(B, 2)]: Image shape [H, W]
+            lidar_to_cam: (B, 4, 4), LiDAR to camera frame transformation
+            cam_to_img: (B, 3, 4), Camera projection matrix
+            image_shape: (B, 2), Image shape [H, W]
         Returns:
-            frustum_grid [torch.Tensor(B, X, Y, Z, 3)]: Sampling grids for frustum features
+            frustum_grid (B, X, Y, Z, 3), Sampling grids for frustum features
         """
 
         frustum_grid = self.transform_grid(voxel_grid=self.voxel_grid.to(lidar_to_cam.device),
@@ -117,9 +123,11 @@ class FrustumGridGenerator(nn.Module):
 
         # Normalize grid
         image_shape, _ = torch.max(image_shape, dim=0)
-        image_depth = torch.tensor([self.disc_cfg["num_bins"]], device=image_shape.device, dtype=image_shape.dtype)
+        image_depth = torch.tensor([self.disc_cfg["num_bins"]],
+                                   device=image_shape.device,
+                                   dtype=image_shape.dtype)
         frustum_shape = torch.cat((image_depth, image_shape))
-        frustum_grid = grid_utils.normalize_coords(coords=frustum_grid, shape=frustum_shape)
+        frustum_grid = transform_utils.normalize_coords(coords=frustum_grid, shape=frustum_shape)
 
         # Replace any NaNs or infinites with out of bounds
         mask = ~torch.isfinite(frustum_grid)

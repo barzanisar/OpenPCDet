@@ -15,7 +15,7 @@ class ISNLoss(nn.Module):
                  gamma,
                  fg_weight,
                  bg_weight,
-                 downsample_factor=1):
+                 downsample_gt_mask=1):
         """
         Initializes ISNLoss module
         Args:
@@ -24,12 +24,12 @@ class ISNLoss(nn.Module):
             gamma [float]: Gamma value for Focal Loss
             fg_weight [float]: Foreground loss weight
             bg_weight [float]: Background loss weight
-            downsample_factor [int]: Image segmentation downsample factor
+            downsample_gt_mask [int]: Image segmentation downsample factor
         """
         super().__init__()
-        self.downsample_factor = downsample_factor
+        self.downsample_factor = downsample_gt_mask
         self.device = torch.cuda.current_device()
-        self.balancer = Balancer(downsample_factor=downsample_factor,
+        self.balancer = Balancer(downsample_factor=downsample_gt_mask,
                                  fg_weight=fg_weight,
                                  bg_weight=bg_weight)
 

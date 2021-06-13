@@ -4,8 +4,10 @@ from .point_rcnn import PointRCNN
 from .pointpillar import PointPillar
 from .pv_rcnn import PVRCNN
 from .second_net import SECONDNet
-from .caddn import CaDDN
 from .pv_rcnn_image_segmentation import PVRCNNImageSegmentation
+from .second_net_iou import SECONDNetIoU
+from .caddn import CaDDN
+from .voxel_rcnn import VoxelRCNN
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -14,8 +16,10 @@ __all__ = {
     'PVRCNN': PVRCNN,
     'PointPillar': PointPillar,
     'PointRCNN': PointRCNN,
+    'PVRCNNImageSegmentation': PVRCNNImageSegmentation,
+    'SECONDNetIoU': SECONDNetIoU,
     'CaDDN': CaDDN,
-    'PVRCNNImageSegmentation': PVRCNNImageSegmentation
+    'VoxelRCNN': VoxelRCNN
 }
 
 

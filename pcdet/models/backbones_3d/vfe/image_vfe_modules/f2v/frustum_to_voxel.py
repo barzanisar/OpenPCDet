@@ -11,10 +11,10 @@ class FrustumToVoxel(nn.Module):
         """
         Initializes module to transform frustum features to voxel features via 3D transformation and sampling
         Args:
-            model_cfg [EasyDict]: Module configuration
-            grid_size [np.array(3)]: Voxel grid shape [X, Y, Z]
-            pc_range [list]: Voxelization point cloud range [X_min, Y_min, Z_min, X_max, Y_max, Z_max]
-            disc_cfg [dict]: Depth discretiziation configuration
+            model_cfg: EasyDict, Module configuration
+            grid_size: [X, Y, Z], Voxel grid size
+            pc_range: [x_min, y_min, z_min, x_max, y_max, z_max], Voxelization point cloud range (m)
+            disc_cfg: EasyDict, Depth discretiziation configuration
         """
         super().__init__()
         self.model_cfg = model_cfg
@@ -31,13 +31,13 @@ class FrustumToVoxel(nn.Module):
         Generates voxel features via 3D transformation and sampling
         Args:
             batch_dict:
-                frustum_features [torch.Tensor(B, C, D, H_image, W_image)]: Image frustum features
-                lidar_to_cam [torch.Tensor(B, 4, 4)]: LiDAR to camera frame transformation
-                cam_to_img [torch.Tensor(B, 3, 4)]: Camera projection matrix
-                image_shape [torch.Tensor(B, 2)]: Image shape [H, W]
+                frustum_features: (B, C, D, H_image, W_image), Image frustum features
+                lidar_to_cam: (B, 4, 4), LiDAR to camera frame transformation
+                cam_to_img: (B, 3, 4), Camera projection matrix
+                image_shape: (B, 2), Image shape [H, W]
         Returns:
             batch_dict:
-                voxel_features [torch.Tensor(B, C, Z, Y, X)]: Image voxel features
+                voxel_features: (B, C, Z, Y, X), Image voxel features
         """
         # Generate sampling grid for frustum volume
         grid = self.grid_generator(lidar_to_cam=batch_dict["trans_lidar_to_cam"],

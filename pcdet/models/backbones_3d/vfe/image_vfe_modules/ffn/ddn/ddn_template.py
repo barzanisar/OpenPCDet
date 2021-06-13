@@ -1,23 +1,31 @@
 from collections import OrderedDict
+from pathlib import Path
+from torch import hub
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-import kornia
 
+try:
+    from kornia.enhance.normalize import normalize
+except:
+    pass
+    # print('Warning: kornia is not installed. This package is only required by CaDDN')
 
+    
 class DDNTemplate(nn.Module):
 
     def __init__(self, constructor, feat_extract_layer, num_classes, pretrained_path=None, aux_loss=None):
         """
         Initializes depth distribution network.
         Args:
-            constructor [function]: Model constructor
-            feat_extract_layer [string]: Layer to extract features from
-            pretrained_path [string]: (Optional) Path of the model to load weights from
-            aux_loss [bool]: Flag to include auxillary loss
+            constructor: function, Model constructor
+            feat_extract_layer: string, Layer to extract features from
+            num_classes: int, Number of classes
+            pretrained_path: string, (Optional) Path of the model to load weights from
+            aux_loss: bool, Flag to include auxillary loss
         """
         super().__init__()
         self.num_classes = num_classes
@@ -42,9 +50,9 @@ class DDNTemplate(nn.Module):
         """
         Get model
         Args:
-            constructor [function]: Model constructor
+            constructor: function, Model constructor
         Returns:
-            model [nn.Module]: Model
+            model: nn.Module, Model
         """
         # Get model
         model = constructor(pretrained=False,
@@ -55,10 +63,20 @@ class DDNTemplate(nn.Module):
         # Update weights
         if self.pretrained_path is not None:
             model_dict = model.state_dict()
+            
+            # Download pretrained model if not available yet
+            checkpoint_path = Path(self.pretrained_path)
+            if not checkpoint_path.exists():
+                checkpoint = checkpoint_path.name
+                save_dir = checkpoint_path.parent
+                save_dir.mkdir(parents=True)
+                url = f'https://download.pytorch.org/models/{checkpoint}'
+                hub.load_state_dict_from_url(url, save_dir)
 
             # Get pretrained state dict
             pretrained_dict = torch.load(self.pretrained_path)
-            pretrained_dict = self.filter_pretrained_dict(model_dict=model_dict, pretrained_dict=pretrained_dict)
+            pretrained_dict = self.filter_pretrained_dict(model_dict=model_dict,
+                                                          pretrained_dict=pretrained_dict)
 
             # Update current model state dict
             model_dict.update(pretrained_dict)
@@ -70,10 +88,10 @@ class DDNTemplate(nn.Module):
         """
         Removes layers from pretrained state dict that are not used or changed in model
         Args:
-            model_dict [dict]: Default model state dictionary
-            pretrained_dict [dict]: Pretrained model state dictionary
+            model_dict: dict, Default model state dictionary
+            pretrained_dict: dict, Pretrained model state dictionary
         Returns:
-            pretrained_dict [dict]: Pretrained model state dictionary with removed weights
+            pretrained_dict: dict, Pretrained model state dictionary with removed weights
         """
         # Removes aux classifier weights if not used
         if "aux_classifier.0.weight" in pretrained_dict and "aux_classifier.0.weight" not in model_dict:
@@ -93,12 +111,12 @@ class DDNTemplate(nn.Module):
         """
         Forward pass
         Args:
-            images [torch.Tensor(N, 3, H_in, W_in)]: Input images
+            images: (N, 3, H_in, W_in), Input images
         Returns
-            result [dict[torch.Tensor]]: Depth distribution result
-                feat [torch.Tensor(N, C, H_out, W_out)]: Image features
-                out [torch.Tensor(N, num_classes, H_out, W_out)]: Classification logits
-                aux [torch.Tensor(N, num_classes, H_out, W_out)]: Auxillary classification scores
+            result: dict[torch.Tensor], Depth distribution result
+                features: (N, C, H_out, W_out), Image features
+                logits: (N, num_classes, H_out, W_out), Classification logits
+                aux: (N, num_classes, H_out, W_out), Auxillary classification logits
         """
         # Preprocess images
         x = self.preprocess(images)
@@ -128,9 +146,9 @@ class DDNTemplate(nn.Module):
         """
         Preprocess images
         Args:
-            images [torch.Tensor(N, 3, H, W)]: Input images
+            images: (N, 3, H, W), Input images
         Return
-            x [torch.Tensor(N, 3, H, W)]: Preprocessed images
+            x: (N, 3, H, W), Preprocessed images
         """
         x = images
         if self.pretrained:
@@ -138,7 +156,7 @@ class DDNTemplate(nn.Module):
             mask = torch.isnan(x)
 
             # Match ResNet pretrained preprocessing
-            x = kornia.normalize(x, mean=self.norm_mean, std=self.norm_std)
+            x = normalize(x, mean=self.norm_mean, std=self.norm_std)
 
             # Make padded pixels = 0
             x[mask] = 0

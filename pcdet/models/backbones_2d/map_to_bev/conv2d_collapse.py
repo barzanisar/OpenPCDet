@@ -8,10 +8,10 @@ class Conv2DCollapse(nn.Module):
 
     def __init__(self, model_cfg, grid_size):
         """
-        Initializes 3D convolution collapse module
+        Initializes 2D convolution collapse module
         Args:
-            channels [int]: Number of feature channels
-            num_heights [int]: Number of height planes in voxel grid
+            model_cfg: EasyDict, Model configuration
+            grid_size: (X, Y, Z) Voxel grid size
         """
         super().__init__()
         self.model_cfg = model_cfg
@@ -26,10 +26,10 @@ class Conv2DCollapse(nn.Module):
         Collapses voxel features to BEV via concatenation and channel reduction
         Args:
             batch_dict:
-                voxel_features [torch.Tensor(B, C, Z, Y, X)]: Voxel feature representation
+                voxel_features: (B, C, Z, Y, X), Voxel feature representation
         Returns:
             batch_dict:
-                spatial_features [torch.Tensor(B, C, Y, X)]: BEV feature representation
+                spatial_features: (B, C, Y, X), BEV feature representation
         """
         voxel_features = batch_dict["voxel_features"]
         bev_features = voxel_features.flatten(start_dim=1, end_dim=2)  # (B, C, Z, Y, X) -> (B, C*Z, Y, X)

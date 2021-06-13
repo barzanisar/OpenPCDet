@@ -9,9 +9,9 @@ class Balancer(nn.Module):
         """
         Initialize fixed foreground/background loss balancer
         Args:
-            fg_weight [float]: Foreground loss weight
-            bg_weight [float]: Background loss weight
-            downsample_factor [int]: Depth map downsample factor
+            fg_weight: float, Foreground loss weight
+            bg_weight: float, Background loss weight
+            downsample_factor: int, Depth map downsample factor
         """
         super().__init__()
         self.fg_weight = fg_weight
@@ -22,11 +22,11 @@ class Balancer(nn.Module):
         """
         Forward pass
         Args:
-            loss [torch.Tensor(B, H, W)]: Pixel-wise loss
-            gt_boxes2d [torch.Tensor (B, N, 4)]: 2D box labels for foreground/background balancing
+            loss: (B, H, W), Pixel-wise loss
+            gt_boxes2d: (B, N, 4), 2D box labels for foreground/background balancing
         Returns:
-            loss [torch.Tensor(1)]: Total loss after foreground/background balancing
-            tb_dict [dict[float]]: All losses to log in tensorboard
+            loss: (1), Total loss after foreground/background balancing
+            tb_dict: dict[float], All losses to log in tensorboard
         """
         # Compute masks
         fg_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
