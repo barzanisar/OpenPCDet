@@ -24,8 +24,9 @@ class PVRCNN(Detector3DTemplate):
     def get_training_loss(self):
         disp_dict = {}
         loss_rpn, tb_dict = self.dense_head.get_loss()
-        loss_point, tb_dict = self.point_head.get_loss(tb_dict)
+        #loss_point, tb_dict = self.point_head.get_loss(tb_dict)
         loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
 
-        loss = loss_rpn + loss_point + loss_rcnn
+        #loss = loss_rpn + loss_point + loss_rcnn
+        loss = loss_rpn + loss_rcnn
         return loss, tb_dict, disp_dict

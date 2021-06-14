@@ -6,6 +6,7 @@ from ...utils import common_utils, transform_utils
 from .roi_head_template import RoIHeadTemplate
 import kornia
 import torch.nn.functional as F
+from pcdet.utils import loss_utils
 
 
 class PVRCNNHead(RoIHeadTemplate):
@@ -93,7 +94,7 @@ class PVRCNNHead(RoIHeadTemplate):
 
         # weighting based on foreground segmentation from image stream
         if self.model_cfg.IMAGE_BASED_KPW:
-            keypoints_img_weights = self.get_kp_image_cls_scores(batch_dict)
+            keypoints_img_weights = self.get_kp_image_2d_bounding_box_gt_weighting(batch_dict)
             point_features = point_features * keypoints_img_weights.view(-1, 1)
         else:
             point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
@@ -205,6 +206,78 @@ class PVRCNNHead(RoIHeadTemplate):
                 plt.show()
 
         return keypoints_img_weights
+
+    def get_kp_image_2d_bounding_box_gt_weighting(self, batch_dict):
+        B = batch_dict['trans_lidar_to_cam'].shape[0]
+
+        # Create transformation matricies
+        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
+        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
+
+        # Reshape points coordinates from (N, 4) to (B, N, 3)
+        point_coords = batch_dict['point_coords']  # N
+        ## This assumes number of keypoints per batch is fixed
+        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
+        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            points_in_batch_b = (point_coords[..., 0].int() == b)
+            point_coords_kornia[b, ...] = point_coords[points_in_batch_b, 1:]
+
+        # # Undo augmentations
+        if self.training:
+            undo_global_transform = batch_dict['undo_global_transform']
+            point_coords_kornia = point_coords_kornia @ undo_global_transform
+
+        # Transform to camera frame
+        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+        # Project to image to get keypoint projection on image plane
+        I_C = I_C.reshape(B, 3, 4)
+        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+
+        # Extract foregound weights for keypoints
+        # Downsample coordinates of keypoint pixel coordinates to match reduced image dimensions
+        keypoints_img = keypoints_img / 4
+        keypoints_img = keypoints_img.long()
+        keypoints_img_weights = torch.zeros((B, num_keypoints_per_sample), dtype=torch.float32,
+                                            device=point_coords.device)
+
+        # Get foreground weighting mask
+        gt_boxes2d = batch_dict['gt_boxes2d']
+        image = batch_dict['images']
+        mask_shape = (image.shape[0], image.shape[2]//4 + 1, image.shape[3]//4 + 1)
+        foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+                                             shape=mask_shape,
+                                             downsample_factor=4,
+                                             device=keypoints_img.device)
+        segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.int64, device=foreground_mask.device)
+        segmentation_targets[foreground_mask.long() == True] = 1
+
+
+        # extract weights from bb gt mask
+        for b in range(B):
+            u = keypoints_img[b, :, 0]
+            v = keypoints_img[b, :, 1]
+            keypoints_img_weights[b, ...] = segmentation_targets[b, v, u]
+
+        VISUALIZE_MASK = False
+        if VISUALIZE_MASK:
+            import matplotlib.pyplot as plt
+            import numpy as np
+            image_orig = batch_dict['images'].cpu()
+            image_reduced = F.interpolate(image_orig, size=[segmentation_targets.shape[1], segmentation_targets.shape[2]],
+                                          mode="bilinear")
+            image_gray = (0.2989 * image_reduced[:, 0, :, :] + 0.5870 * image_reduced[:, 1, :,
+                                                                        :] + 0.1140 * image_reduced[:, 2, :,
+                                                                                      :]).squeeze()
+
+            plt.imshow(np.concatenate([image_gray, segmentation_targets.squeeze().cpu().numpy()]))
+            plt.show()
+
+        return keypoints_img_weights
+
+
 
     def get_global_grid_points_of_roi(self, rois, grid_size):
         rois = rois.view(-1, rois.shape[-1])
