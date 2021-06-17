@@ -94,7 +94,7 @@ class PVRCNNHead(RoIHeadTemplate):
 
         # weighting based on foreground segmentation from image stream
         if self.model_cfg.IMAGE_BASED_KPW:
-            keypoints_img_weights = self.get_kp_image_2d_bounding_box_gt_weighting(batch_dict)
+            keypoints_img_weights = self.get_kp_image_2d_bounding_box_gt_grid_sampler(batch_dict)
             point_features = point_features * keypoints_img_weights.view(-1, 1)
         else:
             point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
@@ -206,7 +206,7 @@ class PVRCNNHead(RoIHeadTemplate):
                 plt.show()
 
         return keypoints_img_weights
-
+# ground truth training with integer indexing - loss of precision
     def get_kp_image_2d_bounding_box_gt_weighting(self, batch_dict):
         B = batch_dict['trans_lidar_to_cam'].shape[0]
 
@@ -276,6 +276,88 @@ class PVRCNNHead(RoIHeadTemplate):
             plt.show()
 
         return keypoints_img_weights
+
+    # Ground truth training with grid sampler - no loss of precision
+    def get_kp_image_2d_bounding_box_gt_grid_sampler(self, batch_dict):
+        B = batch_dict['trans_lidar_to_cam'].shape[0]
+        image_h, image_w = batch_dict['images'].shape[-2:]
+
+        # Create transformation matricies
+        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
+        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
+
+        # Reshape points coordinates from (N, 4) to (B, N, 3)
+        point_coords = batch_dict['point_coords']  # N
+        ## This assumes number of keypoints per batch is fixed
+        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
+        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            points_in_batch_b = (point_coords[..., 0].int() == b)
+            point_coords_kornia[b, ...] = point_coords[points_in_batch_b, 1:]
+
+        # # Undo augmentations
+        if self.training:
+            undo_global_transform = batch_dict['undo_global_transform']
+            point_coords_kornia = point_coords_kornia @ undo_global_transform
+
+        # Transform to camera frame
+        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+        # Project to image to get keypoint projection on image plane
+        I_C = I_C.reshape(B, 3, 4)
+        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+
+        # Get foreground weighting mask
+        gt_boxes2d = batch_dict['gt_boxes2d']
+        image = batch_dict['images']
+        mask_shape = (image.shape[0], image.shape[2]//4 + 1, image.shape[3]//4 + 1)
+        foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+                                             shape=mask_shape,
+                                             downsample_factor=4,
+                                             device=keypoints_img.device)
+        segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
+        segmentation_targets[foreground_mask.long() == True] = 1.0
+        
+        # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
+        self.convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
+        # sampler
+        keypoints_img_weights_sampler = torch.nn.functional.grid_sample(input=segmentation_targets.view(B, 1, segmentation_targets.shape[1], segmentation_targets.shape[2]),
+                                        grid=keypoints_img.view(B, num_keypoints_per_sample, 1, 2), mode='bilinear',
+                                        padding_mode='zeros', align_corners=None)
+        
+        
+        # import matplotlib.pyplot as plt
+        # plt.plot(keypoints_img_weights_sampler.view(-1,1).cpu()[0:1000], label='sampling',linewidth=3.0)
+        # plt.plot(keypoints_img_weights.view(-1,1).cpu()[0:1000], label='indexing')
+        # plt.legend(loc='best')
+        # plt.title('Sampling versus Indexing Ground Truth BB target ')
+        # plt.xlabel('Keypoints - 1000')
+        # plt.ylabel('Weight')
+        # plt.show()
+    
+        return keypoints_img_weights_sampler
+
+    
+    
+    
+    @staticmethod
+    # Takes keypoints locations in pixel coordinates and converts them to normalized coordinates [-1, 1] for grid sampling
+    # NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
+    def convert_to_normalized_range(image_range, keypoint_pixel):
+        B = keypoint_pixel.shape[0]
+        old_h_img_range, old_w_img_range = image_range
+        old_min = 0
+        # need output to be in range -1 to 1
+        new_max = 1.0
+        new_min = -1.0
+        new_h_norm_range = new_max - new_min
+        new_w_norm_range = new_max - new_min
+        for b in range(B):
+            u = keypoint_pixel[b, :, 0]
+            v = keypoint_pixel[b, :, 1]
+            keypoint_pixel[b, :, 0] = (((u - old_min) * new_w_norm_range) / old_w_img_range) + new_min
+            keypoint_pixel[b, :, 1] = (((v - old_min) * new_h_norm_range) / old_h_img_range) + new_min
 
 
 
