@@ -2,6 +2,7 @@ CLASS_NAMES: ['Car']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    GET_ITEM_LIST: ["images", "gt_boxes2d", "points", "calib_matricies"]
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['gt_sampling']
         AUG_CONFIG_LIST:
@@ -36,7 +37,8 @@ MODEL:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x
+        NAME: VoxelBackBone8xFuse
+        FUSE_LAYERS: ['x_conv1']
 
     MAP_TO_BEV:
         NAME: HeightCompression
