@@ -380,13 +380,14 @@ class VoxelBackBone8xFuse(nn.Module):
         # Get foreground weighting mask
         gt_boxes2d = batch_dict['gt_boxes2d']
         image = batch_dict['images']
-        mask_shape = (image.shape[0], image.shape[2]//4 + 1, image.shape[3]//4 + 1)
+        mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
         foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
                                              shape=mask_shape,
                                              downsample_factor=1,
                                              device=keypoints_img.device)
         segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
         segmentation_targets[foreground_mask.long() == True] = 1.0
+        
         
         # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
         self.convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
@@ -395,7 +396,6 @@ class VoxelBackBone8xFuse(nn.Module):
                                         grid=keypoints_img.view(B, num_keypoints_per_sample, 1, 2), mode='bilinear',
                                         padding_mode='zeros', align_corners=None)
         
-    
         return image_voxel_features
 
     
