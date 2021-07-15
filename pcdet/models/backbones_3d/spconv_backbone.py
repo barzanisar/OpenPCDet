@@ -368,7 +368,7 @@ class VoxelBackBone8xFuse(nn.Module):
         # # Undo augmentations
         if 'undo_global_transform' in batch_dict:
             undo_global_transform = batch_dict['undo_global_transform']
-            point_coords_kornia = point_coords_kornia @ undo_global_transform
+            point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
 
         # Transform to camera frame
         points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)

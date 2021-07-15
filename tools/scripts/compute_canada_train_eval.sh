@@ -7,12 +7,12 @@
 #SBATCH --mem=64000M                   # memory per node
 #SBATCH --output=./output/log/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
-#SBATCH --array=1-4%1   # 4 is the number of jobs in the chain
+#SBATCH --array=1-1%1   # 1 is the number of jobs in the chain
 
 # Default Command line args
 DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti
 INFOS_DIR=data/kitti
-SING_IMG=/home/$USER/projects/rrg-swasland/singularity/openpcdet.sif
+SING_IMG=/home/$USER/projects/def-swasland-ab/singularity/densitydet-v2.sif
 CFG_FILE=cfgs/kitti_models/CaDDN.yaml
 TRAIN_BATCH_SIZE=2
 TEST_BATCH_SIZE=2

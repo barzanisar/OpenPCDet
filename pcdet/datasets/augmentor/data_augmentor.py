@@ -182,15 +182,14 @@ class DataAugmentor(object):
             data_dict.pop('random_world_scaling')
 
         # add global transform matrix to undo augmentation for image projection
-        undo_global_transform = torch.linalg.inv(aug_trans_matrix)
-        data_dict['undo_global_transform'] = undo_global_transform
+        data_dict['undo_global_transform'] = aug_trans_matrix
 
         # Debug reverse transformation
         if DEBUG_REVERSE_TRANSFORM:
             new_points = data_dict['points']
             points = np.array(new_points[:, 0:3])
             points, _ = common_utils.check_numpy_to_torch(points)
-            before_transform = points @ undo_global_transform
+            before_transform = points @ data_dict['undo_global_transform'].inverse() 
             before_transform = before_transform.detach().cpu().numpy()
             max_diff = np.abs(old_points - before_transform).max()
             print('max diff is: {}'.format(max_diff))
