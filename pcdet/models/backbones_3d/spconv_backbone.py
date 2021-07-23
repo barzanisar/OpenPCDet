@@ -456,7 +456,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv1.features = conv_voxel_features  * image_voxel_features.view(-1, 1)
+            x_conv1.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
         ########
         
         x_conv2 = self.conv2(x_conv1)
@@ -474,7 +474,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv2.features = conv_voxel_features  * image_voxel_features.view(-1, 1)
+            x_conv2.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
         ########
 
         x_conv3 = self.conv3(x_conv2)
@@ -492,7 +492,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv3.features = conv_voxel_features  * image_voxel_features.view(-1, 1)
+            x_conv3.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
         ########
 
         x_conv4 = self.conv4(x_conv3)
@@ -510,7 +510,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv4.features = conv_voxel_features  * image_voxel_features.view(-1, 1)
+            x_conv4.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
         ########
 
         # for detection head
