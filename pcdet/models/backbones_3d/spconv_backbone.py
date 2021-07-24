@@ -338,6 +338,7 @@ class VoxelBackBone8xFuse(nn.Module):
             norm_fn(128),
             nn.ReLU(),
         )
+
         self.num_point_features = 128
         self.backbone_channels = {
             'x_conv1': 16,
@@ -345,6 +346,43 @@ class VoxelBackBone8xFuse(nn.Module):
             'x_conv3': 64,
             'x_conv4': 64
         }
+
+        assert 'FUSE_LAYERS' in self.model_cfg and 'FUSE_MODE' in self.model_cfg
+        # Fusion mode/layers - create mlp that learns channel-wise weight for each conv feature maps
+        if 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
+            if self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
+                self.x_conv1_mlp = nn.Sequential(nn.Linear(in_features=1, out_features=self.backbone_channels['x_conv1']), nn.Sigmoid())
+        if 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
+            if self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
+                self.x_conv2_mlp = nn.Sequential(nn.Linear(in_features=1, out_features=self.backbone_channels['x_conv2']), nn.Sigmoid())
+        if 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
+            if self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
+                self.x_conv3_mlp = nn.Sequential(nn.Linear(in_features=1, out_features=self.backbone_channels['x_conv3']), nn.Sigmoid())
+        if 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
+            if self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
+                self.x_conv4_mlp = nn.Sequential(nn.Linear(in_features=1, out_features=self.backbone_channels['x_conv4']), nn.Sigmoid())
+    
+    
+    def fuse(self, voxel_feature, image_foreground_weights, vox_conv_layer=None):
+        if self.model_cfg['FUSE_MODE'] == 'channel-fixed-weight':
+            return (voxel_feature * image_foreground_weights.view(-1, 1)) + voxel_feature
+        elif self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
+            assert vox_conv_layer is not None
+            if vox_conv_layer == 'x_conv1':
+                learned_channel_layer = self.x_conv1_mlp
+            elif vox_conv_layer == 'x_conv2':
+                learned_channel_layer = self.x_conv2_mlp
+            elif vox_conv_layer == 'x_conv3':
+                learned_channel_layer = self.x_conv3_mlp
+            elif vox_conv_layer == 'x_conv4':
+                learned_channel_layer = self.x_conv4_mlp
+            else:
+                raise NotImplementedError
+            learned_channel_weights = learned_channel_layer(image_foreground_weights.view(-1, 1))
+            return  (voxel_feature * learned_channel_weights) + voxel_feature
+        else:
+            raise NotImplementedError
+
     
     # Ground truth training with grid sampler - no loss of precision
     def get_voxel_image_weights(self, batch_dict, conv_x_coords):
@@ -446,7 +484,7 @@ class VoxelBackBone8xFuse(nn.Module):
         if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
             VOXEL_GRID_DOWNSAMPLE = 1
             # weight voxel features based on foreground mask
-            conv_voxel_features = x_conv1.features # voxels * 16
+            # x_conv1.features # voxels * 16
             conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
             voxel_centers_xyz = common_utils.get_voxel_centers(
                     conv_voxel_coord[:, 1:4],
@@ -456,7 +494,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv1.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
+            x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
         ########
         
         x_conv2 = self.conv2(x_conv1)
@@ -464,7 +502,7 @@ class VoxelBackBone8xFuse(nn.Module):
         if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
             VOXEL_GRID_DOWNSAMPLE = 2
             # weight voxel features based on foreground mask
-            conv_voxel_features = x_conv2.features # voxels * 16
+            # x_conv2.features # voxels * 32
             conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
             voxel_centers_xyz = common_utils.get_voxel_centers(
                     conv_voxel_coord[:, 1:4],
@@ -474,7 +512,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv2.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
+            x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
         ########
 
         x_conv3 = self.conv3(x_conv2)
@@ -482,7 +520,7 @@ class VoxelBackBone8xFuse(nn.Module):
         if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
             VOXEL_GRID_DOWNSAMPLE = 4
             # weight voxel features based on foreground mask
-            conv_voxel_features = x_conv3.features # voxels * 16
+            # x_conv3.features # voxels * 64
             conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
             voxel_centers_xyz = common_utils.get_voxel_centers(
                     conv_voxel_coord[:, 1:4],
@@ -492,7 +530,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv3.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
+            x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
         ########
 
         x_conv4 = self.conv4(x_conv3)
@@ -500,7 +538,7 @@ class VoxelBackBone8xFuse(nn.Module):
         if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
             VOXEL_GRID_DOWNSAMPLE = 8
             # weight voxel features based on foreground mask
-            conv_voxel_features = x_conv4.features # voxels * 16
+            # x_conv4.features # voxels * 64
             conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
             voxel_centers_xyz = common_utils.get_voxel_centers(
                     conv_voxel_coord[:, 1:4],
@@ -510,7 +548,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 )
             voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
             image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv4.features = (conv_voxel_features * image_voxel_features.view(-1, 1)) + conv_voxel_features
+            x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
         ########
 
         # for detection head
