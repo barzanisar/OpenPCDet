@@ -2,11 +2,12 @@ import copy
 import pickle
 
 import numpy as np
+from numpy.lib.type_check import imag
 from skimage import io, transform
 
 from . import kitti_utils
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
-from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti
+from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti, image_2d_detections
 from ..dataset import DatasetTemplate
 
 
@@ -89,6 +90,12 @@ class KittiDataset(DatasetTemplate):
         label_file = self.root_split_path / 'label_2' / ('%s.txt' % idx)
         assert label_file.exists()
         return object3d_kitti.get_objects_from_label(label_file)
+
+    def get_2d_detections(self, idx, image_shape, min_det_threshold=0.0) -> np:
+        detection_file = self.root_split_path / '2d_detections' / ('%s.txt' % idx)
+        assert detection_file.exists()
+        return image_2d_detections.get_detections_from_label(detection_file, image_shape, min_det_threshold)
+
 
     def get_depth_map(self, idx):
         """
@@ -417,6 +424,9 @@ class KittiDataset(DatasetTemplate):
 
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
+
+        if "2d_detections" in get_item_list:
+             input_dict['2d_detections'] = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
 
         if "depth_maps" in get_item_list:
             input_dict['depth_maps'] = self.get_depth_map(sample_idx)

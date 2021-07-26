@@ -416,15 +416,19 @@ class VoxelBackBone8xFuse(nn.Module):
         keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
 
         # Get foreground weighting mask
-        gt_boxes2d = batch_dict['gt_boxes2d']
-        image = batch_dict['images']
-        mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
-        foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
-                                             shape=mask_shape,
-                                             downsample_factor=1,
-                                             device=keypoints_img.device)
-        segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
-        segmentation_targets[foreground_mask.long() == True] = 1.0
+        assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) # only one source image can be sampled
+        if 'gt_boxes2d' in batch_dict:
+            gt_boxes2d = batch_dict['gt_boxes2d']
+            image = batch_dict['images']
+            mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
+            foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+                                                shape=mask_shape,
+                                                downsample_factor=1,
+                                                device=keypoints_img.device)
+            segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
+            segmentation_targets[foreground_mask.long() == True] = 1.0
+        elif '2d_detections' in batch_dict:  
+            segmentation_targets = batch_dict['2d_detections']
         
         
         # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
