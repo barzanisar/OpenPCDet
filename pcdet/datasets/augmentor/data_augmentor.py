@@ -137,7 +137,8 @@ class DataAugmentor(object):
         transformations = []
         for cur_augmentor in self.data_augmentor_queue:
             data_dict = cur_augmentor(data_dict=data_dict)
-            transformations.append(cur_augmentor.keywords['config'].NAME)
+            if hasattr(cur_augmentor, 'keywords'):# skip ground truth sampler
+                transformations.append(cur_augmentor.keywords['config'].NAME)
         data_dict['gt_boxes'][:, 6] = common_utils.limit_period(
             data_dict['gt_boxes'][:, 6], offset=0.5, period=2 * np.pi
         )
