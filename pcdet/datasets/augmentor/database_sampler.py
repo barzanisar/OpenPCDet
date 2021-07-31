@@ -209,9 +209,8 @@ class DataBaseSampler(object):
 
     def populate_2d_detection_with_gt_sampled_boxes(self, data_dict, valid_sampled_cam_bboxes_2d):
         detection_heat_map = data_dict['2d_detections'] 
-        import matplotlib.pyplot as plt
-        MIN_PROB = 1.0
-        MAX_PROB = 1.0
+        MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
+        MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
         assert MAX_PROB >= MIN_PROB
         for bbox in valid_sampled_cam_bboxes_2d:
             gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
