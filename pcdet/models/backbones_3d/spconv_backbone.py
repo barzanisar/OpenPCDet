@@ -483,77 +483,151 @@ class VoxelBackBone8xFuse(nn.Module):
 
         x = self.conv_input(input_sp_tensor)
 
-        x_conv1 = self.conv1(x)
-        ### APPLY foreground weights on features of conv1
-        if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
-            VOXEL_GRID_DOWNSAMPLE = 1
-            # weight voxel features based on foreground mask
-            # x_conv1.features # voxels * 16
-            conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
-            voxel_centers_xyz = common_utils.get_voxel_centers(
-                    conv_voxel_coord[:, 1:4],
-                    downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                    voxel_size=self.voxel_size,
-                    point_cloud_range=self.point_cloud_range
-                )
-            voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-            image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
-        ########
-        
-        x_conv2 = self.conv2(x_conv1)
-         ### APPLY foreground weights on features of conv1
-        if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
-            VOXEL_GRID_DOWNSAMPLE = 2
-            # weight voxel features based on foreground mask
-            # x_conv2.features # voxels * 32
-            conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
-            voxel_centers_xyz = common_utils.get_voxel_centers(
-                    conv_voxel_coord[:, 1:4],
-                    downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                    voxel_size=self.voxel_size,
-                    point_cloud_range=self.point_cloud_range
-                )
-            voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-            image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
-        ########
+        FUSE_SPARSE = self.model_cfg.get('FUSE_SPARSE', True)
+        if FUSE_SPARSE:
+            x_conv1 = self.conv1(x)
+            ### APPLY foreground weights on features of conv1
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 1
+                # weight voxel features based on foreground mask
+                # x_conv1.features # voxels * 16
+                conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
+            ########
+            
+            x_conv2 = self.conv2(x_conv1)
+            ### APPLY foreground weights on features of conv2
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 2
+                # weight voxel features based on foreground mask
+                # x_conv2.features # voxels * 32
+                conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
+            ########
 
-        x_conv3 = self.conv3(x_conv2)
-        ### APPLY foreground weights on features of conv2
-        if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
-            VOXEL_GRID_DOWNSAMPLE = 4
-            # weight voxel features based on foreground mask
-            # x_conv3.features # voxels * 64
-            conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
-            voxel_centers_xyz = common_utils.get_voxel_centers(
-                    conv_voxel_coord[:, 1:4],
-                    downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                    voxel_size=self.voxel_size,
-                    point_cloud_range=self.point_cloud_range
-                )
-            voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-            image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
-        ########
+            x_conv3 = self.conv3(x_conv2)
+            ### APPLY foreground weights on features of conv3
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 4
+                # weight voxel features based on foreground mask
+                # x_conv3.features # voxels * 64
+                conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
+            ########
 
-        x_conv4 = self.conv4(x_conv3)
-        ### APPLY foreground weights on features of conv2
-        if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
-            VOXEL_GRID_DOWNSAMPLE = 8
-            # weight voxel features based on foreground mask
-            # x_conv4.features # voxels * 64
-            conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
-            voxel_centers_xyz = common_utils.get_voxel_centers(
-                    conv_voxel_coord[:, 1:4],
-                    downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                    voxel_size=self.voxel_size,
-                    point_cloud_range=self.point_cloud_range
-                )
-            voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-            image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-            x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
-        ########
+            x_conv4 = self.conv4(x_conv3)
+            ### APPLY foreground weights on features of conv4
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 8
+                # weight voxel features based on foreground mask
+                # x_conv4.features # voxels * 64
+                conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
+            ########
+        else:
+            x_conv1 = self.conv1(x)
+            x_conv2 = self.conv2(x_conv1)
+            x_conv3 = self.conv3(x_conv2)
+            x_conv4 = self.conv4(x_conv3)
+            # Fuse for ROI - POST RPN Network
+            ### APPLY foreground weights on features of conv1
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 1
+                # weight voxel features based on foreground mask
+                # x_conv1.features # voxels * 16
+                conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
+            ########
+             ### APPLY foreground weights on features of conv2
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 2
+                # weight voxel features based on foreground mask
+                # x_conv2.features # voxels * 32
+                conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
+            ########
+            ### APPLY foreground weights on features of conv3
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 4
+                # weight voxel features based on foreground mask
+                # x_conv3.features # voxels * 64
+                conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
+            ########
+            ### APPLY foreground weights on features of conv4
+            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
+                VOXEL_GRID_DOWNSAMPLE = 8
+                # weight voxel features based on foreground mask
+                # x_conv4.features # voxels * 64
+                conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
+                voxel_centers_xyz = common_utils.get_voxel_centers(
+                        conv_voxel_coord[:, 1:4],
+                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                        voxel_size=self.voxel_size,
+                        point_cloud_range=self.point_cloud_range
+                    )
+                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
+            ########
+            
+
 
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
