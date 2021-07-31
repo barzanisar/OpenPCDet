@@ -427,6 +427,9 @@ class KittiDataset(DatasetTemplate):
 
         if "2d_detections" in get_item_list:
              input_dict['2d_detections'] = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
+            #  DETECTION_THRESHOLD = 0.05
+            #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] >= DETECTION_THRESHOLD)] = 1.0
+            #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] < DETECTION_THRESHOLD)] = 0.0
 
         if "depth_maps" in get_item_list:
             input_dict['depth_maps'] = self.get_depth_map(sample_idx)

@@ -1,6 +1,7 @@
 import pickle
 
 import numpy as np
+from torch.utils import data
 
 from ...ops.iou3d_nms import iou3d_nms_utils
 from ...utils import box_utils
@@ -177,6 +178,8 @@ class DataBaseSampler(object):
                 sampled_dict = self.sample_with_fixed_number(class_name, sample_group)
 
                 sampled_boxes = np.stack([x['box3d_lidar'] for x in sampled_dict], axis=0).astype(np.float32)
+                if '2d_detections' in data_dict:
+                    sampled_cam_bboxes = np.stack([x['bbox'] for x in sampled_dict], axis=0).astype(np.float32)
 
                 if self.sampler_cfg.get('DATABASE_WITH_FAKELIDAR', False):
                     sampled_boxes = box_utils.boxes3d_kitti_fakelidar_to_lidar(sampled_boxes)
@@ -188,6 +191,11 @@ class DataBaseSampler(object):
                 valid_mask = ((iou1.max(axis=1) + iou2.max(axis=1)) == 0).nonzero()[0]
                 valid_sampled_dict = [sampled_dict[x] for x in valid_mask]
                 valid_sampled_boxes = sampled_boxes[valid_mask]
+                if '2d_detections' in data_dict:
+                    valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
+                    self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
+                    valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
+
 
                 existed_boxes = np.concatenate((existed_boxes, valid_sampled_boxes), axis=0)
                 total_valid_sampled_dict.extend(valid_sampled_dict)
@@ -198,3 +206,15 @@ class DataBaseSampler(object):
 
         data_dict.pop('gt_boxes_mask')
         return data_dict
+
+    def populate_2d_detection_with_gt_sampled_boxes(self, data_dict, valid_sampled_cam_bboxes_2d):
+        detection_heat_map = data_dict['2d_detections'] 
+        import matplotlib.pyplot as plt
+        MIN_PROB = 1.0
+        MAX_PROB = 1.0
+        assert MAX_PROB >= MIN_PROB
+        for bbox in valid_sampled_cam_bboxes_2d:
+            gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
+            detection_heat_map[int(bbox[1]):int(bbox[3]),
+                               int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
+
