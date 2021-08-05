@@ -211,9 +211,14 @@ class DataBaseSampler(object):
         detection_heat_map = data_dict['2d_detections'] 
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
+        IMAGE_GT_BOX_PROB = self.sampler_cfg.get('IMAGE_GT_BOX_PROB', 0.5)
         assert MAX_PROB >= MIN_PROB
         for bbox in valid_sampled_cam_bboxes_2d:
             gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
-            detection_heat_map[int(bbox[1]):int(bbox[3]),
-                               int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
+            gt_sample_project_on_image = np.random.uniform(0.0, 1.0)
+            # Condition for projecting bounding box from point cloud ground truth sampling
+            # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
+            if gt_sample_project_on_image <= IMAGE_GT_BOX_PROB:
+                detection_heat_map[int(bbox[1]):int(bbox[3]),
+                                int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
 
