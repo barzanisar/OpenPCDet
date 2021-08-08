@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch
 from ...utils import common_utils, transform_utils, loss_utils
 import kornia
+import torch.nn.functional as F
 
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
@@ -408,6 +409,7 @@ class VoxelBackBone8xFuse(nn.Module):
             undo_global_transform = batch_dict['undo_global_transform']
             point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
 
+
         # Transform to camera frame
         points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
 
@@ -415,21 +417,29 @@ class VoxelBackBone8xFuse(nn.Module):
         I_C = I_C.reshape(B, 3, 4)
         keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
 
-        # Get foreground weighting mask
-        assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) # only one source image can be sampled
-        if 'gt_boxes2d' in batch_dict:
-            gt_boxes2d = batch_dict['gt_boxes2d']
-            image = batch_dict['images']
-            mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
-            foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
-                                                shape=mask_shape,
-                                                downsample_factor=1,
-                                                device=keypoints_img.device)
-            segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
-            segmentation_targets[foreground_mask.long() == True] = 1.0
-        elif '2d_detections' in batch_dict:  
-            segmentation_targets = batch_dict['2d_detections']
-        
+        if 'segment_logits' not in batch_dict: # a segmentation network is not used 
+            # Get foreground weighting mask
+            assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) # only one source image can be sampled
+            if 'gt_boxes2d' in batch_dict:
+                gt_boxes2d = batch_dict['gt_boxes2d']
+                image = batch_dict['images']
+                mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
+                foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+                                                    shape=mask_shape,
+                                                    downsample_factor=1,
+                                                    device=keypoints_img.device)
+                segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
+                segmentation_targets[foreground_mask.long() == True] = 1.0
+            elif '2d_detections' in batch_dict:  
+                segmentation_targets = batch_dict['2d_detections']
+        else:
+            # use output of segmentation network for voxel feature weighting
+            segment_logits = batch_dict['segment_logits']
+            foreground_channel = 1
+            segmentation_targets = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
+
+        if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
+            segmentation_targets = torch.flip(segmentation_targets, [2])
         
         # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
         self.convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
