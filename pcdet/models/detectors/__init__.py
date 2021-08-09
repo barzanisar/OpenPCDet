@@ -8,6 +8,8 @@ from .pv_rcnn_image_segmentation import PVRCNNImageSegmentation
 from .second_net_iou import SECONDNetIoU
 from .caddn import CaDDN
 from .voxel_rcnn import VoxelRCNN
+from .voxel_rcnn_segmentation import VoxelRCNNImageSegmentation
+from .second_net_segmentation import SECONDNetImageSegmentation
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -19,7 +21,9 @@ __all__ = {
     'PVRCNNImageSegmentation': PVRCNNImageSegmentation,
     'SECONDNetIoU': SECONDNetIoU,
     'CaDDN': CaDDN,
-    'VoxelRCNN': VoxelRCNN
+    'VoxelRCNN': VoxelRCNN,
+    'SECONDNetImageSegmentation': SECONDNetImageSegmentation,
+    'VoxelRCNNImageSegmentation': VoxelRCNNImageSegmentation
 }
 
 
