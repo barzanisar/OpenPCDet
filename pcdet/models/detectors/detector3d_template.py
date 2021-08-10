@@ -1,6 +1,7 @@
 import os
 
 import torch
+from torch._C import device
 import torch.nn as nn
 
 from ...ops.iou3d_nms import iou3d_nms_utils
@@ -8,6 +9,8 @@ from .. import backbones_2d, backbones_3d, dense_heads, roi_heads
 from ..backbones_2d import map_to_bev
 from ..backbones_3d import pfe, vfe, ife
 from ..model_utils import model_nms_utils
+from pcdet.utils import loss_utils
+import torch.nn.functional as F
 
 
 class Detector3DTemplate(nn.Module):
@@ -298,12 +301,16 @@ class Detector3DTemplate(nn.Module):
 
         rois = data_dict['rois'][batch_index] if 'rois' in data_dict else None
         gt_boxes = data_dict['gt_boxes'][batch_index]
+        segment_logits = data_dict['segment_logits'][batch_index] if 'segment_logits' in data_dict else None
+        gt_boxes2d = data_dict['gt_boxes2d'][batch_index] if 'gt_boxes2d' in data_dict else None
 
         if recall_dict.__len__() == 0:
             recall_dict = {'gt': 0}
             for cur_thresh in thresh_list:
                 recall_dict['roi_%s' % (str(cur_thresh))] = 0
                 recall_dict['rcnn_%s' % (str(cur_thresh))] = 0
+                if segment_logits is not None:
+                    recall_dict['foreground_iou_%s' % (str(cur_thresh))] = 0
 
         cur_gt = gt_boxes
         k = cur_gt.__len__() - 1
@@ -333,6 +340,31 @@ class Detector3DTemplate(nn.Module):
             recall_dict['gt'] += cur_gt.shape[0]
         else:
             gt_iou = box_preds.new_zeros(box_preds.shape[0])
+
+        if segment_logits is not None:
+            import matplotlib.pyplot as plt
+            # Compute Ground truth mask
+            assert gt_boxes2d is not None
+            curr_gt_boxes = gt_boxes2d.clone().unsqueeze(0)
+            groundtruth_heatmap = loss_utils.compute_fg_mask(gt_boxes2d=curr_gt_boxes,
+                                        shape=(1, segment_logits.shape[1], segment_logits.shape[2]),
+                                        downsample_factor=4,
+                                        device=segment_logits.device)
+            groundtruth_heatmap = groundtruth_heatmap.squeeze(0).long()
+            for cur_thresh in thresh_list:
+                # apply softmax to foreground logits
+                foreground_channel = 1
+                fg_heatmap = F.softmax(segment_logits, dim=0)[foreground_channel, :, :]
+                # Compute mask for current threshold
+                one_tensor = torch.ones(1, device=fg_heatmap.device)
+                zero_tensor = torch.zeros(1, device=fg_heatmap.device)
+                fg_heatmap = torch.where(fg_heatmap >= cur_thresh,  one_tensor, zero_tensor)
+                # Compute IOU for current threshold
+                fg_heatmap = fg_heatmap.long()
+                intersection = torch.sum(fg_heatmap * groundtruth_heatmap)
+                union = torch.sum(fg_heatmap) + torch.sum(groundtruth_heatmap)
+                iou = ((intersection + 0.0001) / ((union - intersection) + 0.0001)).item()
+                recall_dict['foreground_iou_%s' % (str(cur_thresh))] += iou
         return recall_dict
 
     def load_params_from_file(self, filename, logger, to_cpu=False):
