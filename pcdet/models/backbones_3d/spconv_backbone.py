@@ -418,8 +418,10 @@ class VoxelBackBone8xFuse(nn.Module):
         keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
 
         if 'segment_logits' not in batch_dict: # a segmentation network is not used 
-            # Get foreground weighting mask
-            assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) # only one source image can be sampled
+            # Get foreground weighting mask - # only one source image can be sampled
+            assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) 
+            assert not('gt_boxes2d' in batch_dict and 'segmentation_mask' in batch_dict) 
+            assert not('2d_detections' in batch_dict and 'segmentation_mask' in batch_dict)
             if 'gt_boxes2d' in batch_dict:
                 gt_boxes2d = batch_dict['gt_boxes2d']
                 image = batch_dict['images']
@@ -432,6 +434,10 @@ class VoxelBackBone8xFuse(nn.Module):
                 segmentation_targets[foreground_mask.long() == True] = 1.0
             elif '2d_detections' in batch_dict:  
                 segmentation_targets = batch_dict['2d_detections']
+            elif 'segmentation_mask' in batch_dict:
+                segmentation_targets = batch_dict['segmentation_mask']
+            else:
+                raise NotImplementedError
         else:
             # use output of segmentation network for voxel feature weighting
             segment_logits = batch_dict['segment_logits']

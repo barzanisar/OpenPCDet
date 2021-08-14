@@ -96,6 +96,11 @@ class KittiDataset(DatasetTemplate):
         assert detection_file.exists()
         return image_2d_detections.get_detections_from_label(detection_file, image_shape, min_det_threshold)
 
+    def get_segmentation_mask(self, sample_idx):
+        seg_mask_file = self.root_split_path / 'segmentation_npy' / ('%s.npy' % sample_idx)
+        assert seg_mask_file.exists()
+        seg_mask =  np.load(seg_mask_file)
+        return seg_mask
 
     def get_depth_map(self, idx):
         """
@@ -430,6 +435,10 @@ class KittiDataset(DatasetTemplate):
             #  DETECTION_THRESHOLD = 0.05
             #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] >= DETECTION_THRESHOLD)] = 1.0
             #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] < DETECTION_THRESHOLD)] = 0.0
+        
+        if "segmentation_mask" in get_item_list:
+            assert "2d_detections" not in get_item_list
+            input_dict['segmentation_mask'] = self.get_segmentation_mask(sample_idx)
 
         if "depth_maps" in get_item_list:
             input_dict['depth_maps'] = self.get_depth_map(sample_idx)
