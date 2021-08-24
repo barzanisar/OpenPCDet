@@ -3,7 +3,7 @@
 #SBATCH --job-name=OpenPCDet-train
 #SBATCH --account=rrg-swasland
 #SBATCH --cpus-per-task=8              # CPU cores/threads
-#SBATCH --gres=gpu:t4:2                # Number of GPUs (per node)
+#SBATCH --gres=gpu:p100:2                # Number of GPUs (per node)
 #SBATCH --mem=64000M                   # memory per node
 #SBATCH --output=./output/log/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
