@@ -124,9 +124,11 @@ class DatasetTemplate(torch_data.Dataset):
                 voxel_num_points: optional (num_voxels)
                 ...
         """
+        assert 'gt_boxes' in data_dict, 'gt_boxes should be provided for training'
+        gt_boxes_mask = np.array([n in self.class_names for n in data_dict['gt_names']], dtype=np.bool_)
         if self.training:
-            assert 'gt_boxes' in data_dict, 'gt_boxes should be provided for training'
-            gt_boxes_mask = np.array([n in self.class_names for n in data_dict['gt_names']], dtype=np.bool_)
+            # assert 'gt_boxes' in data_dict, 'gt_boxes should be provided for training'
+            # gt_boxes_mask = np.array([n in self.class_names for n in data_dict['gt_names']], dtype=np.bool_)
 
             data_dict = self.data_augmentor.forward(
                 data_dict={
@@ -144,7 +146,7 @@ class DatasetTemplate(torch_data.Dataset):
             data_dict['gt_boxes'] = gt_boxes
 
             if data_dict.get('gt_boxes2d', None) is not None:
-                data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][selected]
+                data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][gt_boxes_mask]
 
         if data_dict.get('points', None) is not None:
             data_dict = self.point_feature_encoder.forward(data_dict)
