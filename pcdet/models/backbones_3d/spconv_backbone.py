@@ -370,22 +370,22 @@ class VoxelBackBone8xFuse(nn.Module):
             if 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
                 downsample_times = 1
                 voxel_size = [vox_dim * downsample_times for vox_dim in self.voxel_size]
-                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])
+                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])/2
                 self.query_and_group_conv1 = QueryAndGroup(radius=approximate_radius, nsample=16)
             if 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
                 downsample_times = 2
                 voxel_size = [vox_dim * downsample_times for vox_dim in self.voxel_size]
-                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])
+                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])/2
                 self.query_and_group_conv2 = QueryAndGroup(radius=approximate_radius, nsample=16)
             if 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
                 downsample_times = 4
                 voxel_size = [vox_dim * downsample_times for vox_dim in self.voxel_size]
-                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])
+                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])/2
                 self.query_and_group_conv3 = QueryAndGroup(radius=approximate_radius, nsample=32)
             if 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
                 downsample_times = 8
                 voxel_size = [vox_dim * downsample_times for vox_dim in self.voxel_size]
-                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])
+                approximate_radius = np.sqrt(voxel_size[0] * voxel_size[0] + voxel_size[1] * voxel_size[1] + voxel_size[2] * voxel_size[2])/2
                 self.query_and_group_conv4 = QueryAndGroup(radius=approximate_radius, nsample=32)
 
     
@@ -502,7 +502,7 @@ class VoxelBackBone8xFuse(nn.Module):
 
 
 
-    def point_aggregation_weighting(self, batch_dict, voxel_centers_xyz, raw_points_weights):
+    def point_aggregation_weighting(self, batch_dict, conv_layer_name, voxel_centers_xyz, raw_points_weights):
         batch_size = batch_dict['batch_size']
 
         # Get raw points and batch count (we use a batch size of one per GPU)
@@ -518,7 +518,17 @@ class VoxelBackBone8xFuse(nn.Module):
         for bs_idx in range(batch_size):
             new_xyz_batch_cnt[bs_idx] = (voxel_centers_xyz[:, 0] == bs_idx).sum()
 
-        new_features, idx = self.query_and_group_conv1(xyz=raw_xyz.contiguous(), xyz_batch_cnt=raw_xyz_batch_cnt, new_xyz=new_xyz.contiguous(), new_xyz_batch_cnt=new_xyz_batch_cnt,features = raw_points_weights)
+        if conv_layer_name == 'x_conv1': 
+            new_features, idx = self.query_and_group_conv1(xyz=raw_xyz.contiguous(), xyz_batch_cnt=raw_xyz_batch_cnt, new_xyz=new_xyz.contiguous(), new_xyz_batch_cnt=new_xyz_batch_cnt,features = raw_points_weights)
+        elif conv_layer_name == 'x_conv2':
+            new_features, idx = self.query_and_group_conv2(xyz=raw_xyz.contiguous(), xyz_batch_cnt=raw_xyz_batch_cnt, new_xyz=new_xyz.contiguous(), new_xyz_batch_cnt=new_xyz_batch_cnt,features = raw_points_weights)
+        elif  conv_layer_name == 'x_conv3':
+            new_features, idx = self.query_and_group_conv3(xyz=raw_xyz.contiguous(), xyz_batch_cnt=raw_xyz_batch_cnt, new_xyz=new_xyz.contiguous(), new_xyz_batch_cnt=new_xyz_batch_cnt,features = raw_points_weights) 
+        elif  conv_layer_name == 'x_conv4':
+            new_features, idx = self.query_and_group_conv4(xyz=raw_xyz.contiguous(), xyz_batch_cnt=raw_xyz_batch_cnt, new_xyz=new_xyz.contiguous(), new_xyz_batch_cnt=new_xyz_batch_cnt,features = raw_points_weights) 
+        else:
+            raise NotImplementedError
+        
         feature_dims = new_features.shape[1]
         # remove repeated first quered points
         first_queried_points_idx = idx[...,0]
@@ -581,7 +591,8 @@ class VoxelBackBone8xFuse(nn.Module):
     
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, voxel_centers_xyz, raw_points_weights=point_weights)
+                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv1', voxel_centers_xyz, raw_points_weights=point_weights)
+                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
@@ -606,7 +617,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, voxel_centers_xyz, raw_points_weights=point_weights)
+                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv2', voxel_centers_xyz, raw_points_weights=point_weights)
+                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
@@ -632,7 +644,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, voxel_centers_xyz, raw_points_weights=point_weights)
+                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv3', voxel_centers_xyz, raw_points_weights=point_weights)
+                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                     
@@ -657,7 +670,8 @@ class VoxelBackBone8xFuse(nn.Module):
 
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, voxel_centers_xyz, raw_points_weights=point_weights)
+                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv4', voxel_centers_xyz, raw_points_weights=point_weights)
+                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
