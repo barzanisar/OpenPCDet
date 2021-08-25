@@ -1,5 +1,6 @@
 from functools import partial
 from os import stat
+from numpy.lib.utils import source
 
 import spconv
 import torch.nn as nn
@@ -545,6 +546,76 @@ class VoxelBackBone8xFuse(nn.Module):
         image_voxel_features = sum_point_weights_per_voxel.view(-1, 1) / num_valid_points_per_voxel.view(-1, 1)
         return image_voxel_features
     
+    
+    def point_to_img(self, batch_dict, points):
+        B = batch_dict['trans_lidar_to_cam'].shape[0]
+        image_h, image_w = batch_dict['images'].shape[-2:]
+
+        # Create transformation matricies
+        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
+        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
+
+        # Reshape points coordinates from (N, 4) to (B, N, 3)
+        point_coords = points  # N
+        ## This assumes number of keypoints per batch is fixed
+        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
+        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            points_in_batch_b = (point_coords[..., 0].int() == b)
+            point_coords_kornia[b, ...] = point_coords[points_in_batch_b, 1:]
+
+        # # Undo augmentations
+        if 'undo_global_transform' in batch_dict:
+            undo_global_transform = batch_dict['undo_global_transform']
+            point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
+
+
+        # Transform to camera frame
+        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+        # Project to image to get keypoint projection on image plane
+        I_C = I_C.reshape(B, 3, 4)
+        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+        return keypoints_img
+        
+    
+    def visualise(self, batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features):
+        source_img = batch_dict['images'][0].permute(1, 2, 0).cpu().numpy()
+        source_img[..., 0] = 0
+        source_img[..., 1] = 0
+        img_pixels = self.point_to_img(batch_dict ,voxel_centers_xyz).squeeze().long().cpu().numpy()
+        img_pixels[img_pixels[:, 0] >= source_img.shape[1]] = 0
+        img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0
+
+        img_pixels_p = np.copy(img_pixels)
+        img_pixels_v = np.copy(img_pixels)
+        
+
+        THRESHOLD = 0.5 
+        img_pixels_p[image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
+        img_pixels_v[v_image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
+        
+        source_img[img_pixels_p[:,1], img_pixels_p[:, 0], 0] = 1
+        source_img[img_pixels_v[:,1], img_pixels_v[:, 0], 1] = 1
+
+        # source_img[img_pixels[:, 1], img_pixels[:, 0], 0] = 1
+
+        return source_img
+
+    def visualise_raw_points(self, batch_dict):
+        raw_points = batch_dict['points'][:, 0:-1]
+        source_img = batch_dict['images'][0].permute(1, 2, 0).cpu().numpy()
+        source_img[..., 0] = 0
+        img_pixels = self.point_to_img(batch_dict , raw_points).squeeze().long().cpu().numpy()
+        img_pixels[img_pixels[:, 0] >= source_img.shape[1]] = 0
+        img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0
+
+        source_img[img_pixels[:, 1], img_pixels[:, 0], 0] = 1
+
+        return source_img
+    
+    
     def forward(self, batch_dict):
         """
         Args:
@@ -571,6 +642,7 @@ class VoxelBackBone8xFuse(nn.Module):
         if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
             # Find foreground weights of points from image
             point_weights = torch.reshape(self.get_voxel_image_weights(batch_dict, conv_x_coords=batch_dict['points'][:, 0:-1]), (-1, 1))
+            #raw_point_on_image = self.visualise_raw_points(batch_dict)
             
         FUSE_SPARSE = self.model_cfg.get('FUSE_SPARSE', True)
         if FUSE_SPARSE:
@@ -592,12 +664,15 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv1', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    #v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
                 x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
             
+            
+            #source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+            #both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
             
             x_conv2 = self.conv2(x_conv1)
@@ -618,13 +693,15 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv2', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    #v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
                 x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
                 
 
+            #source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+            #both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
             x_conv3 = self.conv3(x_conv2)
@@ -645,12 +722,14 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv3', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    #v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                     
                 x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
                 
+            #source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+            #both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
             x_conv4 = self.conv4(x_conv3)
@@ -671,12 +750,14 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if self.model_cfg.get('WEIGHT_SRC', None) == 'POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv4', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    #v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
                 x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
 
+            #source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+            #both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
         else:
             x_conv1 = self.conv1(x)
