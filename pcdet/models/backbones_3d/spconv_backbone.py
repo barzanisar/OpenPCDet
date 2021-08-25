@@ -663,6 +663,7 @@ class VoxelBackBone8xFuse(nn.Module):
         x = self.conv_input(input_sp_tensor)
 
         
+        DEBUG_FLAG = False
         
         WEIGHT_SRC = self.model_cfg.get('WEIGHT_SRC', None)
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
@@ -697,8 +698,9 @@ class VoxelBackBone8xFuse(nn.Module):
                 x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
             
             
-            source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
-            both = np.concatenate([raw_point_on_image, source_img], axis=0)
+            if DEBUG_FLAG:
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
             
             x_conv2 = self.conv2(x_conv1)
@@ -726,8 +728,9 @@ class VoxelBackBone8xFuse(nn.Module):
                 x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
                 
 
-            source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
-            both = np.concatenate([raw_point_on_image, source_img], axis=0)
+            if DEBUG_FLAG:
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
             x_conv3 = self.conv3(x_conv2)
@@ -754,8 +757,9 @@ class VoxelBackBone8xFuse(nn.Module):
                     
                 x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
                 
-            source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
-            both = np.concatenate([raw_point_on_image, source_img], axis=0)
+            if DEBUG_FLAG:
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
             x_conv4 = self.conv4(x_conv3)
@@ -782,8 +786,9 @@ class VoxelBackBone8xFuse(nn.Module):
                 
                 x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
 
-            source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
-            both = np.concatenate([raw_point_on_image, source_img], axis=0)
+            if DEBUG_FLAG:
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
         else:
             x_conv1 = self.conv1(x)
