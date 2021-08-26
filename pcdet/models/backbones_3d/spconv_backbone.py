@@ -3,6 +3,7 @@ from os import stat
 from numpy.lib.utils import source
 
 import spconv
+from torch._C import device
 import torch.nn as nn
 import torch
 import numpy as np
@@ -10,6 +11,7 @@ from ...utils import common_utils, transform_utils, loss_utils
 import kornia
 import torch.nn.functional as F
 from pcdet.ops.pointnet2.pointnet2_stack.pointnet2_utils import QueryAndGroup
+from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
 
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
@@ -504,7 +506,51 @@ class VoxelBackBone8xFuse(nn.Module):
 
 
 
+    # use points_in_boxes_gpu function to map points to voxels and then compute reverse - VERY SLOW but more accurate than ball query
+    # cube in a sphere problem
+    def point_aggregation_weighting_using_boxes(self, batch_dict, conv_layer_name, voxel_centers_xyz, raw_points_weights):
+        raw_points = batch_dict['points'][:,1:-1].unsqueeze(0)
+        boxes = torch.zeros((1, voxel_centers_xyz.shape[0], 7), device=raw_points.device, dtype=raw_points.dtype)
+        # voxel centeriod x, y, z
+        boxes[0, :, 0] = voxel_centers_xyz[:, 1]
+        boxes[0, :, 1] = voxel_centers_xyz[:, 2]
+        boxes[0, :, 2] = voxel_centers_xyz[:, 3]
+        l = self.voxel_size[0]
+        w = self.voxel_size[1]
+        h = self.voxel_size[2]
+        if conv_layer_name == 'x_conv1': 
+            downsample = 1
+        elif conv_layer_name == 'x_conv2':
+            downsample = 2
+        elif  conv_layer_name == 'x_conv3':
+            downsample = 4
+        elif  conv_layer_name == 'x_conv4':
+            downsample = 8
+        else:
+            raise NotImplementedError
+        l = downsample * l
+        w = downsample * w
+        h = downsample * h
+        boxes[0, :, 3] = l
+        boxes[0, :, 4] = w
+        boxes[0, :, 5] = h
+        box_idxs_of_pts = points_in_boxes_gpu(raw_points, boxes).view(-1, 1)
+        num_points_in_voxel = torch.zeros((voxel_centers_xyz.shape[0], 1), device=raw_points.device, dtype=raw_points.dtype)
+        fg_weight_points_in_voxel = torch.zeros((voxel_centers_xyz.shape[0], 1), device=raw_points.device, dtype=raw_points.dtype)
+        for pts_idx in range(0, box_idxs_of_pts.shape[0]):
+            voxel_idx = box_idxs_of_pts[pts_idx].long().item()
+            num_points_in_voxel[voxel_idx] += 1
+            fg_weight_points_in_voxel[voxel_idx] += raw_points_weights[pts_idx]
+
+        image_voxel_features = fg_weight_points_in_voxel/num_points_in_voxel
+        # if num_points_in_voxel is zero, this will result in nan - trick to remove nan
+        image_voxel_features[image_voxel_features != image_voxel_features] = 0
+            
+        return image_voxel_features
+    
+    # use ball guery to aggregate points weights using mean or weighted mean
     def point_aggregation_weighting(self, batch_dict, conv_layer_name, voxel_centers_xyz, raw_points_weights):
+
         batch_size = batch_dict['batch_size']
 
         # Get raw points and batch count (we use a batch size of one per GPU)
@@ -616,7 +662,7 @@ class VoxelBackBone8xFuse(nn.Module):
         img_pixels_v = np.copy(img_pixels)
         
 
-        THRESHOLD = 0.8 
+        THRESHOLD = 0.5 
         img_pixels_p[image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
         img_pixels_v[v_image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
         
