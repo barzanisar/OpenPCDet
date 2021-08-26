@@ -1,5 +1,6 @@
 from functools import partial
 from os import stat
+from pickle import ADDITEMS
 from numpy.lib.utils import source
 
 import spconv
@@ -712,6 +713,14 @@ class VoxelBackBone8xFuse(nn.Module):
         DEBUG_FLAG = False
         
         WEIGHT_SRC = self.model_cfg.get('WEIGHT_SRC', None)
+        AGGREGATE = self.model_cfg.get('AGGREGATE', False)
+        AGGREGATE_METHOD = self.model_cfg.get('AGGREGATE_METHOD', None)
+        # cant aggregate without method of aggregation
+        assert (AGGREGATE and AGGREGATE_METHOD != 'None')
+        # Two methods to aggregate voxel_center weights and point aggregation weights
+        assert (AGGREGATE and (AGGREGATE_METHOD == 'MEAN' or AGGREGATE_METHOD == 'MAX'))
+
+
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
             # Find foreground weights of points from image
             point_weights = torch.reshape(self.get_voxel_image_weights(batch_dict, conv_x_coords=batch_dict['points'][:, 0:-1]), (-1, 1))
@@ -737,7 +746,16 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if  WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv1', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    if AGGREGATE:
+                        # aggregate voxel center weights AND point-aggregation weights
+                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                        if AGGREGATE_METHOD == 'MEAN':
+                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
+                        elif AGGREGATE_METHOD == 'MAX':
+                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
+                        else:
+                            raise NotImplementedError
+
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
@@ -745,7 +763,8 @@ class VoxelBackBone8xFuse(nn.Module):
             
             
             if DEBUG_FLAG:
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
             
@@ -767,7 +786,15 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv2', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    if AGGREGATE:
+                        # aggregate voxel center weights AND point-aggregation weights
+                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                        if AGGREGATE_METHOD == 'MEAN':
+                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
+                        elif AGGREGATE_METHOD == 'MAX':
+                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
+                        else:
+                            raise NotImplementedError
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
@@ -775,7 +802,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 
 
             if DEBUG_FLAG:
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
@@ -797,14 +825,23 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv3', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    if AGGREGATE:
+                        # aggregate voxel center weights AND point-aggregation weights
+                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                        if AGGREGATE_METHOD == 'MEAN':
+                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
+                        elif AGGREGATE_METHOD == 'MAX':
+                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
+                        else:
+                            raise NotImplementedError
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                     
                 x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
                 
             if DEBUG_FLAG:
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
 
@@ -826,14 +863,23 @@ class VoxelBackBone8xFuse(nn.Module):
                 # get voxel foreground weights based on raw point weights OR from voxel centers weights
                 if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
                     image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv4', voxel_centers_xyz, raw_points_weights=point_weights)
-                    v_image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                    if AGGREGATE:
+                        # aggregate voxel center weights AND point-aggregation weights
+                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                        if AGGREGATE_METHOD == 'MEAN':
+                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
+                        elif AGGREGATE_METHOD == 'MAX':
+                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
+                        else:
+                            raise NotImplementedError
                 else:
                     image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 
                 x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
 
             if DEBUG_FLAG:
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
             ########
         else:
