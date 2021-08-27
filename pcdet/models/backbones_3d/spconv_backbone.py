@@ -716,9 +716,10 @@ class VoxelBackBone8xFuse(nn.Module):
         AGGREGATE = self.model_cfg.get('AGGREGATE', False)
         AGGREGATE_METHOD = self.model_cfg.get('AGGREGATE_METHOD', None)
         # cant aggregate without method of aggregation
-        assert (AGGREGATE and AGGREGATE_METHOD != 'None')
-        # Two methods to aggregate voxel_center weights and point aggregation weights
-        assert (AGGREGATE and (AGGREGATE_METHOD == 'MEAN' or AGGREGATE_METHOD == 'MAX'))
+        if AGGREGATE:
+            assert AGGREGATE_METHOD != 'None'
+            # Two methods to aggregate voxel_center weights and point aggregation weights
+            assert (AGGREGATE_METHOD == 'MEAN' or AGGREGATE_METHOD == 'MAX')
 
 
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
