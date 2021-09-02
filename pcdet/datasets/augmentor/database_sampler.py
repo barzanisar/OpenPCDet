@@ -193,8 +193,9 @@ class DataBaseSampler(object):
                 valid_sampled_boxes = sampled_boxes[valid_mask]
                 if '2d_detections' in data_dict:
                     valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
-                    self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
-                    valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
+                    if self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) != -1:
+                        self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
+                        valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
 
 
                 existed_boxes = np.concatenate((existed_boxes, valid_sampled_boxes), axis=0)
@@ -211,7 +212,7 @@ class DataBaseSampler(object):
         detection_heat_map = data_dict['2d_detections'] 
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
-        IMAGE_GT_BOX_PROB = self.sampler_cfg.get('IMAGE_GT_BOX_PROB', 0.5)
+        IMAGE_GT_BOX_PROB = self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) # defaults to NOT adding 2d bounding box of ground truth samples to detection_heat_map 
         assert MAX_PROB >= MIN_PROB
         for bbox in valid_sampled_cam_bboxes_2d:
             gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
