@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=OpenPCDet-train
 #SBATCH --account=rrg-swasland
 #SBATCH --cpus-per-task=8              # CPU cores/threads
