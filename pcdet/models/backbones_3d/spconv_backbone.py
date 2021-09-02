@@ -417,104 +417,7 @@ class VoxelBackBone8xFuse(nn.Module):
             raise NotImplementedError
 
     
-    # Ground truth training with grid sampler - no loss of precision
-    def get_voxel_image_weights(self, batch_dict, conv_x_coords):
-        B = batch_dict['trans_lidar_to_cam'].shape[0]
-        image_h, image_w = batch_dict['images'].shape[-2:]
-
-        # Create transformation matricies
-        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
-        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
-
-        # Reshape points coordinates from (N, 4) to (B, N, 3)
-        point_coords = conv_x_coords  # N
-        ## This assumes number of keypoints per batch is fixed
-        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
-        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
-                                          device=point_coords.device)
-        for b in range(B):
-            points_in_batch_b = (point_coords[..., 0].int() == b)
-            point_coords_kornia[b, ...] = point_coords[points_in_batch_b, 1:]
-
-        # # Undo augmentations
-        if 'undo_global_transform' in batch_dict:
-            undo_global_transform = batch_dict['undo_global_transform']
-            point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
-
-
-        # Transform to camera frame
-        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
-
-        # Project to image to get keypoint projection on image plane
-        I_C = I_C.reshape(B, 3, 4)
-        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
-
-        if 'segment_logits' not in batch_dict: # a segmentation network is not used 
-            # Get foreground weighting mask - # only one source image can be sampled
-            assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) 
-            assert not('gt_boxes2d' in batch_dict and 'segmentation_mask' in batch_dict) 
-            assert not('2d_detections' in batch_dict and 'segmentation_mask' in batch_dict)
-            if 'gt_boxes2d' in batch_dict:
-                gt_boxes2d = batch_dict['gt_boxes2d']
-                image = batch_dict['images']
-                mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
-                keep_boundingbox_percentage = self.model_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
-                max_boundary_shift = self.model_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
-                foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
-                                                    shape=mask_shape,
-                                                    downsample_factor=1,
-                                                    device=keypoints_img.device,
-                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
-                                                    max_boundary_shift=max_boundary_shift)
-                segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
-                segmentation_targets[foreground_mask.long() == True] = 1.0
-                # blurred_torch = kornia.gaussian_blur2d(torch.unsqueeze(segmentation_targets, 0), (5, 5), (3, 3))
-                # segmentation_targets = torch.squeeze(blurred_torch, 0)
-            elif '2d_detections' in batch_dict:  
-                segmentation_targets = batch_dict['2d_detections']
-            elif 'segmentation_mask' in batch_dict:
-                segmentation_targets = batch_dict['segmentation_mask']
-            else:
-                raise NotImplementedError
-        else:
-            # use output of segmentation network for voxel feature weighting
-            segment_logits = batch_dict['segment_logits']
-            foreground_channel = 1
-            segmentation_targets = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
-
-        if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
-            segmentation_targets = torch.flip(segmentation_targets, [2])
-        
-        # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
-        self.convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
-        # sampler
-        image_voxel_features = torch.nn.functional.grid_sample(input=segmentation_targets.view(B, 1, segmentation_targets.shape[1], segmentation_targets.shape[2]),
-                                        grid=keypoints_img.view(B, num_keypoints_per_sample, 1, 2), mode='bilinear',
-                                        padding_mode='zeros', align_corners=None)
-        
-        return image_voxel_features
-
     
-    # Takes keypoints locations in pixel coordinates and converts them to normalized coordinates [-1, 1] for grid sampling
-    # NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
-    @staticmethod
-    def convert_to_normalized_range(image_range, keypoint_pixel):
-        B = keypoint_pixel.shape[0]
-        old_h_img_range, old_w_img_range = image_range
-        old_min = 0
-        # need output to be in range -1 to 1
-        new_max = 1.0
-        new_min = -1.0
-        new_h_norm_range = new_max - new_min
-        new_w_norm_range = new_max - new_min
-        for b in range(B):
-            u = keypoint_pixel[b, :, 0]
-            v = keypoint_pixel[b, :, 1]
-            keypoint_pixel[b, :, 0] = (((u - old_min) * new_w_norm_range) / old_w_img_range) + new_min
-            keypoint_pixel[b, :, 1] = (((v - old_min) * new_h_norm_range) / old_h_img_range) + new_min
-
-
-
     # use points_in_boxes_gpu function to map points to voxels and then compute reverse - VERY SLOW but more accurate than ball query
     # cube in a sphere problem
     def point_aggregation_weighting_using_boxes(self, batch_dict, conv_layer_name, voxel_centers_xyz, raw_points_weights):
@@ -693,7 +596,166 @@ class VoxelBackBone8xFuse(nn.Module):
         source_img[img_pixels[:, 1], img_pixels[:, 0], 0] = 1
 
         return source_img
+
+
+    def get_image_feature_map(self, batch_dict):
+        if 'segment_logits' not in batch_dict: # a segmentation network is not used 
+            # Get foreground weighting mask - # only one source image can be sampled
+            assert not('gt_boxes2d' in batch_dict and '2d_detections' in batch_dict) 
+            assert not('gt_boxes2d' in batch_dict and 'segmentation_mask' in batch_dict) 
+            assert not('2d_detections' in batch_dict and 'segmentation_mask' in batch_dict)
+            if 'gt_boxes2d' in batch_dict:
+                gt_boxes2d = batch_dict['gt_boxes2d']
+                image = batch_dict['images']
+                mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
+                keep_boundingbox_percentage = self.model_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
+                max_boundary_shift = self.model_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
+                foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
+                                                    shape=mask_shape,
+                                                    downsample_factor=1,
+                                                    device=batch_dict['gt_boxes2d'].device,
+                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
+                                                    max_boundary_shift=max_boundary_shift)
+                segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
+                segmentation_targets[foreground_mask.long() == True] = 1.0
+                # blurred_torch = kornia.gaussian_blur2d(torch.unsqueeze(segmentation_targets, 0), (5, 5), (3, 3))
+                # segmentation_targets = torch.squeeze(blurred_torch, 0)
+            elif '2d_detections' in batch_dict:  
+                segmentation_targets = batch_dict['2d_detections']
+            elif 'segmentation_mask' in batch_dict:
+                segmentation_targets = batch_dict['segmentation_mask']
+            else:
+                raise NotImplementedError
+        else:
+            # use output of segmentation network for voxel feature weighting
+            segment_logits = batch_dict['segment_logits']
+            foreground_channel = 1
+            segmentation_targets = F.softmax(segment_logits, dim=1)[:, foreground_channel, :, :]
+
+        if 'image_flip' in batch_dict and batch_dict['image_flip'] == 1:
+            segmentation_targets = torch.flip(segmentation_targets, [2])
+        
+        return segmentation_targets
+        
     
+    # Ground truth training with grid sampler - no loss of precision
+    def get_voxel_image_weights(self, batch_dict, conv_x_coords, image_feature_map):
+        B = batch_dict['trans_lidar_to_cam'].shape[0]
+        image_h, image_w = batch_dict['images'].shape[-2:]
+
+        # Create transformation matricies
+        C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
+        I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
+
+        # Reshape points coordinates from (N, 4) to (B, N, 3)
+        point_coords = conv_x_coords  # N
+        ## This assumes number of keypoints per batch is fixed
+        num_keypoints_per_sample = torch.sum(point_coords[..., 0].int() == 0).item()
+        point_coords_kornia = torch.zeros((B, num_keypoints_per_sample, 3), dtype=torch.float32,
+                                          device=point_coords.device)
+        for b in range(B):
+            points_in_batch_b = (point_coords[..., 0].int() == b)
+            point_coords_kornia[b, ...] = point_coords[points_in_batch_b, 1:]
+
+        # # Undo augmentations
+        if 'undo_global_transform' in batch_dict:
+            undo_global_transform = batch_dict['undo_global_transform']
+            point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
+
+
+        # Transform to camera frame
+        points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+        # Project to image to get keypoint projection on image plane
+        I_C = I_C.reshape(B, 3, 4)
+        keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+        
+        # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
+        self.convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
+        # sampler
+        image_voxel_features = torch.nn.functional.grid_sample(input=image_feature_map.view(B, 1, image_feature_map.shape[1], image_feature_map.shape[2]),
+                                        grid=keypoints_img.view(B, num_keypoints_per_sample, 1, 2), mode='bilinear',
+                                        padding_mode='zeros', align_corners=None)
+        
+        return image_voxel_features
+
+    
+    # Takes keypoints locations in pixel coordinates and converts them to normalized coordinates [-1, 1] for grid sampling
+    # NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
+    @staticmethod
+    def convert_to_normalized_range(image_range, keypoint_pixel):
+        B = keypoint_pixel.shape[0]
+        old_h_img_range, old_w_img_range = image_range
+        old_min = 0
+        # need output to be in range -1 to 1
+        new_max = 1.0
+        new_min = -1.0
+        new_h_norm_range = new_max - new_min
+        new_w_norm_range = new_max - new_min
+        for b in range(B):
+            u = keypoint_pixel[b, :, 0]
+            v = keypoint_pixel[b, :, 1]
+            keypoint_pixel[b, :, 0] = (((u - old_min) * new_w_norm_range) / old_w_img_range) + new_min
+            keypoint_pixel[b, :, 1] = (((v - old_min) * new_h_norm_range) / old_h_img_range) + new_min
+
+
+    # returns the image features/ foreground weights of each non-empty voxel in a specific conv layer
+    def get_conv_layer_image_based_feature(self, batch_dict, conv_name, conv_output, image_feature_map, raw_point_weights):
+        """
+        Compute foreground mask for images
+        Args:
+            conv_name: str, name of convolution layer
+            conv_output: sparse convolution output containing indices and features of non-empty voxels 
+            image_feature_map: torch.tensor (1, H, W), image feature map used for weighting voxel features
+            raw_point_weights: torch.tensor, foreground/background weight of each point in raw point cloud,
+            raw_point_weights is only used if WEIGHT_SRC is not None
+        Returns:
+            image_voxel_features: weight of voxel features 
+        """
+        if conv_name == 'x_conv1':
+            VOXEL_GRID_DOWNSAMPLE = 1
+        elif conv_name == 'x_conv2':
+            VOXEL_GRID_DOWNSAMPLE = 2
+        elif conv_name == 'x_conv3':
+            VOXEL_GRID_DOWNSAMPLE = 4
+        elif conv_name == 'x_conv4':
+            VOXEL_GRID_DOWNSAMPLE = 8
+        else:
+            raise NotImplementedError
+
+        # associate voxel feature weight based on voxel center xyz projection or based on projection of points nearby or a combination
+        # default is voxel center, i.e., WEIGHT is None
+        WEIGHT_SRC = self.model_cfg.get('WEIGHT_SRC', None)
+        AGGREGATE = self.model_cfg.get('AGGREGATE', False)
+        AGGREGATE_METHOD = self.model_cfg.get('AGGREGATE_METHOD', None)
+        
+        # Extract voxel centers
+        conv_voxel_coord = conv_output.indices # voxels * 4 (first dim batch number)
+        voxel_centers_xyz = common_utils.get_voxel_centers(
+                conv_voxel_coord[:, 1:4],
+                downsample_times=VOXEL_GRID_DOWNSAMPLE,
+                voxel_size=self.voxel_size,
+                point_cloud_range=self.point_cloud_range
+            )
+        voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+
+        # get voxel foreground weights based on raw point weights OR from voxel centers weights
+        if  WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
+            image_voxel_features = self.point_aggregation_weighting(batch_dict, conv_name, voxel_centers_xyz, raw_points_weights=raw_point_weights)
+            if AGGREGATE:
+                # aggregate voxel center weights AND point-aggregation weights
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
+                if AGGREGATE_METHOD == 'MEAN':
+                    image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
+                elif AGGREGATE_METHOD == 'MAX':
+                    image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
+                else:
+                    raise NotImplementedError
+
+        else:
+            image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
+        
+        return image_voxel_features, voxel_centers_xyz 
     
     def forward(self, batch_dict):
         """
@@ -734,233 +796,129 @@ class VoxelBackBone8xFuse(nn.Module):
             # Find foreground weights of points from image
             point_weights = torch.reshape(self.get_voxel_image_weights(batch_dict, conv_x_coords=batch_dict['points'][:, 0:-1]), (-1, 1))
             raw_point_on_image = self.visualise_raw_points(batch_dict)
+        else:
+            point_weights = None
             
+        # get image information
+        image_feature_map = self.get_image_feature_map(batch_dict)
+        
         FUSE_SPARSE = self.model_cfg.get('FUSE_SPARSE', True)
         if FUSE_SPARSE:
             x_conv1 = self.conv1(x)
-            ### APPLY foreground weights on features of conv1
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
-                # Extract voxel centers
-                # x_conv1.features # voxels * 16
-                VOXEL_GRID_DOWNSAMPLE = 1
-                conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-    
-                # get voxel foreground weights based on raw point weights OR from voxel centers weights
-                if  WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv1', voxel_centers_xyz, raw_points_weights=point_weights)
-                    if AGGREGATE:
-                        # aggregate voxel center weights AND point-aggregation weights
-                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                        if AGGREGATE_METHOD == 'MEAN':
-                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
-                        elif AGGREGATE_METHOD == 'MAX':
-                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
-                        else:
-                            raise NotImplementedError
-
-                else:
-                    image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                
-                x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
-            
+            conv_name = 'x_conv1'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
                 voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
-            ########
+            
             
             x_conv2 = self.conv2(x_conv1)
-            ### APPLY foreground weights on features of conv2
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 2
-                # weight voxel features based on foreground mask
-                # x_conv2.features # voxels * 32
-                conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                
-                # get voxel foreground weights based on raw point weights OR from voxel centers weights
-                if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv2', voxel_centers_xyz, raw_points_weights=point_weights)
-                    if AGGREGATE:
-                        # aggregate voxel center weights AND point-aggregation weights
-                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                        if AGGREGATE_METHOD == 'MEAN':
-                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
-                        elif AGGREGATE_METHOD == 'MAX':
-                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
-                        else:
-                            raise NotImplementedError
-                else:
-                    image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                
-                x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
-                
-
+            conv_name = 'x_conv2'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+            
             if DEBUG_FLAG:
                 voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
-            ########
+
+
 
             x_conv3 = self.conv3(x_conv2)
-            ### APPLY foreground weights on features of conv3
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 4
-                # weight voxel features based on foreground mask
-                # x_conv3.features # voxels * 64
-                conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                
-                # get voxel foreground weights based on raw point weights OR from voxel centers weights
-                if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv3', voxel_centers_xyz, raw_points_weights=point_weights)
-                    if AGGREGATE:
-                        # aggregate voxel center weights AND point-aggregation weights
-                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                        if AGGREGATE_METHOD == 'MEAN':
-                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
-                        elif AGGREGATE_METHOD == 'MAX':
-                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
-                        else:
-                            raise NotImplementedError
-                else:
-                    image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                    
-                x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
-                
+            conv_name = 'x_conv3'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+            
             if DEBUG_FLAG:
                 voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
-            ########
+ 
 
             x_conv4 = self.conv4(x_conv3)
-            ### APPLY foreground weights on features of conv4
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 8
-                # weight voxel features based on foreground mask
-                # x_conv4.features # voxels * 64
-                conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-
-                # get voxel foreground weights based on raw point weights OR from voxel centers weights
-                if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
-                    image_voxel_features = self.point_aggregation_weighting(batch_dict, 'x_conv4', voxel_centers_xyz, raw_points_weights=point_weights)
-                    if AGGREGATE:
-                        # aggregate voxel center weights AND point-aggregation weights
-                        voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                        if AGGREGATE_METHOD == 'MEAN':
-                            image_voxel_features = (image_voxel_features.view(-1, 1) + voxel_center_weights.view(-1, 1))/2
-                        elif AGGREGATE_METHOD == 'MAX':
-                            image_voxel_features = torch.max(image_voxel_features.view(-1, 1), voxel_center_weights.view(-1, 1))
-                        else:
-                            raise NotImplementedError
-                else:
-                    image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                
-                x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
-
+            conv_name = 'x_conv4'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+            
             if DEBUG_FLAG:
                 voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
-            ########
+
         else:
             x_conv1 = self.conv1(x)
             x_conv2 = self.conv2(x_conv1)
             x_conv3 = self.conv3(x_conv2)
             x_conv4 = self.conv4(x_conv3)
-            # Fuse for ROI - POST RPN Network
-            ### APPLY foreground weights on features of conv1
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv1' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 1
-                # weight voxel features based on foreground mask
-                # x_conv1.features # voxels * 16
-                conv_voxel_coord = x_conv1.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                x_conv1.features = self.fuse(voxel_feature=x_conv1.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv1')
-            ########
-             ### APPLY foreground weights on features of conv2
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv2' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 2
-                # weight voxel features based on foreground mask
-                # x_conv2.features # voxels * 32
-                conv_voxel_coord = x_conv2.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                x_conv2.features = self.fuse(voxel_feature=x_conv2.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv2')
-            ########
-            ### APPLY foreground weights on features of conv3
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv3' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 4
-                # weight voxel features based on foreground mask
-                # x_conv3.features # voxels * 64
-                conv_voxel_coord = x_conv3.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                x_conv3.features = self.fuse(voxel_feature=x_conv3.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv3')
-            ########
-            ### APPLY foreground weights on features of conv4
-            if 'FUSE_LAYERS' in self.model_cfg and 'x_conv4' in self.model_cfg['FUSE_LAYERS']:
-                VOXEL_GRID_DOWNSAMPLE = 8
-                # weight voxel features based on foreground mask
-                # x_conv4.features # voxels * 64
-                conv_voxel_coord = x_conv4.indices # voxels * 4 (first dim batch number)
-                voxel_centers_xyz = common_utils.get_voxel_centers(
-                        conv_voxel_coord[:, 1:4],
-                        downsample_times=VOXEL_GRID_DOWNSAMPLE,
-                        voxel_size=self.voxel_size,
-                        point_cloud_range=self.point_cloud_range
-                    )
-                voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
-                image_voxel_features = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
-                x_conv4.features = self.fuse(voxel_feature=x_conv4.features, image_foreground_weights=image_voxel_features, vox_conv_layer='x_conv4')
-            ########
+            # post conv fusion
+            
+            conv_name = 'x_conv1'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+            
+            conv_name = 'x_conv2'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+
+            conv_name = 'x_conv3'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+
+            conv_name = 'x_conv4'
+            conv_output = locals()[conv_name]
+            if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+                image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name=conv_name, 
+                                                                            conv_output=conv_output, 
+                                                                            image_feature_map=image_feature_map, 
+                                                                            raw_point_weights=point_weights)
+                conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+
             
 
 
