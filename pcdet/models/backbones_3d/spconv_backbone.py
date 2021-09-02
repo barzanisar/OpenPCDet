@@ -396,9 +396,11 @@ class VoxelBackBone8xFuse(nn.Module):
     
     def fuse(self, voxel_feature, image_foreground_weights, vox_conv_layer=None):
         if self.model_cfg['FUSE_MODE'] == 'channel-fixed-weight':
-            return (voxel_feature * image_foreground_weights.view(-1, 1)) + voxel_feature
-            # alpha = 0.5
-            # return ((1 - alpha) * (voxel_feature * image_foreground_weights.view(-1, 1))) + (alpha * voxel_feature)
+            if self.model_cfg.get('FEATURE_DECAY', False):
+                alpha = 0.5
+                return ((1 - alpha) * (voxel_feature * image_foreground_weights.view(-1, 1))) + (alpha * voxel_feature)
+            else:
+                return (voxel_feature * image_foreground_weights.view(-1, 1)) + voxel_feature 
         elif self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
             assert vox_conv_layer is not None
             if vox_conv_layer == 'x_conv1':
@@ -412,7 +414,11 @@ class VoxelBackBone8xFuse(nn.Module):
             else:
                 raise NotImplementedError
             learned_channel_weights = learned_channel_layer(image_foreground_weights.view(-1, 1))
-            return  (voxel_feature * learned_channel_weights) + voxel_feature
+            if self.model_cfg.get('FEATURE_DECAY', False):
+                alpha = 0.5
+                return ((1 - alpha) * (voxel_feature * learned_channel_weights)) + (alpha * voxel_feature)
+            else:
+                return (voxel_feature * learned_channel_weights) + voxel_feature 
         else:
             raise NotImplementedError
 
