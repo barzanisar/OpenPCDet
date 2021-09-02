@@ -232,7 +232,8 @@ def get_corner_loss_lidar(pred_bbox3d: torch.Tensor, gt_bbox3d: torch.Tensor):
     return corner_loss.mean(dim=1)
 
 
-def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device("cpu")):
+def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device("cpu"), 
+keep_boundingbox_percentage=100.0, max_boundary_shift=0):
     """
     Compute foreground mask for images
     Args:
@@ -240,6 +241,8 @@ def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device(
         shape: torch.Size or tuple, Foreground mask desired shape
         downsample_factor: int, Downsample factor for image
         device: torch.device, Foreground mask desired device
+        keep_boundingbox_percentage: float, Percentage of bounding boxes to sample
+        max_boundary_shift: int, Maximum shift per boundary
     Returns:
         fg_mask (shape), Foreground mask
     """
@@ -252,10 +255,26 @@ def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device(
     gt_boxes2d = gt_boxes2d.long()
 
     # Set all values within each box to True
+    BB_KEEP_PERCENT = keep_boundingbox_percentage / 100.0
+    assert BB_KEEP_PERCENT >=0 and BB_KEEP_PERCENT <= 1.0
     B, N = gt_boxes2d.shape[:2]
+    BB_MAX_SHIFT = max_boundary_shift
+    assert BB_MAX_SHIFT >= 0
+    v_max = shape[1]
+    u_max = shape[2]
     for b in range(B):
         for n in range(N):
-            u1, v1, u2, v2 = gt_boxes2d[b, n]
-            fg_mask[b, v1:v2, u1:u2] = True
+            if np.random.uniform(0, 1) <= BB_KEEP_PERCENT:
+                if BB_MAX_SHIFT!= 0:
+                    shift = torch.randint(low=-BB_MAX_SHIFT, high=BB_MAX_SHIFT, size=(4,), device=gt_boxes2d.device)
+                else:
+                    shift = 0
+
+                u1, v1, u2, v2 = gt_boxes2d[b, n] + shift
+                u1 = torch.clamp(u1, min=0.0, max=u_max)
+                u2 = torch.clamp(u2, min=0.0, max=u_max)
+                v1 = torch.clamp(v1, min=0.0, max=v_max)
+                v2 = torch.clamp(v2, min=0.0, max=v_max)
+                fg_mask[b, v1:v2, u1:u2] = True
 
     return fg_mask

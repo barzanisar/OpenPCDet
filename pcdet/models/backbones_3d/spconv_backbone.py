@@ -397,6 +397,8 @@ class VoxelBackBone8xFuse(nn.Module):
     def fuse(self, voxel_feature, image_foreground_weights, vox_conv_layer=None):
         if self.model_cfg['FUSE_MODE'] == 'channel-fixed-weight':
             return (voxel_feature * image_foreground_weights.view(-1, 1)) + voxel_feature
+            # alpha = 0.5
+            # return ((1 - alpha) * (voxel_feature * image_foreground_weights.view(-1, 1))) + (alpha * voxel_feature)
         elif self.model_cfg['FUSE_MODE'] == 'channel-learned-weight':
             assert vox_conv_layer is not None
             if vox_conv_layer == 'x_conv1':
@@ -456,12 +458,18 @@ class VoxelBackBone8xFuse(nn.Module):
                 gt_boxes2d = batch_dict['gt_boxes2d']
                 image = batch_dict['images']
                 mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
+                keep_boundingbox_percentage = self.model_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
+                max_boundary_shift = self.model_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
                 foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
                                                     shape=mask_shape,
                                                     downsample_factor=1,
-                                                    device=keypoints_img.device)
+                                                    device=keypoints_img.device,
+                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
+                                                    max_boundary_shift=max_boundary_shift)
                 segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
                 segmentation_targets[foreground_mask.long() == True] = 1.0
+                # blurred_torch = kornia.gaussian_blur2d(torch.unsqueeze(segmentation_targets, 0), (5, 5), (3, 3))
+                # segmentation_targets = torch.squeeze(blurred_torch, 0)
             elif '2d_detections' in batch_dict:  
                 segmentation_targets = batch_dict['2d_detections']
             elif 'segmentation_mask' in batch_dict:
