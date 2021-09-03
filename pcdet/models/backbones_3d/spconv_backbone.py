@@ -807,6 +807,11 @@ class VoxelBackBone8xFuse(nn.Module):
             
         # get image information
         image_feature_map = self.get_image_feature_map(batch_dict)
+        if self.model_cfg.get('BLURR', False):
+            kernel_x, kernel_y = 5, 5
+            sigma_x, sigma_y = 5, 5
+            image_feature_map = torch.reshape(image_feature_map, (1, 1, image_feature_map.shape[1], image_feature_map.shape[2]))
+            image_feature_map = torch.squeeze(kornia.gaussian_blur2d(image_feature_map, (kernel_x, kernel_y), (sigma_x, sigma_y)), 0)
         
         FUSE_SPARSE = self.model_cfg.get('FUSE_SPARSE', True)
         if FUSE_SPARSE:
