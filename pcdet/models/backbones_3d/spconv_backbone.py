@@ -798,15 +798,17 @@ class VoxelBackBone8xFuse(nn.Module):
             assert (AGGREGATE_METHOD == 'MEAN' or AGGREGATE_METHOD == 'MAX')
 
 
+        # get image information
+        image_feature_map = self.get_image_feature_map(batch_dict)
+        
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
             # Find foreground weights of points from image
-            point_weights = torch.reshape(self.get_voxel_image_weights(batch_dict, conv_x_coords=batch_dict['points'][:, 0:-1]), (-1, 1))
+            point_weights = torch.reshape(self.get_voxel_image_weights(batch_dict, conv_x_coords=batch_dict['points'][:, 0:-1], image_feature_map=image_feature_map), (-1, 1))
             raw_point_on_image = self.visualise_raw_points(batch_dict)
         else:
             point_weights = None
             
-        # get image information
-        image_feature_map = self.get_image_feature_map(batch_dict)
+
         if self.model_cfg.get('BLURR', False):
             kernel_x, kernel_y = 5, 5
             sigma_x, sigma_y = 5, 5
@@ -827,7 +829,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
             
@@ -844,7 +846,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
 
@@ -862,7 +864,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
  
@@ -879,7 +881,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz)
+                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
                 source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
                 both = np.concatenate([raw_point_on_image, source_img], axis=0)
 
