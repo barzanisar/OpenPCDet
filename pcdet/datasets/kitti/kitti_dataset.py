@@ -414,6 +414,10 @@ class KittiDataset(DatasetTemplate):
 
             if "gt_boxes2d" in get_item_list:
                 input_dict['gt_boxes2d'] = annos["bbox"]
+            elif "gt_boxes2d_lidar" in get_item_list:
+                # incorrectly projected 3D bounding boxes should be removed (around image FOV)
+                imageboxes = box_utils.boxes3d_kitti_camera_to_imageboxes(boxes3d=gt_boxes_camera, calib=input_dict['calib'], image_shape=img_shape)
+                input_dict['gt_boxes2d'] = imageboxes
 
             road_plane = self.get_road_plane(sample_idx)
             if road_plane is not None:
@@ -426,6 +430,7 @@ class KittiDataset(DatasetTemplate):
                 fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
                 points = points[fov_flag]
             input_dict['points'] = points
+            #input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
 
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
