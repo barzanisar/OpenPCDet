@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import box_utils
+from . import box_utils, common_utils
 
 
 class SigmoidFocalClassificationLoss(nn.Module):
@@ -248,6 +248,8 @@ keep_boundingbox_percentage=100.0, max_boundary_shift=0):
     """
     fg_mask = torch.zeros(shape, dtype=torch.bool, device=device)
 
+    # convert to numpy to torch if not already torch tensor
+    gt_boxes2d, _ = common_utils.check_numpy_to_torch(gt_boxes2d)
     # Set box corners
     gt_boxes2d /= downsample_factor
     gt_boxes2d[:, :, :2] = torch.floor(gt_boxes2d[:, :, :2])

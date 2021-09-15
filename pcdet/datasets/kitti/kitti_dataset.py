@@ -7,8 +7,24 @@ from skimage import io, transform
 
 from . import kitti_utils
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
-from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti, image_2d_detections
+from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti, image_2d_detections, loss_utils
 from ..dataset import DatasetTemplate
+import torch
+
+import matplotlib.pyplot as plt
+import matplotlib
+import matplotlib.cm as cmx
+from mpl_toolkits.mplot3d import Axes3D
+def scatter3d(x,y,z, cs, colorsMap='jet'):
+    cm = plt.get_cmap(colorsMap)
+    cNorm = matplotlib.colors.Normalize(vmin=min(cs), vmax=max(cs))
+    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(x, y, z, c=scalarMap.to_rgba(cs))
+    scalarMap.set_array(cs)
+    fig.colorbar(scalarMap)
+    plt.show()
 
 
 class KittiDataset(DatasetTemplate):
@@ -101,6 +117,20 @@ class KittiDataset(DatasetTemplate):
         assert seg_mask_file.exists()
         seg_mask =  np.load(seg_mask_file)
         return seg_mask
+
+    def get_foreground_mask(self, gt_boxes2d, mask_shape):
+        #mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
+        keep_boundingbox_percentage = self.dataset_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
+        max_boundary_shift = self.dataset_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
+        foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d[np.newaxis, :],
+                                                    shape=mask_shape,
+                                                    downsample_factor=1,
+                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
+                                                    max_boundary_shift=max_boundary_shift)
+        fg_mask = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
+        fg_mask[foreground_mask.long() == True] = 1.0
+        return fg_mask.numpy().squeeze()
+
 
     def get_depth_map(self, idx):
         """
@@ -423,27 +453,27 @@ class KittiDataset(DatasetTemplate):
             if road_plane is not None:
                 input_dict['road_plane'] = road_plane
 
-        if "points" in get_item_list:
+        if "points" in get_item_list or "painted_points" in get_item_list:
             points = self.get_lidar(sample_idx)
             if self.dataset_cfg.FOV_POINTS_ONLY:
                 pts_rect = calib.lidar_to_rect(points[:, 0:3])
                 fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
                 points = points[fov_flag]
-            input_dict['points'] = points
-            #input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
-
+            if "painted_points" in get_item_list:
+                #add extra dumpy feature
+                input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
+            else:
+                input_dict['points'] = points
+            #
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
 
         if "2d_detections" in get_item_list:
-             input_dict['2d_detections'] = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
-            #  DETECTION_THRESHOLD = 0.05
-            #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] >= DETECTION_THRESHOLD)] = 1.0
-            #  input_dict['2d_detections'][np.where(input_dict['2d_detections'] < DETECTION_THRESHOLD)] = 0.0
+             input_dict['image_foreground_mask'] = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
         
         if "segmentation_mask" in get_item_list:
             assert "2d_detections" not in get_item_list
-            input_dict['segmentation_mask'] = self.get_segmentation_mask(sample_idx)
+            input_dict['image_foreground_mask'] = self.get_segmentation_mask(sample_idx)
 
         if "depth_maps" in get_item_list:
             input_dict['depth_maps'] = self.get_depth_map(sample_idx)
@@ -453,9 +483,17 @@ class KittiDataset(DatasetTemplate):
 
         data_dict = self.prepare_data(data_dict=input_dict)
 
+        if "gt_boxes2d" in get_item_list:
+            foreground_mask_from_2D_BB = self.get_foreground_mask(gt_boxes2d=data_dict["gt_boxes2d"], mask_shape=(1, img_shape[0], img_shape[1]))
+            data_dict['image_foreground_mask'] = foreground_mask_from_2D_BB
+        
         data_dict['image_shape'] = img_shape
-        return data_dict
 
+        if "painted_points" in get_item_list:    
+            point_weights = common_utils.get_voxel_image_weights(data_dict).numpy().reshape((-1, 1))
+            data_dict['points'] = np.concatenate([data_dict['points'], point_weights], axis=1)
+        
+        return data_dict
 
 def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4):
     dataset = KittiDataset(dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path, training=False)

@@ -799,7 +799,8 @@ class VoxelBackBone8xFuse(nn.Module):
 
 
         # get image information
-        image_feature_map = self.get_image_feature_map(batch_dict)
+        #image_feature_map = self.get_image_feature_map(batch_dict)
+        image_feature_map = batch_dict['image_foreground_mask']
         
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
             # Find foreground weights of points from image

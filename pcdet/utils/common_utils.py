@@ -9,6 +9,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import kornia
+from ..utils import transform_utils
 
 
 def check_numpy_to_torch(x):
@@ -261,5 +263,62 @@ def generate_voxel2pinds(sparse_tensor):
     output_shape = [batch_size] + list(spatial_shape)
     v2pinds_tensor = scatter_point_inds(indices, point_indices, output_shape)
     return v2pinds_tensor
+
+
+# Takes keypoints locations in pixel coordinates and converts them to normalized coordinates [-1, 1] for grid sampling
+# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
+def convert_to_normalized_range(image_range, keypoint_pixel):
+    B = keypoint_pixel.shape[0]
+    old_h_img_range, old_w_img_range = image_range
+    old_min = 0
+    # need output to be in range -1 to 1
+    new_max = 1.0
+    new_min = -1.0
+    new_h_norm_range = new_max - new_min
+    new_w_norm_range = new_max - new_min
+    for b in range(B):
+        u = keypoint_pixel[b, :, 0]
+        v = keypoint_pixel[b, :, 1]
+        keypoint_pixel[b, :, 0] = (((u - old_min) * new_w_norm_range) / old_w_img_range) + new_min
+        keypoint_pixel[b, :, 1] = (((v - old_min) * new_h_norm_range) / old_h_img_range) + new_min
+
+
+# Ground truth training with grid sampler - no loss of precision
+def get_voxel_image_weights(data_dict):
+    B = 1
+    image_h, image_w = data_dict['image_shape']
+    xyz_coordinates = data_dict['points'][:,0:3]
+    image_feature_map, _ = check_numpy_to_torch(data_dict['image_foreground_mask'])
+
+    # Create transformation matricies
+    C_V_tensor, _ = check_numpy_to_torch(data_dict['trans_lidar_to_cam'])
+    I_C_tensor, _ = check_numpy_to_torch(data_dict['trans_cam_to_img'])
+    C_V = torch.unsqueeze(C_V_tensor, dim=0)  # LiDAR -> Camera (B, 4, 4)
+    I_C = torch.unsqueeze(I_C_tensor, dim=0)  # Camera -> Image (B, 3, 4)
+
+    # Reshape points coordinates from (N, 3) to (B=1, N, 3)
+    points_tensor, _ = check_numpy_to_torch(xyz_coordinates)
+    point_coords_kornia = torch.unsqueeze(points_tensor, dim=0)  # N
+    num_points = point_coords_kornia.shape[1]
+    # # Undo augmentations
+    if 'undo_global_transform' in data_dict:
+        undo_global_transform, _ = check_numpy_to_torch(data_dict['undo_global_transform'])
+        point_coords_kornia = point_coords_kornia @ undo_global_transform.inverse()
+
+
+    # Transform to camera frame
+    points_camera_frame = kornia.transform_points(trans_01=C_V, points_1=point_coords_kornia)
+
+    # Project to image to get keypoint projection on image plane
+    keypoints_img, keypoints_depths = transform_utils.project_to_image(project=I_C, points=points_camera_frame)
+    
+    # in-place keypoint location conversion to normalized pixel coordinates [-1, 1] for grid sampler
+    convert_to_normalized_range(image_range=(image_h, image_w), keypoint_pixel=keypoints_img)
+    # sampler
+    image_voxel_features = torch.nn.functional.grid_sample(input=image_feature_map.view(B, 1, image_feature_map.shape[0], image_feature_map.shape[1]),
+                                    grid=keypoints_img.view(B, num_points, 1, 2), mode='bilinear',
+                                    padding_mode='zeros', align_corners=None)
+    
+    return image_voxel_features
 
 
