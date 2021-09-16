@@ -149,6 +149,17 @@ class DatasetTemplate(torch_data.Dataset):
                 data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][gt_boxes_mask]
 
         if data_dict.get('points', None) is not None:
+            get_item_list = self.dataset_cfg.get('GET_ITEM_LIST', ['points'])
+            # extract ground truth mask based on 2d boxes
+            if "gt_boxes2d" in get_item_list:
+                foreground_mask_from_2D_BB = self.get_foreground_mask(gt_boxes2d=data_dict["gt_boxes2d"], 
+                                                    mask_shape=(1, data_dict['images'].shape[0], data_dict['images'].shape[1]))
+                data_dict['image_foreground_mask'] = foreground_mask_from_2D_BB
+            # paint points
+            if "painted_points" in get_item_list:    
+                point_weights = common_utils.get_voxel_image_weights(data_dict).numpy().reshape((-1,))
+                data_dict['points'][:, -1] = point_weights
+
             data_dict = self.point_feature_encoder.forward(data_dict)
 
         data_dict = self.data_processor.forward(

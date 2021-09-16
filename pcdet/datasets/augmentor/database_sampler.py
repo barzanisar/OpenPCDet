@@ -131,14 +131,10 @@ class DataBaseSampler(object):
         obj_points_list = []
         for idx, info in enumerate(total_valid_sampled_dict):
             file_path = self.root_path / info['path']
-            if self.sampler_cfg.NUM_POINT_FEATURES == 5 and points.shape[1]== 5:
-                #add dumpy features
-                obj_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
-                [-1, self.sampler_cfg.NUM_POINT_FEATURES - 1])
-                obj_points = np.concatenate([obj_points, np.zeros((obj_points.shape[0],1))], axis=1)
-            else:    
-                obj_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
-                    [-1, self.sampler_cfg.NUM_POINT_FEATURES])
+            obj_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
+                [-1, self.sampler_cfg.NUM_POINT_FEATURES])
+            if points.shape[1] == self.sampler_cfg.NUM_POINT_FEATURES + 1:
+                obj_points = np.concatenate([obj_points, np.zeros((obj_points.shape[0],1))], axis=1)    
 
             obj_points[:, :3] += info['box3d_lidar'][:3]
 

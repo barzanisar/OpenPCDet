@@ -460,7 +460,7 @@ class KittiDataset(DatasetTemplate):
                 fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
                 points = points[fov_flag]
             if "painted_points" in get_item_list:
-                #add extra dumpy feature
+                #add extra dummy feature
                 input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
             else:
                 input_dict['points'] = points
@@ -482,16 +482,9 @@ class KittiDataset(DatasetTemplate):
             input_dict["trans_lidar_to_cam"], input_dict["trans_cam_to_img"] = kitti_utils.calib_to_matricies(calib)
 
         data_dict = self.prepare_data(data_dict=input_dict)
-
-        if "gt_boxes2d" in get_item_list:
-            foreground_mask_from_2D_BB = self.get_foreground_mask(gt_boxes2d=data_dict["gt_boxes2d"], mask_shape=(1, img_shape[0], img_shape[1]))
-            data_dict['image_foreground_mask'] = foreground_mask_from_2D_BB
         
         data_dict['image_shape'] = img_shape
 
-        if "painted_points" in get_item_list:    
-            point_weights = common_utils.get_voxel_image_weights(data_dict).numpy().reshape((-1, 1))
-            data_dict['points'] = np.concatenate([data_dict['points'], point_weights], axis=1)
         
         return data_dict
 
