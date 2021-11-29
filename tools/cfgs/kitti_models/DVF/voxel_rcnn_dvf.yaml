@@ -2,8 +2,9 @@ CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    GET_ITEM_LIST: ["images", "points", "calib_matricies", "gt_boxes2d"]
     DATA_AUGMENTOR:
-        DISABLE_AUG_LIST: ['gt_sampling']
+        DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
             - NAME: gt_sampling
               USE_ROAD_PLANE: True
@@ -13,8 +14,8 @@ DATA_CONFIG:
                  filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                  filter_by_difficulty: [-1],
               }
-	      
-	      PROJECT_GT_SAMPLES: False
+
+              PROJECT_GT_SAMPLES: False
               PROJECT_PERCENTAGE: 100.0
               SAMPLE_GROUPS: ['Car:15','Pedestrian:10', 'Cyclist:10']
               NUM_POINT_FEATURES: 4
