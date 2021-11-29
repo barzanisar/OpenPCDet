@@ -172,6 +172,7 @@ class DataBaseSampler(object):
         gt_names = data_dict['gt_names'].astype(str)
         existed_boxes = gt_boxes
         total_valid_sampled_dict = []
+        
         for class_name, sample_group in self.sample_groups.items():
             if self.limit_whole_scene:
                 num_gt = np.sum(class_name == gt_names)
@@ -180,8 +181,7 @@ class DataBaseSampler(object):
                 sampled_dict = self.sample_with_fixed_number(class_name, sample_group)
 
                 sampled_boxes = np.stack([x['box3d_lidar'] for x in sampled_dict], axis=0).astype(np.float32)
-                if '2d_detections' in data_dict:
-                    sampled_cam_bboxes = np.stack([x['bbox'] for x in sampled_dict], axis=0).astype(np.float32)
+                sampled_cam_bboxes = np.stack([x['bbox'] for x in sampled_dict], axis=0).astype(np.float32)
 
                 if self.sampler_cfg.get('DATABASE_WITH_FAKELIDAR', False):
                     sampled_boxes = box_utils.boxes3d_kitti_fakelidar_to_lidar(sampled_boxes)
@@ -193,12 +193,11 @@ class DataBaseSampler(object):
                 valid_mask = ((iou1.max(axis=1) + iou2.max(axis=1)) == 0).nonzero()[0]
                 valid_sampled_dict = [sampled_dict[x] for x in valid_mask]
                 valid_sampled_boxes = sampled_boxes[valid_mask]
-                if '2d_detections' in data_dict:
-                    valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
-                    if self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) != -1:
-                        self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
-                        valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
-
+                # Ground truth samples heatmap 
+                valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
+                if self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) != -1:
+                    self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
+                    valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
 
                 existed_boxes = np.concatenate((existed_boxes, valid_sampled_boxes), axis=0)
                 total_valid_sampled_dict.extend(valid_sampled_dict)
@@ -211,7 +210,13 @@ class DataBaseSampler(object):
         return data_dict
 
     def populate_2d_detection_with_gt_sampled_boxes(self, data_dict, valid_sampled_cam_bboxes_2d):
-        detection_heat_map = data_dict['2d_detections'] 
+        if 'gt_samples_2d_detections' in data_dict:
+            detection_heat_map = data_dict['gt_samples_2d_detections']
+        else:
+            image_shape = data_dict['images'].shape[0:2]
+            detection_heat_map = np.zeros(image_shape, dtype=np.float32)
+            data_dict['gt_samples_2d_detections'] = detection_heat_map
+
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
         IMAGE_GT_BOX_PROB = self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) # defaults to NOT adding 2d bounding box of ground truth samples to detection_heat_map 
@@ -224,4 +229,3 @@ class DataBaseSampler(object):
             if gt_sample_project_on_image <= IMAGE_GT_BOX_PROB:
                 detection_heat_map[int(bbox[1]):int(bbox[3]),
                                 int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
-

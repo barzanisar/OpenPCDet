@@ -288,6 +288,7 @@ def get_voxel_image_weights(data_dict):
     B = 1
     image_h, image_w = data_dict['images'].shape[0:2]
     xyz_coordinates = data_dict['points'][:,0:3]
+    assert 'image_foreground_mask' in data_dict
     image_feature_map, _ = check_numpy_to_torch(data_dict['image_foreground_mask'])
 
     # Create transformation matricies
