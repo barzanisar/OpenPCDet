@@ -568,26 +568,18 @@ class VoxelBackBone8xFuse(nn.Module):
         return keypoints_img
         
     
-    def visualise(self, batch_dict, voxel_centers_xyz, image_voxel_features, v_image_voxel_features):
+    def visualise(self, batch_dict, voxel_centers_xyz, voxel_weights):
         source_img = batch_dict['images'][0].permute(1, 2, 0).cpu().numpy()
         source_img[..., 0] = 0
         source_img[..., 1] = 0
         img_pixels = self.point_to_img(batch_dict ,voxel_centers_xyz).squeeze().long().cpu().numpy()
         img_pixels[img_pixels[:, 0] >= source_img.shape[1]] = 0
-        img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0
+        img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0        
 
-        img_pixels_p = np.copy(img_pixels)
-        img_pixels_v = np.copy(img_pixels)
+        THRESHOLD = 0.99 
+        img_pixels[voxel_weights.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
         
-
-        THRESHOLD = 0.5 
-        img_pixels_p[image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
-        img_pixels_v[v_image_voxel_features.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
-        
-        source_img[img_pixels_p[:,1], img_pixels_p[:, 0], 0] = 1
-        source_img[img_pixels_v[:,1], img_pixels_v[:, 0], 1] = 1
-
-        # source_img[img_pixels[:, 1], img_pixels[:, 0], 0] = 1
+        source_img[img_pixels[:,1], img_pixels[:, 0], 0] = 1
 
         return source_img
 
@@ -595,11 +587,32 @@ class VoxelBackBone8xFuse(nn.Module):
         raw_points = batch_dict['points'][:, 0:-1]
         source_img = batch_dict['images'][0].permute(1, 2, 0).cpu().numpy()
         source_img[..., 0] = 0
+        source_img[..., 1] = 0
         img_pixels = self.point_to_img(batch_dict , raw_points).squeeze().long().cpu().numpy()
         img_pixels[img_pixels[:, 0] >= source_img.shape[1]] = 0
         img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0
 
         source_img[img_pixels[:, 1], img_pixels[:, 0], 0] = 1
+
+        return source_img
+
+    
+    def visualize_fg_bg_voxels(self, batch_dict, voxel_centers_xyz, voxel_weights):
+        source_img = batch_dict['images'][0].permute(1, 2, 0).cpu().numpy()
+        source_img[..., 0] = 0
+        source_img[..., 1] = 0
+        img_pixels = self.point_to_img(batch_dict ,voxel_centers_xyz).squeeze().long().cpu().numpy()
+        img_pixels[img_pixels[:, 0] >= source_img.shape[1]] = 0
+        img_pixels[img_pixels[:, 1] >= source_img.shape[0]] = 0        
+
+        THRESHOLD = 0.99 
+        img_pixels_fg = np.copy(img_pixels)
+        img_pixels_bg = np.copy(img_pixels)
+        
+        img_pixels_fg[voxel_weights.cpu().numpy().reshape(-1,) < THRESHOLD] = 0
+        img_pixels_bg[img_pixels_fg >=  THRESHOLD] = 0
+        
+        source_img[img_pixels_fg[:,1], img_pixels_fg[:, 0], 0] = 1
 
         return source_img
 
@@ -799,7 +812,6 @@ class VoxelBackBone8xFuse(nn.Module):
 
 
         # get image information
-        #image_feature_map = self.get_image_feature_map(batch_dict)
         image_feature_map = batch_dict['image_foreground_mask']
         
         if WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':
@@ -830,9 +842,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
-                both = np.concatenate([raw_point_on_image, source_img], axis=0)
+                voxel_center_weights1 = torch.squeeze(self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map))
+                voxel_center1 = voxel_centers_xyz
             
             
             x_conv2 = self.conv2(x_conv1)
@@ -847,9 +858,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
-                both = np.concatenate([raw_point_on_image, source_img], axis=0)
+                voxel_center_weights2 = torch.squeeze(self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map))
+                voxel_center2 = voxel_centers_xyz
 
 
 
@@ -865,9 +875,8 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
-                both = np.concatenate([raw_point_on_image, source_img], axis=0)
+                voxel_center_weights3 = torch.squeeze(self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map))
+                voxel_center3 = voxel_centers_xyz
  
 
             x_conv4 = self.conv4(x_conv3)
@@ -882,16 +891,15 @@ class VoxelBackBone8xFuse(nn.Module):
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
             
             if DEBUG_FLAG:
-                voxel_center_weights = self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map)
-                source_img = self.visualise(batch_dict, voxel_centers_xyz, image_voxel_features, voxel_center_weights)
-                both = np.concatenate([raw_point_on_image, source_img], axis=0)
+                voxel_center_weights4 = torch.squeeze(self.get_voxel_image_weights(batch_dict, conv_x_coords=voxel_centers_xyz, image_feature_map=image_feature_map))
+                voxel_center4 = voxel_centers_xyz
 
         else:
             x_conv1 = self.conv1(x)
             x_conv2 = self.conv2(x_conv1)
             x_conv3 = self.conv3(x_conv2)
             x_conv4 = self.conv4(x_conv3)
-            # post conv fusion
+            # post conv DVF 
             
             conv_name = 'x_conv1'
             conv_output = locals()[conv_name]
@@ -933,12 +941,59 @@ class VoxelBackBone8xFuse(nn.Module):
                                                                             raw_point_weights=point_weights)
                 conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
 
-            
-
 
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
         out = self.conv_out(x_conv4)
+        if DEBUG_FLAG:
+            # visualize voxel centroid weighting
+            import numpy as np
+            import matplotlib.pyplot as plt
+            VISUALIZE_HORIZONTAL = False
+            if VISUALIZE_HORIZONTAL:
+                voxel_centers_xyz_all = torch.cat((voxel_center1, voxel_center2, voxel_center3, voxel_center4), 0)
+                voxel_center_weights_all = torch.cat((voxel_center_weights1, voxel_center_weights2, voxel_center_weights3, voxel_center_weights4), 0)
+                img_combine_fg_bg_voxels = self.visualize_fg_bg_voxels(batch_dict, voxel_centers_xyz_all, voxel_center_weights_all)
+                raw_point_on_image = self.visualise_raw_points(batch_dict)
+                raw_image = (torch.squeeze(batch_dict['images'][0,...]).transpose(0, 1)).transpose(1, 2).cpu().numpy()
+                both = np.concatenate([raw_image, raw_point_on_image, img_combine_fg_bg_voxels], axis=0)
+                plt.figure(dpi=1200)
+                plt.axis('off')
+                plt.imshow(both)
+                plt.show()
+            else:
+                # vertical
+                voxel_centers_xyz_all = voxel_center1
+                voxel_center_weights_all = voxel_center_weights1
+                img_combine_fg_bg_voxels = self.visualize_fg_bg_voxels(batch_dict, voxel_centers_xyz_all, voxel_center_weights_all)
+                raw_point_on_image = self.visualise_raw_points(batch_dict)
+                both1 = np.concatenate([raw_point_on_image, img_combine_fg_bg_voxels], axis=0)
+                
+                voxel_centers_xyz_all = voxel_center2
+                voxel_center_weights_all = voxel_center_weights2
+                img_combine_fg_bg_voxels = self.visualize_fg_bg_voxels(batch_dict, voxel_centers_xyz_all, voxel_center_weights_all)
+                raw_point_on_image = self.visualise_raw_points(batch_dict)
+                both2 = np.concatenate([raw_point_on_image, img_combine_fg_bg_voxels], axis=0)
+
+                voxel_centers_xyz_all = voxel_center3
+                voxel_center_weights_all = voxel_center_weights3
+                img_combine_fg_bg_voxels = self.visualize_fg_bg_voxels(batch_dict, voxel_centers_xyz_all, voxel_center_weights_all)
+                raw_point_on_image = self.visualise_raw_points(batch_dict)
+                both3 = np.concatenate([raw_point_on_image, img_combine_fg_bg_voxels], axis=0)
+
+                voxel_centers_xyz_all = voxel_center4
+                voxel_center_weights_all = voxel_center_weights4
+                img_combine_fg_bg_voxels = self.visualize_fg_bg_voxels(batch_dict, voxel_centers_xyz_all, voxel_center_weights_all)
+                raw_point_on_image = self.visualise_raw_points(batch_dict)
+                both4 = np.concatenate([raw_point_on_image, img_combine_fg_bg_voxels], axis=0)
+                
+                both = np.concatenate([both1, both2, both3, both4], axis=1)
+                plt.figure(dpi=1200)
+                plt.axis('off')
+                plt.imshow(both)
+                plt.show()
+                # plt.savefig("/home/nas/Desktop/vs-open-pcdet/OpenPCDet/output/kitti_models/visualize_voxels/{}.png".format(str(batch_dict['frame_id'][0])))
+                # plt.close()
 
         batch_dict.update({
             'encoded_spconv_tensor': out,
