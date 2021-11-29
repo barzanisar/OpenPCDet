@@ -195,7 +195,7 @@ class DataBaseSampler(object):
                 valid_sampled_boxes = sampled_boxes[valid_mask]
                 # Ground truth samples heatmap 
                 valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
-                if self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) != -1:
+                if self.sampler_cfg.get('PROJECT_GT_SAMPLES', False):
                     self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
                     valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
 
@@ -219,13 +219,13 @@ class DataBaseSampler(object):
 
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
-        IMAGE_GT_BOX_PROB = self.sampler_cfg.get('IMAGE_GT_BOX_PROB', -1.0) # defaults to NOT adding 2d bounding box of ground truth samples to detection_heat_map 
+        PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map 
         assert MAX_PROB >= MIN_PROB
         for bbox in valid_sampled_cam_bboxes_2d:
             gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
             gt_sample_project_on_image = np.random.uniform(0.0, 1.0)
             # Condition for projecting bounding box from point cloud ground truth sampling
             # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
-            if gt_sample_project_on_image <= IMAGE_GT_BOX_PROB:
+            if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
                 detection_heat_map[int(bbox[1]):int(bbox[3]),
                                 int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence

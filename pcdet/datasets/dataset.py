@@ -154,6 +154,8 @@ class DatasetTemplate(torch_data.Dataset):
             if "gt_boxes2d" in get_item_list:
                 foreground_mask_from_2D_BB = self.get_foreground_mask(gt_boxes2d=data_dict["gt_boxes2d"], 
                                                     mask_shape=(1, data_dict['images'].shape[0], data_dict['images'].shape[1]))
+                if 'gt_samples_2d_detections' in data_dict: # add gt samples image projection to foreground mask
+                    foreground_mask_from_2D_BB = np.maximum(foreground_mask_from_2D_BB, data_dict['gt_samples_2d_detections'])
                 data_dict['image_foreground_mask'] = foreground_mask_from_2D_BB
             # paint points
             if "painted_points" in get_item_list:    
