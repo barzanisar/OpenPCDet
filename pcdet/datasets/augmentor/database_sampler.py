@@ -221,11 +221,54 @@ class DataBaseSampler(object):
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
         PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map 
         assert MAX_PROB >= MIN_PROB
-        for bbox in valid_sampled_cam_bboxes_2d:
-            gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
-            gt_sample_project_on_image = np.random.uniform(0.0, 1.0)
-            # Condition for projecting bounding box from point cloud ground truth sampling
-            # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
-            if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
-                detection_heat_map[int(bbox[1]):int(bbox[3]),
-                                int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
+        MAX_FRONTVIEW_INTERSECTION = self.sampler_cfg.get('MAX_FRONTVIEW_INTERSECTION', 1.0)
+        if MAX_FRONTVIEW_INTERSECTION < 1.0:
+            max_intersection_per_gt_sample = self.compute_gt_samples_intersection(data_dict, valid_sampled_cam_bboxes_2d)
+        for idx, bbox in enumerate(valid_sampled_cam_bboxes_2d):
+            if MAX_FRONTVIEW_INTERSECTION == 1.0 or max_intersection_per_gt_sample[idx] < MAX_FRONTVIEW_INTERSECTION:
+                gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
+                gt_sample_project_on_image = np.random.uniform(0.0, 1.0)
+                # Condition for projecting bounding box from point cloud ground truth sampling
+                # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
+                if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
+                    detection_heat_map[int(bbox[1]):int(bbox[3]),
+                                    int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
+
+    # compute 2d intersection between gt samples and gt_boxes2d
+    # returns an one-dimensional array of maximum intersection of gt_boxes2d with gt samples
+    def compute_gt_samples_intersection(self, data_dict, valid_sampled_cam_bboxes_2d):
+        gt_boxes2d = data_dict['gt_boxes2d']
+        gt_sampled2d = valid_sampled_cam_bboxes_2d
+        # intersection value for each gt_sample with each gt 2d box
+        intersection = np.zeros((gt_sampled2d.shape[0], gt_boxes2d.shape[0]))
+        # boxes in the scene
+        X1 = gt_boxes2d[:, 1]
+        X2 = gt_boxes2d[:, 3] # X2 > X1
+        Y1 = gt_boxes2d[:, 0]
+        Y2 = gt_boxes2d[:, 2] # Y2 > Y1
+        # gt boxes
+        X3 = gt_sampled2d[:, 1]
+        X4 = gt_sampled2d[:, 3] # X4 > X3
+        Y3 = gt_sampled2d[:, 0]
+        Y4 = gt_sampled2d[:, 2] # Y4 > Y3
+        # loop over boxes in scene and compute intersection with each gt sampled box
+        # adapted from https://stackoverflow.com/questions/19753134/get-the-points-of-intersection-from-2-rectangles
+        for i in range(0, intersection.shape[1]):
+            X5 = np.maximum(X3, X1[i])
+            Y5 = np.maximum(Y3, Y1[i])
+            X6 = np.minimum(X4, X2[i])
+            Y6 = np.minimum(Y4, Y2[i])
+            delta_X = X6-X5
+            delta_Y = Y6-Y5
+            # remove degenerate cases where objects/rectangles dont intersect
+            delta_X[delta_X<0] = 0
+            delta_Y[delta_Y<0] = 0
+            # compute intersection
+            size_of_2d_box = (X2[i] - X1[i]) * (Y2[i] - Y1[i])
+            intersect = np.multiply(delta_X, delta_Y) / size_of_2d_box
+            #assert intersect >= 0 and intersect <= 1
+            intersection[:, i] = intersect
+        
+        # maximum intersection
+        max_intersection_per_gt_sample = np.amax(intersection, axis=1)
+        return max_intersection_per_gt_sample
