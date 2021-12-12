@@ -15,8 +15,9 @@ DATA_CONFIG:
                  filter_by_difficulty: [-1],
               }
 
-              PROJECT_GT_SAMPLES: False
+              PROJECT_GT_SAMPLES: True
               PROJECT_PERCENTAGE: 100.0
+              MAX_FRONTVIEW_INTERSECTION: 1.0
               SAMPLE_GROUPS: ['Car:15','Pedestrian:10', 'Cyclist:10']
               NUM_POINT_FEATURES: 4
               DATABASE_WITH_FAKELIDAR: False
