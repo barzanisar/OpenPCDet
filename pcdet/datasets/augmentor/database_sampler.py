@@ -197,7 +197,7 @@ class DataBaseSampler(object):
                 valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
                 if self.sampler_cfg.get('PROJECT_GT_SAMPLES', False):
                     self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
-                    valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes)
+                    valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes, class_name=class_name)
 
                 existed_boxes = np.concatenate((existed_boxes, valid_sampled_boxes), axis=0)
                 total_valid_sampled_dict.extend(valid_sampled_dict)
@@ -209,14 +209,22 @@ class DataBaseSampler(object):
         data_dict.pop('gt_boxes_mask')
         return data_dict
 
-    def populate_2d_detection_with_gt_sampled_boxes(self, data_dict, valid_sampled_cam_bboxes_2d):
+    def populate_2d_detection_with_gt_sampled_boxes(self, data_dict, valid_sampled_cam_bboxes_2d, class_name):
         if 'gt_samples_2d_detections' in data_dict:
             detection_heat_map = data_dict['gt_samples_2d_detections']
         else:
             image_shape = data_dict['images'].shape[0:2]
-            detection_heat_map = np.zeros(image_shape, dtype=np.float32)
+            detection_heat_map = np.zeros((image_shape[0], image_shape[1], len(self.class_names)), dtype=np.float32)
             data_dict['gt_samples_2d_detections'] = detection_heat_map
 
+        if class_name == 'Car':
+            index = 0
+        elif class_name == 'Pedestrian':
+            index = 1
+        elif class_name == 'Cyclist':
+            index = 2
+        else:
+            raise NotImplementedError
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
         PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map 
@@ -232,7 +240,7 @@ class DataBaseSampler(object):
                 # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
                 if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
                     detection_heat_map[int(bbox[1]):int(bbox[3]),
-                                    int(bbox[0]):int(bbox[2])] = gt_sample_detection_confidence
+                                    int(bbox[0]):int(bbox[2]), index] = gt_sample_detection_confidence
 
     # compute 2d intersection between gt samples and gt_boxes2d
     # returns an one-dimensional array of maximum intersection of gt_boxes2d with gt samples
