@@ -480,7 +480,21 @@ class KittiDataset(DatasetTemplate):
 
         if "calib_matricies" in get_item_list:
             input_dict["trans_lidar_to_cam"], input_dict["trans_cam_to_img"] = kitti_utils.calib_to_matricies(calib)
-
+        
+        if 'gt_boxes2d' in get_item_list:
+            car_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Car']
+            ped_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Pedestrian']
+            cyc_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Cyclist']
+            foreground_mask_car = self.get_foreground_mask(gt_boxes2d=car_bboxes, 
+                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+            foreground_mask_ped = self.get_foreground_mask(gt_boxes2d=ped_bboxes, 
+                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+            foreground_mask_cyc = self.get_foreground_mask(gt_boxes2d=cyc_bboxes, 
+                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+            combined_multiclass_mask = np.concatenate([foreground_mask_car[..., np.newaxis], foreground_mask_ped[..., np.newaxis], 
+            foreground_mask_cyc[..., np.newaxis]], axis=2)
+            input_dict["combined_multiclass_mask"] = combined_multiclass_mask
+        
         data_dict = self.prepare_data(data_dict=input_dict)
         
         data_dict['image_shape'] = img_shape
