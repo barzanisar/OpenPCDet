@@ -32,15 +32,15 @@ DATA_CONFIG:
 
             - NAME: random_world_scaling
               WORLD_SCALE_RANGE: [0.95, 1.05]
-     
+
 MODEL:
-    NAME: VoxelRCNN
+    NAME: PVRCNN
 
     VFE:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8xFuse
+        NAME: VoxelBackBone8xFuseMultiClass
         FUSE_LAYERS: ['x_conv1', 'x_conv2', 'x_conv3', 'x_conv4']
         FUSE_MODE: 'channel-fixed-weight'
 
@@ -53,9 +53,9 @@ MODEL:
 
         LAYER_NUMS: [5, 5]
         LAYER_STRIDES: [1, 2]
-        NUM_FILTERS: [64, 128]
+        NUM_FILTERS: [128, 256]
         UPSAMPLE_STRIDES: [1, 2]
-        NUM_UPSAMPLE_FILTERS: [128, 128]
+        NUM_UPSAMPLE_FILTERS: [256, 256]
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -115,9 +115,56 @@ MODEL:
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
+    PFE:
+        NAME: VoxelSetAbstraction
+        POINT_SOURCE: raw_points
+        NUM_KEYPOINTS: 2048
+        NUM_OUTPUT_FEATURES: 128
+        SAMPLE_METHOD: FPS
+
+        FEATURES_SOURCE: ['bev', 'x_conv1', 'x_conv2', 'x_conv3', 'x_conv4', 'raw_points']
+        SA_LAYER:
+            raw_points:
+                MLPS: [[16, 16], [16, 16]]
+                POOL_RADIUS: [0.4, 0.8]
+                NSAMPLE: [16, 16]
+            x_conv1:
+                DOWNSAMPLE_FACTOR: 1
+                MLPS: [[16, 16], [16, 16]]
+                POOL_RADIUS: [0.4, 0.8]
+                NSAMPLE: [16, 16]
+            x_conv2:
+                DOWNSAMPLE_FACTOR: 2
+                MLPS: [[32, 32], [32, 32]]
+                POOL_RADIUS: [0.8, 1.2]
+                NSAMPLE: [16, 32]
+            x_conv3:
+                DOWNSAMPLE_FACTOR: 4
+                MLPS: [[64, 64], [64, 64]]
+                POOL_RADIUS: [1.2, 2.4]
+                NSAMPLE: [16, 32]
+            x_conv4:
+                DOWNSAMPLE_FACTOR: 8
+                MLPS: [[64, 64], [64, 64]]
+                POOL_RADIUS: [2.4, 4.8]
+                NSAMPLE: [16, 32]
+
+    POINT_HEAD:
+        NAME: PointHeadSimple
+        CLS_FC: [256, 256]
+        CLASS_AGNOSTIC: True
+        USE_POINT_FEATURES_BEFORE_FUSION: True
+        TARGET_CONFIG:
+            GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
+        LOSS_CONFIG:
+            LOSS_REG: smooth-l1
+            LOSS_WEIGHTS: {
+                'point_cls_weight': 1.0,
+            }
 
     ROI_HEAD:
-        NAME: VoxelRCNNHead
+        NAME: PVRCNNHead
+        IMAGE_BASED_KPW: False
         CLASS_AGNOSTIC: True
 
         SHARED_FC: [256, 256]
@@ -135,35 +182,17 @@ MODEL:
             TEST:
                 NMS_TYPE: nms_gpu
                 MULTI_CLASSES_NMS: False
-                USE_FAST_NMS: False
-                SCORE_THRESH: 0.0
-                NMS_PRE_MAXSIZE: 2048
+                NMS_PRE_MAXSIZE: 1024
                 NMS_POST_MAXSIZE: 100
                 NMS_THRESH: 0.7
 
         ROI_GRID_POOL:
-            FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'x_conv4']
-            PRE_MLP: True
             GRID_SIZE: 6
-            POOL_LAYERS:
-                x_conv2:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [0.4]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
-                x_conv3:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [0.8]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
-                x_conv4:
-                    MLPS: [[32, 32]]
-                    QUERY_RANGES: [[4, 4, 4]]
-                    POOL_RADIUS: [1.6]
-                    NSAMPLE: [16]
-                    POOL_METHOD: max_pool
+            MLPS: [[64, 64], [64, 64]]
+            POOL_RADIUS: [0.8, 1.6]
+            NSAMPLE: [16, 16]
+            POOL_METHOD: max_pool
+
         TARGET_CONFIG:
             BOX_CODER: ResidualCoder
             ROI_PER_IMAGE: 128
@@ -183,18 +212,16 @@ MODEL:
             CLS_LOSS: BinaryCrossEntropy
             REG_LOSS: smooth-l1
             CORNER_LOSS_REGULARIZATION: True
-            GRID_3D_IOU_LOSS: False
             LOSS_WEIGHTS: {
                 'rcnn_cls_weight': 1.0,
                 'rcnn_reg_weight': 1.0,
                 'rcnn_corner_weight': 1.0,
-                'rcnn_iou3d_weight': 1.0,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-        SCORE_THRESH: 0.3
+        SCORE_THRESH: 0.1
         OUTPUT_RAW_SCORE: False
 
         EVAL_METRIC: kitti

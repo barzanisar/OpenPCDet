@@ -40,7 +40,7 @@ MODEL:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8xFuse
+        NAME: VoxelBackBone8xFuseMultiClass
         FUSE_LAYERS: ['x_conv1', 'x_conv2', 'x_conv3', 'x_conv4']
         FUSE_MODE: 'channel-fixed-weight'
 
