@@ -12,7 +12,7 @@
 # Default Command line args
 DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti
 INFOS_DIR=data/kitti
-SING_IMG=/home/$USER/projects/def-swasland-ab/singularity/densitydet-v2.sif
+SING_IMG=/home/$USER/projects/def-swasland-ab/singularity/densitydet.sif
 CFG_FILE=cfgs/kitti_models/CaDDN.yaml
 TRAIN_BATCH_SIZE=2
 TEST_BATCH_SIZE=2
