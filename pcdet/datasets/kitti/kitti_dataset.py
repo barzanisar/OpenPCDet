@@ -469,7 +469,9 @@ class KittiDataset(DatasetTemplate):
             input_dict['images'] = self.get_image(sample_idx)
 
         if "2d_detections" in get_item_list:
-             input_dict['image_foreground_mask'] = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
+            combined_multiclass_mask = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
+            input_dict["combined_multiclass_mask"] = combined_multiclass_mask
+            input_dict['image_foreground_mask'] = np.max(combined_multiclass_mask, axis=2).squeeze()
         
         if "segmentation_mask" in get_item_list:
             assert "2d_detections" not in get_item_list
