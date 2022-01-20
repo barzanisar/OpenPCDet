@@ -1160,3 +1160,206 @@ class VoxelBackBone8xFuseMultiClass(VoxelBackBone8xFuse):
         out = self.conv_out_multi(x)
         batch_dict['encoded_spconv_tensor'] = out
         return batch_dict
+
+
+# Colorize first voxel grid before sparse conv
+class VoxelBackBone8xFuseEarlyMultiClass(VoxelBackBone8xFuse):
+    def __init__(self, model_cfg, input_channels, grid_size, voxel_size, point_cloud_range,**kwargs):
+        super().__init__(model_cfg, input_channels, grid_size, voxel_size, point_cloud_range,**kwargs)
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+        block = post_act_block
+        # features = 16 + class_weights = 3
+        self.conv1 = spconv.SparseSequential(
+            block(19, 16, 3, norm_fn=norm_fn, padding=1, indice_key='subm1'),
+        )
+
+    def forward(self, batch_dict):
+        # Implement class-based voxel colorization
+        if self.training:
+            batch_dict['combined_multiclass_mask'][...,0][batch_dict['gt_samples_2d_detections'][...,0] == 1] = 1 # include car gt samples to real samples 
+            batch_dict['combined_multiclass_mask'][...,1][batch_dict['gt_samples_2d_detections'][...,1] == 1] = 1 # include ped gt samples to real samples
+            batch_dict['combined_multiclass_mask'][...,2][batch_dict['gt_samples_2d_detections'][...,2] == 1] = 1 # include cyc gt samples to real samples
+        
+        image_feature_map_car = batch_dict['combined_multiclass_mask'][...,0]
+        image_feature_map_ped = batch_dict['combined_multiclass_mask'][...,1]
+        image_feature_map_cyc = batch_dict['combined_multiclass_mask'][...,2]
+
+        # get image information
+        image_feature_map = batch_dict['image_foreground_mask']
+
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+
+        x = self.conv_input(input_sp_tensor)
+        # use x_conv1 as conv_name as it has the same spatial dimensions are x
+        image_voxel_features_car, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv1', 
+                                                                            conv_output=x, 
+                                                                            image_feature_map=image_feature_map_car, 
+                                                                            raw_point_weights=None)
+        image_voxel_features_ped, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv1', 
+                                                                            conv_output=x, 
+                                                                            image_feature_map=image_feature_map_ped, 
+                                                                            raw_point_weights=None)
+        image_voxel_features_cyc, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv1', 
+                                                                            conv_output=x, 
+                                                                            image_feature_map=image_feature_map_cyc, 
+                                                                            raw_point_weights=None)
+
+        voxel_multiclass_weights = torch.cat([image_voxel_features_car.view(-1, 1), image_voxel_features_ped.view(-1, 1), 
+                                              image_voxel_features_cyc.view(-1, 1)], dim=1)
+        # features = 64 + class_weights = 3
+        x_conv_features_and_class_weights = torch.cat([x.features, voxel_multiclass_weights], dim=1)
+        # create new sparse tensor
+        x = spconv.SparseConvTensor(features=x_conv_features_and_class_weights, 
+                                    indices=x.indices, 
+                                    spatial_shape=x.spatial_shape, 
+                                    batch_size=x.batch_size)
+        
+        x_conv1 = self.conv1(x)
+        conv_name = 'x_conv1'
+        conv_output = locals()[conv_name]
+        if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+            image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                        conv_name=conv_name, 
+                                                                        conv_output=conv_output, 
+                                                                        image_feature_map=image_feature_map, 
+                                                                        raw_point_weights=None)
+            conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)        
+        
+        x_conv2 = self.conv2(x_conv1)
+        conv_name = 'x_conv2'
+        conv_output = locals()[conv_name]
+        if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+            image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                        conv_name=conv_name, 
+                                                                        conv_output=conv_output, 
+                                                                        image_feature_map=image_feature_map, 
+                                                                        raw_point_weights=None)
+            conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+        
+        x_conv3 = self.conv3(x_conv2)
+        conv_name = 'x_conv3'
+        conv_output = locals()[conv_name]
+        if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+            image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                        conv_name=conv_name, 
+                                                                        conv_output=conv_output, 
+                                                                        image_feature_map=image_feature_map, 
+                                                                        raw_point_weights=None)
+            conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+        
+        x_conv4 = self.conv4(x_conv3)
+        conv_name = 'x_conv4'
+        conv_output = locals()[conv_name]
+        if 'FUSE_LAYERS' in self.model_cfg and conv_name in self.model_cfg['FUSE_LAYERS']:
+            image_voxel_features,voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                        conv_name=conv_name, 
+                                                                        conv_output=conv_output, 
+                                                                        image_feature_map=image_feature_map, 
+                                                                        raw_point_weights=None)
+            conv_output.features = self.fuse(voxel_feature=conv_output.features, image_foreground_weights=image_voxel_features, vox_conv_layer=conv_name)
+            
+        # for detection head
+        # [200, 176, 5] -> [200, 176, 2]
+        out = self.conv_out(x_conv4)
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8
+        })
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }
+        })
+        batch_dict.update({
+            'multi_scale_3d_strides': {
+                'x_conv1': 1,
+                'x_conv2': 2,
+                'x_conv3': 4,
+                'x_conv4': 8,
+            }
+        })
+
+        return batch_dict
+
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        x_conv4 = batch_dict['multi_scale_3d_features']['x_conv4']
+        image_voxel_features_car, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv4', 
+                                                                            conv_output=x_conv4, 
+                                                                            image_feature_map=image_feature_map_car, 
+                                                                            raw_point_weights=None)
+        image_voxel_features_ped, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv4', 
+                                                                            conv_output=x_conv4, 
+                                                                            image_feature_map=image_feature_map_ped, 
+                                                                            raw_point_weights=None)
+        image_voxel_features_cyc, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
+                                                                            conv_name='x_conv4', 
+                                                                            conv_output=x_conv4, 
+                                                                            image_feature_map=image_feature_map_cyc, 
+                                                                            raw_point_weights=None)
+
+        voxel_multiclass_weights = torch.cat([image_voxel_features_car.view(-1, 1), image_voxel_features_ped.view(-1, 1), 
+                                              image_voxel_features_cyc.view(-1, 1)], dim=1)
+        # features = 64 + class_weights = 3
+        x_conv_features_and_class_weights = torch.cat([x_conv4.features, voxel_multiclass_weights], dim=1)
+        # create new sparse tensor
+        x = spconv.SparseConvTensor(features=x_conv_features_and_class_weights, 
+                                    indices=x_conv4.indices, 
+                                    spatial_shape=x_conv4.spatial_shape, 
+                                    batch_size=x_conv4.batch_size)
+        # for detection head
+        # [200, 176, 5] -> [200, 176, 2]
+        out = self.conv_out_multi(x)
+        batch_dict['encoded_spconv_tensor'] = out
+        return batch_dict
