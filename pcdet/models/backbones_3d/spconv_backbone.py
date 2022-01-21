@@ -627,14 +627,12 @@ class VoxelBackBone8xFuse(nn.Module):
                 gt_boxes2d = batch_dict['gt_boxes2d']
                 image = batch_dict['images']
                 mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
-                keep_boundingbox_percentage = self.model_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
-                max_boundary_shift = self.model_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
                 foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d,
                                                     shape=mask_shape,
                                                     downsample_factor=1,
                                                     device=batch_dict['gt_boxes2d'].device,
-                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
-                                                    max_boundary_shift=max_boundary_shift)
+                                                    keep_boundingbox_percentage=100.0, 
+                                                    max_boundary_shift=0)
                 segmentation_targets = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
                 segmentation_targets[foreground_mask.long() == True] = 1.0
                 # blurred_torch = kornia.gaussian_blur2d(torch.unsqueeze(segmentation_targets, 0), (5, 5), (3, 3))
@@ -1121,13 +1119,13 @@ class VoxelBackBone8xFuseMultiClass(VoxelBackBone8xFuse):
         super().forward(batch_dict=batch_dict)
         # Implement class-based voxel colorization
         if self.training:
-            batch_dict['combined_multiclass_mask'][...,0][batch_dict['gt_samples_2d_detections'][...,0] == 1] = 1 # include car gt samples to real samples 
-            batch_dict['combined_multiclass_mask'][...,1][batch_dict['gt_samples_2d_detections'][...,1] == 1] = 1 # include ped gt samples to real samples
-            batch_dict['combined_multiclass_mask'][...,2][batch_dict['gt_samples_2d_detections'][...,2] == 1] = 1 # include cyc gt samples to real samples
+            objects_in_scene_and_gt_samples_mask = torch.max(batch_dict['combined_multiclass_mask'], batch_dict['gt_samples_2d_detections'])
+        else:
+            objects_in_scene_and_gt_samples_mask = batch_dict['combined_multiclass_mask']  
         
-        image_feature_map_car = batch_dict['combined_multiclass_mask'][...,0]
-        image_feature_map_ped = batch_dict['combined_multiclass_mask'][...,1]
-        image_feature_map_cyc = batch_dict['combined_multiclass_mask'][...,2]
+        image_feature_map_car = objects_in_scene_and_gt_samples_mask[...,0]
+        image_feature_map_ped = objects_in_scene_and_gt_samples_mask[...,1]
+        image_feature_map_cyc = objects_in_scene_and_gt_samples_mask[...,2]
 
         x_conv4 = batch_dict['multi_scale_3d_features']['x_conv4']
         image_voxel_features_car, voxel_centers_xyz  = self.get_conv_layer_image_based_feature(batch_dict, 
@@ -1176,13 +1174,13 @@ class VoxelBackBone8xFuseEarlyMultiClass(VoxelBackBone8xFuse):
     def forward(self, batch_dict):
         # Implement class-based voxel colorization
         if self.training:
-            batch_dict['combined_multiclass_mask'][...,0][batch_dict['gt_samples_2d_detections'][...,0] == 1] = 1 # include car gt samples to real samples 
-            batch_dict['combined_multiclass_mask'][...,1][batch_dict['gt_samples_2d_detections'][...,1] == 1] = 1 # include ped gt samples to real samples
-            batch_dict['combined_multiclass_mask'][...,2][batch_dict['gt_samples_2d_detections'][...,2] == 1] = 1 # include cyc gt samples to real samples
+            objects_in_scene_and_gt_samples_mask = torch.max(batch_dict['combined_multiclass_mask'], batch_dict['gt_samples_2d_detections'])
+        else:
+            objects_in_scene_and_gt_samples_mask = batch_dict['combined_multiclass_mask']  
         
-        image_feature_map_car = batch_dict['combined_multiclass_mask'][...,0]
-        image_feature_map_ped = batch_dict['combined_multiclass_mask'][...,1]
-        image_feature_map_cyc = batch_dict['combined_multiclass_mask'][...,2]
+        image_feature_map_car = objects_in_scene_and_gt_samples_mask[...,0]
+        image_feature_map_ped = objects_in_scene_and_gt_samples_mask[...,1]
+        image_feature_map_cyc = objects_in_scene_and_gt_samples_mask[...,2]
 
         # get image information
         image_feature_map = batch_dict['image_foreground_mask']

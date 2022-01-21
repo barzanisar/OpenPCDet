@@ -227,6 +227,7 @@ class DataBaseSampler(object):
             raise NotImplementedError
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
+        MAX_BB_PIXEL_SHIFT = self.sampler_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
         PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map 
         assert MAX_PROB >= MIN_PROB
         MAX_FRONTVIEW_INTERSECTION = self.sampler_cfg.get('MAX_FRONTVIEW_INTERSECTION', 1.0)
@@ -236,11 +237,20 @@ class DataBaseSampler(object):
             if MAX_FRONTVIEW_INTERSECTION == 1.0 or max_intersection_per_gt_sample[idx] < MAX_FRONTVIEW_INTERSECTION:
                 gt_sample_detection_confidence = np.random.uniform(MIN_PROB, MAX_PROB)
                 gt_sample_project_on_image = np.random.uniform(0.0, 1.0)
+                if MAX_BB_PIXEL_SHIFT > 0:
+                    shift = np.random.randint(low=-MAX_BB_PIXEL_SHIFT, high=MAX_BB_PIXEL_SHIFT, size=(4,), dtype=np.int16)
+                else:
+                    shift = np.zeros((4,), dtype=np.int16)
+
                 # Condition for projecting bounding box from point cloud ground truth sampling
                 # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
                 if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
-                    detection_heat_map[int(bbox[1]):int(bbox[3]),
-                                    int(bbox[0]):int(bbox[2]), index] = gt_sample_detection_confidence
+                    v1 = int(bbox[1] + shift[0]) if int(bbox[1] + shift[0]) >= 0 else 0
+                    v2 = int(bbox[3] + shift[1]) if int(bbox[3] + shift[1]) < detection_heat_map.shape[0] else detection_heat_map.shape[0]
+                    u1 = int(bbox[0] + shift[2]) if int(bbox[0] + shift[2]) >= 0 else 0
+                    u2 = int(bbox[2] + shift[3]) if int(bbox[2] + shift[3]) < detection_heat_map.shape[1] else detection_heat_map.shape[1]
+                    detection_heat_map[v1:v2,
+                                    u1:u2, index] = gt_sample_detection_confidence
 
     # compute 2d intersection between gt samples and gt_boxes2d
     # returns an one-dimensional array of maximum intersection of gt_boxes2d with gt samples

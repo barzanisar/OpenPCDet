@@ -119,14 +119,11 @@ class KittiDataset(DatasetTemplate):
         return seg_mask
 
     def get_foreground_mask(self, gt_boxes2d, mask_shape):
-        #mask_shape = (image.shape[0], image.shape[2] + 1, image.shape[3] + 1)
-        keep_boundingbox_percentage = self.dataset_cfg.get('GROUND_TRUTH_PERCENT', 100.0)
-        max_boundary_shift = self.dataset_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
         foreground_mask = loss_utils.compute_fg_mask(gt_boxes2d=gt_boxes2d[np.newaxis, :],
                                                     shape=mask_shape,
                                                     downsample_factor=1,
-                                                    keep_boundingbox_percentage=keep_boundingbox_percentage, 
-                                                    max_boundary_shift=max_boundary_shift)
+                                                    keep_boundingbox_percentage=100.0, 
+                                                    max_boundary_shift=0)
         fg_mask = torch.zeros(foreground_mask.shape, dtype=torch.float32, device=foreground_mask.device)
         fg_mask[foreground_mask.long() == True] = 1.0
         return fg_mask.numpy().squeeze()
