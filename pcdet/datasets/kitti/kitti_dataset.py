@@ -80,7 +80,17 @@ class KittiDataset(DatasetTemplate):
     def get_lidar(self, idx):
         lidar_file = self.root_split_path / 'velodyne' / ('%s.bin' % idx)
         assert lidar_file.exists()
-        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        KEEP_POINT_PERCENTAGE = self.dataset_cfg.get('KEEP_POINT_PERCENTAGE', 100.0)
+        if KEEP_POINT_PERCENTAGE == 100:
+            return points
+        else:
+            number_of_points_to_keep = int(points.shape[0] * (KEEP_POINT_PERCENTAGE/100))
+            random_indices = np.random.choice(points.shape[0], size=number_of_points_to_keep, replace=False)
+            points = points[random_indices, ...]
+            return points
+
+
 
     def get_image(self, idx):
         """
