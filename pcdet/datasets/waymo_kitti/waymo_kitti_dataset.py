@@ -398,6 +398,20 @@ class WaymoKittiFormatDataset(DatasetTemplate):
 
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+
+        # Convert to KITTI format for evaluation
+        waymo_to_kitti_labels = {
+            'VEHICLE': 'Car',
+            'PEDESTRIAN': 'Pedestrian',
+            'CYCLIST': 'Cyclist',
+            'SIGN': 'Sign'
+        }
+        for anno in eval_det_annos:
+            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
+        for anno in eval_gt_annos:
+            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
+        class_names = [waymo_to_kitti_labels[x] for x in class_names]
+
         ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
 
         return ap_result_str, ap_dict
