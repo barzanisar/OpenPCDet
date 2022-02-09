@@ -1,7 +1,7 @@
 DATASET: 'WaymoKittiFormatDataset'
-DATA_PATH: '../data/kitti'
+DATA_PATH: '../data/waymo_kitti'
 
-POINT_CLOUD_RANGE: [0, -40, -3, 70.4, 40, 1]
+POINT_CLOUD_RANGE: [0, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
     'train': train,
@@ -20,16 +20,16 @@ DATA_AUGMENTOR:
     DISABLE_AUG_LIST: ['placeholder']
     AUG_CONFIG_LIST:
         - NAME: gt_sampling
-          USE_ROAD_PLANE: True
+          USE_ROAD_PLANE: False
           DB_INFO_PATH:
               - waymo_kitti_dbinfos_train.pkl
           PREPARE: {
-             filter_by_min_points: ['Vehicle:5', 'Pedestrian:5', 'Cyclist:5'],
+             filter_by_min_points: ['VEHICLE:5', 'PEDESTRIAN:5', 'CYCLIST:5'],
              filter_by_difficulty: [-1],
           }
 
-          SAMPLE_GROUPS: ['Vehicle:15', 'Pedestrian:10', 'Cyclist:10']
-          NUM_POINT_FEATURES: 5
+          SAMPLE_GROUPS: ['VEHICLE:15', 'PEDESTRIAN:10', 'CYCLIST:10']
+          NUM_POINT_FEATURES: 4
           REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
           LIMIT_WHOLE_SCENE: True
 
@@ -45,8 +45,8 @@ DATA_AUGMENTOR:
 
 POINT_FEATURE_ENCODING: {
     encoding_type: absolute_coordinates_encoding,
-    used_feature_list: ['x', 'y', 'z', 'intensity', 'elongation'],
-    src_feature_list: ['x', 'y', 'z', 'intensity', 'elongation'],
+    used_feature_list: ['x', 'y', 'z', 'intensity'],
+    src_feature_list: ['x', 'y', 'z', 'intensity'],
 }
 
 
