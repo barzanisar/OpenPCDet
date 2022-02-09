@@ -26,7 +26,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             dataset_cfg=dataset_cfg, class_names=class_names, training=training, root_path=root_path, logger=logger
         )
         self.split = self.dataset_cfg.DATA_SPLIT[self.mode]
-        if self.split == 'training':
+        if self.split == 'train':
             self.root_split_path = self.root_path / 'training'
         elif self.split == 'val':
             self.root_split_path = self.root_path / 'validation'
