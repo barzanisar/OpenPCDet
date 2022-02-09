@@ -1,17 +1,18 @@
 import numpy as np
 
 
-def get_calib_from_file(calib_file):
+def get_calib_from_file(calib_file, calib_indices):
+    assert len(calib_indices) == 4
     with open(calib_file) as f:
         lines = f.readlines()
 
-    obj = lines[2].strip().split(' ')[1:]
+    obj = lines[calib_indices[0]].strip().split(' ')[1:]
     P2 = np.array(obj, dtype=np.float32)
-    obj = lines[3].strip().split(' ')[1:]
+    obj = lines[calib_indices[1]].strip().split(' ')[1:]
     P3 = np.array(obj, dtype=np.float32)
-    obj = lines[4].strip().split(' ')[1:]
+    obj = lines[calib_indices[2]].strip().split(' ')[1:]
     R0 = np.array(obj, dtype=np.float32)
-    obj = lines[5].strip().split(' ')[1:]
+    obj = lines[calib_indices[3]].strip().split(' ')[1:]
     Tr_velo_to_cam = np.array(obj, dtype=np.float32)
 
     return {'P2': P2.reshape(3, 4),
@@ -21,9 +22,9 @@ def get_calib_from_file(calib_file):
 
 
 class Calibration(object):
-    def __init__(self, calib_file):
+    def __init__(self, calib_file, calib_indices=[2, 3, 4, 5]):
         if not isinstance(calib_file, dict):
-            calib = get_calib_from_file(calib_file)
+            calib = get_calib_from_file(calib_file, calib_indices)
         else:
             calib = calib_file
 
@@ -123,3 +124,8 @@ class Calibration(object):
         boxes_corner = np.concatenate((x.reshape(-1, 8, 1), y.reshape(-1, 8, 1)), axis=2)
 
         return boxes, boxes_corner
+
+
+class CalibrationWaymo(Calibration):
+    def __init__(self, calib_file, calib_indices=[0, 3, 5, 6]):
+        super().__init__(calib_file, calib_indices)
