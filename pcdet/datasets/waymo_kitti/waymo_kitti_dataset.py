@@ -265,7 +265,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
         import torch
 
         database_save_path = Path(self.root_path) / ('gt_database' if split == 'train' else ('gt_database_%s' % split))
-        db_info_save_path = Path(self.root_path) / ('kitti_dbinfos_%s.pkl' % split)
+        db_info_save_path = Path(self.root_path) / ('waymo_kitti_dbinfos_%s.pkl' % split)
 
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
