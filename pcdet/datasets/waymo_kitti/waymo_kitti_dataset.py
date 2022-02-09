@@ -494,9 +494,9 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             input_dict["trans_lidar_to_cam"], input_dict["trans_cam_to_img"] = kitti_utils.calib_to_matricies(calib)
 
         if 'gt_boxes2d' in get_item_list:
-            car_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Car']
-            ped_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Pedestrian']
-            cyc_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='Cyclist']
+            car_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='VEHICLE']
+            ped_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='PEDESTRIAN']
+            cyc_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='CYCLIST']
             foreground_mask_car = self.get_foreground_mask(gt_boxes2d=car_bboxes,
                                                     mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
             foreground_mask_ped = self.get_foreground_mask(gt_boxes2d=ped_bboxes,

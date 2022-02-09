@@ -134,7 +134,7 @@ class DataBaseSampler(object):
             obj_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
                 [-1, self.sampler_cfg.NUM_POINT_FEATURES])
             if points.shape[1] == self.sampler_cfg.NUM_POINT_FEATURES + 1:
-                obj_points = np.concatenate([obj_points, np.zeros((obj_points.shape[0],1))], axis=1)    
+                obj_points = np.concatenate([obj_points, np.zeros((obj_points.shape[0],1))], axis=1)
 
             obj_points[:, :3] += info['box3d_lidar'][:3]
 
@@ -172,7 +172,7 @@ class DataBaseSampler(object):
         gt_names = data_dict['gt_names'].astype(str)
         existed_boxes = gt_boxes
         total_valid_sampled_dict = []
-        
+
         for class_name, sample_group in self.sample_groups.items():
             if self.limit_whole_scene:
                 num_gt = np.sum(class_name == gt_names)
@@ -193,10 +193,10 @@ class DataBaseSampler(object):
                 valid_mask = ((iou1.max(axis=1) + iou2.max(axis=1)) == 0).nonzero()[0]
                 valid_sampled_dict = [sampled_dict[x] for x in valid_mask]
                 valid_sampled_boxes = sampled_boxes[valid_mask]
-                # Ground truth samples heatmap 
+                # Ground truth samples heatmap
                 valid_sampled_cam_bboxes = sampled_cam_bboxes[valid_mask]
                 if self.sampler_cfg.get('PROJECT_GT_SAMPLES', False):
-                    self.populate_2d_detection_with_gt_sampled_boxes(data_dict, 
+                    self.populate_2d_detection_with_gt_sampled_boxes(data_dict,
                     valid_sampled_cam_bboxes_2d = valid_sampled_cam_bboxes, class_name=class_name)
 
                 existed_boxes = np.concatenate((existed_boxes, valid_sampled_boxes), axis=0)
@@ -217,18 +217,18 @@ class DataBaseSampler(object):
             detection_heat_map = np.zeros((image_shape[0], image_shape[1], len(self.class_names)), dtype=np.float32)
             data_dict['gt_samples_2d_detections'] = detection_heat_map
 
-        if class_name == 'Car':
+        if class_name == 'Car' or class_name == 'VEHICLE':
             index = 0
-        elif class_name == 'Pedestrian':
+        elif class_name == 'Pedestrian' or class_name == 'PEDESTRIAN':
             index = 1
-        elif class_name == 'Cyclist':
+        elif class_name == 'Cyclist' or class_name == 'CYCLIST':
             index = 2
         else:
             raise NotImplementedError
         MIN_PROB = self.sampler_cfg.get('MIN_BBOX_DETECTION_THRES', 1.0)
         MAX_PROB = self.sampler_cfg.get('MAX_BBOX_DETECTION_THRES', 1.0)
         MAX_BB_PIXEL_SHIFT = self.sampler_cfg.get('MAX_BB_PIXEL_SHIFT', 0)
-        PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map 
+        PROJECT_PERCENTAGE = self.sampler_cfg.get('PROJECT_PERCENTAGE', 100.0)/100.0 # defaults to adding all 2d bounding box of ground truth samples to detection_heat_map
         assert MAX_PROB >= MIN_PROB
         MAX_FRONTVIEW_INTERSECTION = self.sampler_cfg.get('MAX_FRONTVIEW_INTERSECTION', 1.0)
         if MAX_FRONTVIEW_INTERSECTION < 1.0:
@@ -243,7 +243,7 @@ class DataBaseSampler(object):
                     shift = np.zeros((4,), dtype=np.int16)
 
                 # Condition for projecting bounding box from point cloud ground truth sampling
-                # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples 
+                # Note: this  condition ensures that lidar stream doesnt rely fully on image stream weighting for gt samples
                 if gt_sample_project_on_image <= PROJECT_PERCENTAGE:
                     v1 = int(bbox[1] + shift[0]) if int(bbox[1] + shift[0]) >= 0 else 0
                     v2 = int(bbox[3] + shift[1]) if int(bbox[3] + shift[1]) < detection_heat_map.shape[0] else detection_heat_map.shape[0]
@@ -286,7 +286,7 @@ class DataBaseSampler(object):
             intersect = np.multiply(delta_X, delta_Y) / size_of_2d_box
             #assert intersect >= 0 and intersect <= 1
             intersection[:, i] = intersect
-        
+
         # maximum intersection
         max_intersection_per_gt_sample = np.amax(intersection, axis=1)
         return max_intersection_per_gt_sample
