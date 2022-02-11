@@ -22,6 +22,10 @@ DIST=true
 TCP_PORT=18888
 FIX_RANDOM_SEED=false
 
+# ========== WAYMO ==========
+DATA_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo-Kitti-Format
+INFOS_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo-Kitti-Format/infos
+
 # Usage info
 show_help() {
 echo "
@@ -57,6 +61,26 @@ while :; do
     -h|-\?|--help)
         show_help    # Display a usage synopsis.
         exit
+        ;;
+    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CFG_FILE=$2
+            # Get default dataset
+            echo "Checking dataset"
+            if [[ "$CFG_FILE" == *"waymo_kitti_models"* ]]; then
+                DATASET=waymo
+                DATA_DIR=$DATA_DIR_WAYMO
+                INFOS_DIR=$INFOS_DIR_WAYMO
+                WORKERS=$(($SLURM_CPUS_PER_TASK / 2))
+                echo "Using default Waymo KITTI dataset dirs"
+            else
+                echo "Using default KITTI dataset dirs"
+            fi
+
+            shift
+        else
+            die 'ERROR: "--cfg_file" requires a non-empty option argument.'
+        fi
         ;;
     -d|--data_dir)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
@@ -96,14 +120,6 @@ while :; do
             shift
         else
             die 'ERROR: "--test_batch_size" requires a non-empty option argument.'
-        fi
-        ;;
-    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
-        if [ "$2" ]; then
-            CFG_FILE=$2
-            shift
-        else
-            die 'ERROR: "--cfg_file" requires a non-empty option argument.'
         fi
         ;;
     -e|--epochs)       # Takes an option argument; ensure it has been specified.
