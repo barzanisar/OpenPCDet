@@ -658,8 +658,9 @@ class VoxelBackBone8xFuse(nn.Module):
     # Ground truth training with grid sampler - no loss of precision
     def get_voxel_image_weights(self, batch_dict, conv_x_coords, image_feature_map):
         B = batch_dict['trans_lidar_to_cam'].shape[0]
-        image_h, image_w = batch_dict['images'].shape[-2:]
-
+        image_shape = batch_dict['image_shape'][0]
+        image_h = image_shape[0].item()
+        image_w = image_shape[1].item()
         # Create transformation matricies
         C_V = batch_dict['trans_lidar_to_cam']  # LiDAR -> Camera (B, 4, 4)
         I_C = batch_dict['trans_cam_to_img']  # Camera -> Image (B, 3, 4)
@@ -754,7 +755,7 @@ class VoxelBackBone8xFuse(nn.Module):
                 voxel_size=self.voxel_size,
                 point_cloud_range=self.point_cloud_range
             )
-        voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
+        voxel_centers_xyz = torch.cat((conv_voxel_coord[:, 0].view((-1, 1)).float(), voxel_centers_xyz), axis=1)# convert voxel centers from (N,3) back to (N,4)
 
         # get voxel foreground weights based on raw point weights OR from voxel centers weights
         if  WEIGHT_SRC == 'POINTS'  or WEIGHT_SRC == 'WEIGHTED_POINTS':

@@ -10,6 +10,7 @@
 #SBATCH --array=1-1%1   # 1 is the number of jobs in the chain
 
 # Default Command line args
+DATASET='kitti'
 DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti
 INFOS_DIR=data/kitti
 SING_IMG=/home/$USER/projects/def-swasland-ab/singularity/densitydet.sif
@@ -21,6 +22,10 @@ EXTRA_TAG='default'
 DIST=true
 TCP_PORT=18888
 FIX_RANDOM_SEED=false
+
+# ========== WAYMO ==========
+DATA_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo-Kitti-Format
+INFOS_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo-Kitti-Format/infos
 
 # Usage info
 show_help() {
@@ -57,6 +62,26 @@ while :; do
     -h|-\?|--help)
         show_help    # Display a usage synopsis.
         exit
+        ;;
+    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CFG_FILE=$2
+            # Get default dataset
+            echo "Checking dataset"
+            if [[ "$CFG_FILE" == *"waymo_kitti_models"* ]]; then
+                DATASET='waymo_kitti'
+                DATA_DIR=$DATA_DIR_WAYMO
+                INFOS_DIR=$INFOS_DIR_WAYMO
+                WORKERS=$(($SLURM_CPUS_PER_TASK / 2))
+                echo "Using default Waymo KITTI dataset dirs"
+            else
+                echo "Using default KITTI dataset dirs"
+            fi
+
+            shift
+        else
+            die 'ERROR: "--cfg_file" requires a non-empty option argument.'
+        fi
         ;;
     -d|--data_dir)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
@@ -96,14 +121,6 @@ while :; do
             shift
         else
             die 'ERROR: "--test_batch_size" requires a non-empty option argument.'
-        fi
-        ;;
-    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
-        if [ "$2" ]; then
-            CFG_FILE=$2
-            shift
-        else
-            die 'ERROR: "--cfg_file" requires a non-empty option argument.'
         fi
         ;;
     -e|--epochs)       # Takes an option argument; ensure it has been specified.
@@ -205,7 +222,8 @@ BASE_CMD="SINGULARITYENV_CUDA_VISIBLE_DEVICES=0,1 singularity exec
 --bind $PROJ_DIR/checkpoints:/OpenPCDet/checkpoints
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
---bind $TMP_DATA_DIR:/OpenPCDet/$INFOS_DIR
+--bind $TMP_DATA_DIR:/OpenPCDet/data/$DATASET
+--bind $PROJ_DIR/data/$DATASET/ImageSets:/OpenPCDet/data/$DATASET/ImageSets
 $PCDET_BINDS
 $SING_IMG
 "
