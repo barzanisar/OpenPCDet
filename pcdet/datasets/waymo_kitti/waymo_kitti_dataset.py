@@ -474,9 +474,9 @@ class WaymoKittiFormatDataset(DatasetTemplate):
                 input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
             else:
                 input_dict['points'] = points
-            #
-        # if "images" in get_item_list:
-        #     input_dict['images'] = self.get_image(sample_idx)
+            
+        if "images" in get_item_list:
+            input_dict['images'] = self.get_image(sample_idx)
 
         if "2d_detections" in get_item_list:
             combined_multiclass_mask = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
