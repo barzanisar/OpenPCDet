@@ -50,7 +50,7 @@ if __name__ == '__main__':
         install_requires=[
             'numpy',
             'torch>=1.1',
-            'spconv',
+            'spconv-cu102',
             'numba',
             'tensorboardX',
             'easydict',
