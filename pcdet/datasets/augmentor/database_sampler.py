@@ -213,7 +213,7 @@ class DataBaseSampler(object):
         if 'gt_samples_2d_detections' in data_dict:
             detection_heat_map = data_dict['gt_samples_2d_detections']
         else:
-            image_shape = data_dict['images'].shape[0:2]
+            image_shape = data_dict['image_shape']
             detection_heat_map = np.zeros((image_shape[0], image_shape[1], len(self.class_names)), dtype=np.float32)
             data_dict['gt_samples_2d_detections'] = detection_heat_map
 

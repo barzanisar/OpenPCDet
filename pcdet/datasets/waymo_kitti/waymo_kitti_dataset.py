@@ -475,8 +475,8 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             else:
                 input_dict['points'] = points
             #
-        if "images" in get_item_list:
-            input_dict['images'] = self.get_image(sample_idx)
+        # if "images" in get_item_list:
+        #     input_dict['images'] = self.get_image(sample_idx)
 
         if "2d_detections" in get_item_list:
             combined_multiclass_mask = self.get_2d_detections(sample_idx, img_shape, min_det_threshold=0.0)
@@ -498,20 +498,19 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             ped_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='PEDESTRIAN']
             cyc_bboxes = input_dict['gt_boxes2d'][input_dict['gt_names']=='CYCLIST']
             foreground_mask_car = self.get_foreground_mask(gt_boxes2d=car_bboxes,
-                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+                                                    mask_shape=(1, img_shape[0], img_shape[1]))
             foreground_mask_ped = self.get_foreground_mask(gt_boxes2d=ped_bboxes,
-                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+                                                    mask_shape=(1, img_shape[0], img_shape[1]))
             foreground_mask_cyc = self.get_foreground_mask(gt_boxes2d=cyc_bboxes,
-                                                    mask_shape=(1, input_dict['images'].shape[0], input_dict['images'].shape[1]))
+                                                    mask_shape=(1, img_shape[0], img_shape[1]))
             combined_multiclass_mask = np.concatenate([foreground_mask_car[..., np.newaxis], foreground_mask_ped[..., np.newaxis],
             foreground_mask_cyc[..., np.newaxis]], axis=2)
             input_dict["combined_multiclass_mask"] = combined_multiclass_mask
 
+
+        input_dict['image_shape'] = img_shape
         data_dict = self.prepare_data(data_dict=input_dict)
-
-        data_dict['image_shape'] = img_shape
-
-
+        
         return data_dict
 
 

@@ -34,7 +34,7 @@ DATA_AUGMENTOR:
           LIMIT_WHOLE_SCENE: True
 
         - NAME: random_world_flip
-          ALONG_AXIS_LIST: ['x', 'y']
+          ALONG_AXIS_LIST: ['x']
 
         - NAME: random_world_rotation
           WORLD_ROT_ANGLE: [-0.78539816, 0.78539816]
