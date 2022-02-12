@@ -1,4 +1,4 @@
-CLASS_NAMES: ['VEHICLE', 'PEDESTRIAN', 'CYCLIST']
+CLASS_NAMES: ['VEHICLE']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_kitti_dataset.yaml
@@ -11,14 +11,14 @@ DATA_CONFIG:
               DB_INFO_PATH:
                   - waymo_kitti_dbinfos_train.pkl
               PREPARE: {
-                 filter_by_min_points: ['VEHICLE:5', 'PEDESTRIAN:5', 'CYCLIST:5'],
+                 filter_by_min_points: ['VEHICLE:5'],
                  filter_by_difficulty: [-1],
               }
 
               PROJECT_GT_SAMPLES: True
               PROJECT_PERCENTAGE: 90.0
               MAX_FRONTVIEW_INTERSECTION: 1.0
-              SAMPLE_GROUPS: ['VEHICLE:15','PEDESTRIAN:10', 'CYCLIST:10']
+              SAMPLE_GROUPS: ['VEHICLE:15']
               NUM_POINT_FEATURES: 4
               DATABASE_WITH_FAKELIDAR: False
               REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
@@ -64,7 +64,7 @@ MODEL:
         DIR_OFFSET: 0.78539
         DIR_LIMIT_OFFSET: 0.0
         NUM_DIR_BINS: 2
-        
+
         ANCHOR_GENERATOR_CONFIG: [
             {
                 'class_name': 'VEHICLE',
@@ -75,26 +75,6 @@ MODEL:
                 'feature_map_stride': 8,
                 'matched_threshold': 0.55,
                 'unmatched_threshold': 0.4
-            },
-            {
-                'class_name': 'PEDESTRIAN',
-                'anchor_sizes': [[0.91, 0.86, 1.73]],
-                'anchor_rotations': [0, 1.57],
-                'anchor_bottom_heights': [0],
-                'align_center': False,
-                'feature_map_stride': 8,
-                'matched_threshold': 0.5,
-                'unmatched_threshold': 0.35
-            },
-            {
-                'class_name': 'CYCLIST',
-                'anchor_sizes': [[1.78, 0.84, 1.78]],
-                'anchor_rotations': [0, 1.57],
-                'anchor_bottom_heights': [0],
-                'align_center': False,
-                'feature_map_stride': 8,
-                'matched_threshold': 0.5,
-                'unmatched_threshold': 0.35
             }
         ]
 
@@ -131,7 +111,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 4
-    NUM_EPOCHS: 80
+    NUM_EPOCHS: 50
 
     OPTIMIZER: adam_onecycle
     LR: 0.003
