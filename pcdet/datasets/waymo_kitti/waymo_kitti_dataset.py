@@ -394,27 +394,46 @@ class WaymoKittiFormatDataset(DatasetTemplate):
         if 'annos' not in self.kitti_infos[0].keys():
             return None, {}
 
-        from ..kitti.kitti_object_eval_python import eval as kitti_eval
-
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
 
-        # Convert to KITTI format for evaluation
-        waymo_to_kitti_labels = {
-            'VEHICLE': 'Car',
-            'PEDESTRIAN': 'Pedestrian',
-            'CYCLIST': 'Cyclist',
-            'SIGN': 'Sign'
-        }
-        for anno in eval_det_annos:
-            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
-        for anno in eval_gt_annos:
-            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
-        class_names = [waymo_to_kitti_labels[x] for x in class_names]
+        if kwargs['eval_metric'] == 'kitti':
+            from ..kitti.kitti_object_eval_python import eval as kitti_eval
 
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+            # Convert to KITTI format for evaluation
+            waymo_to_kitti_labels = {
+                'VEHICLE': 'Car',
+                'PEDESTRIAN': 'Pedestrian',
+                'CYCLIST': 'Cyclist',
+                'SIGN': 'Sign'
+            }
+            for anno in eval_det_annos:
+                anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
+            for anno in eval_gt_annos:
+                anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
+            class_names = [waymo_to_kitti_labels[x] for x in class_names]
 
-        return ap_result_str, ap_dict
+            ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+
+            return ap_result_str, ap_dict
+
+        elif kwargs['eval_metric'] == 'waymo':
+            from ..waymo.waymo_eval import OpenPCDetWaymoDetectionMetricsEstimator
+            eval = OpenPCDetWaymoDetectionMetricsEstimator()
+
+            ap_dict = eval.waymo_evaluation(
+                eval_det_annos, eval_gt_annos, class_name=class_names,
+                distance_thresh=1000, fake_gt_infos=self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False)
+            )
+            ap_result_str = '\n'
+            for key in ap_dict:
+                ap_dict[key] = ap_dict[key][0]
+                ap_result_str += '%s: %.4f \n' % (key, ap_dict[key])
+
+            return ap_result_str, ap_dict
+
+        else:
+            raise NotImplementedError
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:
@@ -474,7 +493,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
                 input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
             else:
                 input_dict['points'] = points
-            
+
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
 
@@ -510,7 +529,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
 
         input_dict['image_shape'] = img_shape
         data_dict = self.prepare_data(data_dict=input_dict)
-        
+
         return data_dict
 
 
