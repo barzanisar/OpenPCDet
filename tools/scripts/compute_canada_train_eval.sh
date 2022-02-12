@@ -17,7 +17,6 @@ SING_IMG=/home/$USER/projects/def-swasland-ab/singularity/densitydet.sif
 CFG_FILE=cfgs/kitti_models/CaDDN.yaml
 TRAIN_BATCH_SIZE=2
 TEST_BATCH_SIZE=2
-EPOCHS=80
 EXTRA_TAG='default'
 DIST=true
 TCP_PORT=18888
@@ -37,7 +36,6 @@ Usage: sbatch --job-name=JOB_NAME --mail-user=MAIL_USER --gres=gpu:GPU_ID:NUM_GP
 [--train_batch_size TRAIN_BATCH_SIZE]
 [--test_batch_size TEST_BATCH_SIZE]
 [--cfg_file CFG_FILE]
-[--epochs EPOCHS]
 [--extra_tag 'EXTRA_TAG']
 [--dist]
 [--tcp_port TCP_PORT]
@@ -48,7 +46,6 @@ Usage: sbatch --job-name=JOB_NAME --mail-user=MAIL_USER --gres=gpu:GPU_ID:NUM_GP
 --train_batch_size     TRAIN_BATCH_SIZE   Train batch size                    [default=$TRAIN_BATCH_SIZE]
 --test_batch_size      TEST_BATCH_SIZE    Test batch size                     [default=$TEST_BATCH_SIZE]
 --cfg_file             CFG_FILE           Config file                         [default=$CFG_FILE]
---epochs               EPOCHS             Epochs                              [default=$EPOCHS]
 --extra_tag            EXTRA_TAG          Extra experiment tag                [default=$EXTRA_TAG]
 --dist                 DIST               Distributed training flag           [default=$DIST]
 --tcp_port             TCP_PORT           TCP port for distributed training   [default=$TCP_PORT]
@@ -123,14 +120,6 @@ while :; do
             die 'ERROR: "--test_batch_size" requires a non-empty option argument.'
         fi
         ;;
-    -e|--epochs)       # Takes an option argument; ensure it has been specified.
-        if [ "$2" ]; then
-            EPOCHS=$2
-            shift
-        else
-            die 'ERROR: "--epochs" requires a non-empty option argument.'
-        fi
-        ;;
     -t|--extra_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             EXTRA_TAG=$2
@@ -170,7 +159,6 @@ SING_IMG=$SING_IMG
 CFG_FILE=$CFG_FILE
 TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE
 TEST_BATCH_SIZE=$TEST_BATCH_SIZE
-EPOCHS=$EPOCHS
 EXTRA_TAG=$EXTRA_TAG
 DIST=$DIST
 TCP_PORT=$TCP_PORT
@@ -245,7 +233,6 @@ TRAIN_CMD+="
     --cfg_file $CFG_FILE
     --workers $SLURM_CPUS_PER_TASK
     --batch_size $TRAIN_BATCH_SIZE
-    --epochs $EPOCHS
     --extra_tag $EXTRA_TAG
 "
 
