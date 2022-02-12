@@ -504,10 +504,8 @@ class KittiDataset(DatasetTemplate):
             foreground_mask_cyc[..., np.newaxis]], axis=2)
             input_dict["combined_multiclass_mask"] = combined_multiclass_mask
         
+        input_dict['image_shape'] = img_shape
         data_dict = self.prepare_data(data_dict=input_dict)
-        
-        data_dict['image_shape'] = img_shape
-
         
         return data_dict
 
