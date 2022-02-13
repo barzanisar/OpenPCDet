@@ -420,6 +420,11 @@ class WaymoKittiFormatDataset(DatasetTemplate):
         elif kwargs['eval_metric'] == 'waymo':
             from ..waymo.waymo_eval import OpenPCDetWaymoDetectionMetricsEstimator
             eval = OpenPCDetWaymoDetectionMetricsEstimator()
+            for anno in eval_det_annos:
+                anno['name'] = np.array([x.title() for x in anno['name']])
+            for anno in eval_gt_annos:
+                anno['name'] = np.array([x.title() for x in anno['name']])
+            class_names = [x.title() for x in class_names]
 
             ap_dict = eval.waymo_evaluation(
                 eval_det_annos, eval_gt_annos, class_name=class_names,
