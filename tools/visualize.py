@@ -61,16 +61,10 @@ def main():
             # Print out batch info
             print('index: {}, frame_id: {}, num_boxes: {}'.format(index, data_dict['frame_id'], len(data_dict['gt_boxes'][0])))
 
-            # Default IoU value
-            ious = None
-            if args.show_iou:
-                ious = V.calculate_iou(pred_dicts[0]['pred_boxes'],data_dict['gt_boxes'])
-
             V.draw_scenes(
                 points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ious=ious, ref_labels=pred_dicts[0]['pred_labels'],
+                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels'],
                 gt_boxes=data_dict['gt_boxes'][0],
-                roi_boxes=hooked.get('rois'),
             )
             mlab.show(stop=True)
     else:
