@@ -64,7 +64,14 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             dataset_cfg=self.dataset_cfg, class_names=self.class_names, training=self.training, root_path=self.root_path, logger=self.logger
         )
         self.split = split
-        self.root_split_path = self.root_path / ('training' if self.split != 'test' else 'testing')
+        if self.split == 'train':
+            self.root_split_path = self.root_path / 'training'
+        elif self.split == 'val':
+            self.root_split_path = self.root_path / 'validation'
+        elif self.split == 'test':
+            self.root_split_path = self.root_path / 'testing'
+        else:
+            raise NotImplementedError(f'Split {self.split} is not valid')
 
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_id_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
@@ -331,15 +338,12 @@ class WaymoKittiFormatDataset(DatasetTemplate):
         """
         def get_template_prediction(num_samples):
             ret_dict = {
-                'name': np.zeros(num_samples), 'truncated': np.zeros(num_samples),
-                'occluded': np.zeros(num_samples), 'alpha': np.zeros(num_samples),
-                'bbox': np.zeros([num_samples, 4]), 'dimensions': np.zeros([num_samples, 3]),
-                'location': np.zeros([num_samples, 3]), 'rotation_y': np.zeros(num_samples),
-                'score': np.zeros(num_samples), 'boxes_lidar': np.zeros([num_samples, 7])
+                'name': np.zeros(num_samples), 'score': np.zeros(num_samples),
+                'boxes_lidar': np.zeros([num_samples, 7])
             }
             return ret_dict
 
-        def generate_single_sample_dict(batch_index, box_dict):
+        def generate_single_sample_dict(box_dict):
             pred_scores = box_dict['pred_scores'].cpu().numpy()
             pred_boxes = box_dict['pred_boxes'].cpu().numpy()
             pred_labels = box_dict['pred_labels'].cpu().numpy()
@@ -347,19 +351,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
             if pred_scores.shape[0] == 0:
                 return pred_dict
 
-            calib = batch_dict['calib'][batch_index]
-            image_shape = batch_dict['image_shape'][batch_index].cpu().numpy()
-            pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib)
-            pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
-                pred_boxes_camera, calib, image_shape=image_shape
-            )
-
             pred_dict['name'] = np.array(class_names)[pred_labels - 1]
-            pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6]
-            pred_dict['bbox'] = pred_boxes_img
-            pred_dict['dimensions'] = pred_boxes_camera[:, 3:6]
-            pred_dict['location'] = pred_boxes_camera[:, 0:3]
-            pred_dict['rotation_y'] = pred_boxes_camera[:, 6]
             pred_dict['score'] = pred_scores
             pred_dict['boxes_lidar'] = pred_boxes
 
@@ -367,26 +359,9 @@ class WaymoKittiFormatDataset(DatasetTemplate):
 
         annos = []
         for index, box_dict in enumerate(pred_dicts):
-            frame_id = batch_dict['frame_id'][index]
-
-            single_pred_dict = generate_single_sample_dict(index, box_dict)
-            single_pred_dict['frame_id'] = frame_id
+            single_pred_dict = generate_single_sample_dict(box_dict)
+            single_pred_dict['frame_id'] = batch_dict['frame_id'][index]
             annos.append(single_pred_dict)
-
-            if output_path is not None:
-                cur_det_file = output_path / ('%s.txt' % frame_id)
-                with open(cur_det_file, 'w') as f:
-                    bbox = single_pred_dict['bbox']
-                    loc = single_pred_dict['location']
-                    dims = single_pred_dict['dimensions']  # lhw -> hwl
-
-                    for idx in range(len(bbox)):
-                        print('%s -1 -1 %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f'
-                              % (single_pred_dict['name'][idx], single_pred_dict['alpha'][idx],
-                                 bbox[idx][0], bbox[idx][1], bbox[idx][2], bbox[idx][3],
-                                 dims[idx][1], dims[idx][2], dims[idx][0], loc[idx][0],
-                                 loc[idx][1], loc[idx][2], single_pred_dict['rotation_y'][idx],
-                                 single_pred_dict['score'][idx]), file=f)
 
         return annos
 
@@ -394,27 +369,53 @@ class WaymoKittiFormatDataset(DatasetTemplate):
         if 'annos' not in self.kitti_infos[0].keys():
             return None, {}
 
-        from ..kitti.kitti_object_eval_python import eval as kitti_eval
-
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
 
-        # Convert to KITTI format for evaluation
-        waymo_to_kitti_labels = {
-            'VEHICLE': 'Car',
-            'PEDESTRIAN': 'Pedestrian',
-            'CYCLIST': 'Cyclist',
-            'SIGN': 'Sign'
-        }
-        for anno in eval_det_annos:
-            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
-        for anno in eval_gt_annos:
-            anno['name'] = np.array([waymo_to_kitti_labels[x] for x in anno['name']])
-        class_names = [waymo_to_kitti_labels[x] for x in class_names]
+        if kwargs['eval_metric'] == 'kitti':
+            from ..kitti.kitti_object_eval_python import eval as kitti_eval
+            from ..kitti import kitti_utils
 
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+            # Convert to KITTI format for evaluation
+            waymo_to_kitti_labels = {
+                'VEHICLE': 'Car',
+                'PEDESTRIAN': 'Pedestrian',
+                'CYCLIST': 'Cyclist',
+                'SIGN': 'Sign'
+            }
+            kitti_utils.transform_annotations_to_kitti_format(eval_det_annos, map_name_to_kitti=waymo_to_kitti_labels)
+            kitti_utils.transform_annotations_to_kitti_format(
+                eval_gt_annos, map_name_to_kitti=waymo_to_kitti_labels,
+                info_with_fakelidar=self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False)
+            )
+            class_names = [waymo_to_kitti_labels[x] for x in class_names]
 
-        return ap_result_str, ap_dict
+            ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+
+            return ap_result_str, ap_dict
+
+        elif kwargs['eval_metric'] == 'waymo':
+            from ..waymo.waymo_eval import OpenPCDetWaymoDetectionMetricsEstimator
+            eval = OpenPCDetWaymoDetectionMetricsEstimator()
+            for anno in eval_det_annos:
+                anno['name'] = np.array([x.title() for x in anno['name']])
+            for anno in eval_gt_annos:
+                anno['name'] = np.array([x.title() for x in anno['name']])
+            class_names = [x.title() for x in class_names]
+
+            ap_dict = eval.waymo_evaluation(
+                eval_det_annos, eval_gt_annos, class_name=class_names,
+                distance_thresh=1000, fake_gt_infos=self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False)
+            )
+            ap_result_str = '\n'
+            for key in ap_dict:
+                ap_dict[key] = ap_dict[key][0]
+                ap_result_str += '%s: %.4f \n' % (key, ap_dict[key])
+
+            return ap_result_str, ap_dict
+
+        else:
+            raise NotImplementedError
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:
@@ -474,7 +475,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
                 input_dict['points'] = np.concatenate([points, np.zeros((points.shape[0],1))], axis=1)
             else:
                 input_dict['points'] = points
-            
+
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
 
@@ -510,7 +511,7 @@ class WaymoKittiFormatDataset(DatasetTemplate):
 
         input_dict['image_shape'] = img_shape
         data_dict = self.prepare_data(data_dict=input_dict)
-        
+
         return data_dict
 
 

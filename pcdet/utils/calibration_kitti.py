@@ -80,7 +80,7 @@ class Calibration(object):
         """
         pts_rect_hom = self.cart_to_hom(pts_rect)
         pts_2d_hom = np.dot(pts_rect_hom, self.P2.T)
-        pts_img = (pts_2d_hom[:, 0:2].T / pts_rect_hom[:, 2]).T  # (N, 2)
+        pts_img = (pts_2d_hom[:, 0:2].T / (pts_rect_hom[:, 2] + 1e-5)).T  # (N, 2)
         pts_rect_depth = pts_2d_hom[:, 2] - self.P2.T[3, 2]  # depth in rect camera coord
         return pts_img, pts_rect_depth
 
