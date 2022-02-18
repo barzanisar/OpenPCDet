@@ -93,11 +93,7 @@ class PVRCNNHead(RoIHeadTemplate):
         point_features = batch_dict['point_features']
 
         # weighting based on foreground segmentation from image stream
-        if self.model_cfg.IMAGE_BASED_KPW:
-            keypoints_img_weights = self.get_kp_image_2d_bounding_box_gt_grid_sampler(batch_dict)
-            point_features = point_features * keypoints_img_weights.view(-1, 1)
-        else:
-            point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
+        point_features = point_features * batch_dict['point_cls_scores'].view(-1, 1)
 
         global_roi_grid_points, local_roi_grid_points = self.get_global_grid_points_of_roi(
             rois, grid_size=self.model_cfg.ROI_GRID_POOL.GRID_SIZE
