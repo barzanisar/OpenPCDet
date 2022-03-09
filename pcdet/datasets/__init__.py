@@ -9,13 +9,15 @@ from .kitti.kitti_dataset import KittiDataset
 from .nuscenes.nuscenes_dataset import NuScenesDataset
 from .waymo.waymo_dataset import WaymoDataset
 from .cadc.cadc_dataset import CadcDataset
+from .cadc.painted_cadc_dataset import PaintedCadcDataset
 
 __all__ = {
     'DatasetTemplate': DatasetTemplate,
     'KittiDataset': KittiDataset,
     'NuScenesDataset': NuScenesDataset,
     'WaymoDataset': WaymoDataset,
-    'CadcDataset': CadcDataset
+    'CadcDataset': CadcDataset,
+    'PaintedCadcDataset': PaintedCadcDataset
 }
 
 
