@@ -143,7 +143,7 @@ class CadcDataset(DatasetTemplate):
         # Filter out objects
         for idx, obj in enumerate(obj_list_temp):
             # Filter by label
-            if (obj['label'] not in ['Car', 'Pedestrian', 'Truck']):
+            if (obj['label'] not in ['Car', 'Pedestrian', 'Truck']): #TODO remove hardcoded labels
                 continue
             # Set Pickup_Truck label as top label
             if obj['label'] == 'Truck':
@@ -154,7 +154,7 @@ class CadcDataset(DatasetTemplate):
             # filter by point_count
             if obj['points_count'] == 0:
                 ratio_to_criteria = obj['points_count'] / point_count_threshold[obj['label']]
-                if ratio_to_criteria > closest_ratio_to_criteria:
+                if ratio_to_criteria > closest_ratio_to_criteria: #TODO never becomes true
                     closest_idx_to_criteria = idx
                 continue
             # filter by distance
@@ -242,14 +242,14 @@ class CadcDataset(DatasetTemplate):
             
             print('%s sample_idx: %s ' % (self.split, sample_idx))
             info = {}
-            pc_info = {'num_features': 4, 'lidar_idx': sample_idx}
+            pc_info = {'num_features': 4, 'lidar_idx': sample_idx} #TODO: painting
             info['point_cloud'] = pc_info
 
             image_info = {'image_idx': sample_idx, 'image_shape': self.get_image_shape(sample_idx)}
             info['image'] = image_info
             calib = self.get_calib(sample_idx)
             
-            calib_info = {'T_IMG_CAM0': calib.t_img_cam[0], 'T_CAM_LIDAR': calib.t_cam_lidar[0]}
+            calib_info = {'T_IMG_CAM0': calib.t_img_cam[0], 'T_CAM_LIDAR': calib.t_cam_lidar[0]} #projection matrix K 3x4 (last column zero), T from lidar to cam0
 
             info['calib'] = calib_info
 
