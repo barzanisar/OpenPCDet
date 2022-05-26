@@ -10,6 +10,7 @@ import numpy as np
 from scipy.special import gamma
 from scipy.integrate import trapz
 import PyMieScatt as ps
+import pickle
 
 
 class LISA():
@@ -44,8 +45,22 @@ class LISA():
         self.dR   = dR
         self.mode = mode
         self.atm_model = atm_model
-        
-        
+        with open('/home/barza/OpenPCDet/scripts/rain_pattern.pkl', 'rb') as f:
+            self.rain_pattern = pickle.load(f)
+
+        for key, val in self.rain_pattern.items():
+            mask = np.isnan(val)
+            idx = np.where(~mask, np.arange(mask.shape[0]), 1000)
+            val[:np.nanmin(idx)] = val[np.nanmin(idx)]
+
+            mask = np.isnan(val)
+            idx = np.where(~mask, np.arange(mask.shape[0]), -1)
+            val[np.nanmax(idx):] =  val[np.nanmax(idx)]
+            if key != 'range_bins':
+                self.rain_pattern[key] = np.clip(val, 0.0, 1.0)
+
+        self.rain_pattern['prob_keep_vehicle'][-2:] = self.rain_pattern['prob_keep_vehicle'][-3]
+
         if saved_model:
             # If Mie parameters are saved, use those
             dat = np.load('mie_q.npz')
@@ -305,6 +320,95 @@ class LISA():
         pc_new[:,3] = ref_new
         
         return pc_new
+    def prob_rain(self, pc, Rr):
+        '''
+        Lidar rain simulator from statistics of waymo DA dataset
+
+        Parameters
+        ----------
+        pc : point cloud (N,4)
+        Rr : rain rate in mm/hr
+
+        Returns
+        -------
+        pc_new : output point cloud (N,4)
+
+        '''
+
+        shp = pc.shape  # data shape
+        pc_new = np.zeros((shp[0], shp[1] + 1))  # init new point cloud
+        leng = shp[0]  # data length
+
+        # Rename variables for better readability
+        x = pc[:, 0]
+        y = pc[:, 1]
+        z = pc[:, 2]
+        ref = pc[:, 3]
+        ranges = np.sqrt(x ** 2 + y ** 2 + z ** 2)  # range in m
+
+        bin_indices = np.digitize(ranges, self.rain_pattern['range_bins']) -1
+        use_vehicle = np.random.uniform(0,1, size = leng) < 0.4
+
+        scale_intensity_vehicle = self.rain_pattern['scale_intensity_vehicle'][bin_indices]
+        prob_keep_vehicle = self.rain_pattern['prob_keep_vehicle'][bin_indices]
+
+        scale_intensity = self.rain_pattern['scale_intensity'][bin_indices]
+        prob_keep = self.rain_pattern['prob_keep'][bin_indices]
+
+        scale_intensity[use_vehicle] = scale_intensity_vehicle[use_vehicle]
+        prob_keep[use_vehicle] = prob_keep_vehicle[use_vehicle]
+
+        std_scale_intensity = scale_intensity.std()
+        std_prob_keep = prob_keep.std()
+
+        ref_new = scale_intensity * ref
+        keep = np.random.uniform(0, 1, size=prob_keep.shape) < prob_keep
+        pc_new[keep, 0:3] = pc[keep, 0:3]
+        pc_new[keep, 3] = ref_new[keep]
+        pc_new[keep, 4] = np.ones(ref_new[keep].shape[0]) * 2
+        return pc_new
+
+
+        # # Get parameters from class init
+        # rmax = self.rmax  # max range (m)
+        # Pmin = 0.9 * rmax ** (-2) / np.pi  # min measurable power (arb units)
+        #
+        # # Calculate extinction coefficient from rain rate
+        # alpha = 0.01 * Rr ** 0.6
+        #
+        #
+        # indv = np.where(ran > 0)[0]  # clean data might already have invalid points
+        # P0 = np.zeros((leng,))
+        # P0[indv] = ref[indv] * np.exp(-2 * alpha * ran[indv]) / (ran[indv] ** 2)  # calculate reflected power
+        #
+        # # init new ref and ran
+        # ran_new = np.zeros((leng,))
+        # ref_new = np.zeros((leng,))
+        #
+        # indp = np.where(P0 > Pmin)[0]  # points where power is greater than Pmin
+        # ref_new[indp] = ref[indp] * np.exp(-2 * alpha * ran[indp])  # reflectivity reduced by atten
+        #
+        # snr = P0[indp] / Pmin
+        # sig = self.dR / np.sqrt(2 * snr)  # 0.02*ran[indp]* (1-np.exp(-Rr))**2
+        # ran_new[indp] = ran[indp] + np.random.normal(0, sig)  # new range with uncertainty
+        #
+        # # Init angles
+        # phi = np.zeros((leng,))
+        # the = np.zeros((leng,))
+        #
+        # phi[indp] = np.arctan2(y[indp], x[indp])  # angle in radians
+        # the[indp] = np.arccos(z[indp] / ran[indp])  # angle in radians
+        #
+        # # Update new x,y,z based on new range
+        # pc_new[:, 0] = ran_new * np.sin(the) * np.cos(phi)
+        # pc_new[:, 1] = ran_new * np.sin(the) * np.sin(phi)
+        # pc_new[:, 2] = ran_new * np.cos(the)
+        # pc_new[:, 3] = ref_new
+        # pc_new[indp, 4] = np.ones(indp.shape[0]) * 2
+        #
+        # return pc_new
+
+
     def msu_rain(self,pc,Rr):
         '''
         Lidar rain simulator from Goodin et al., 'Predicting the Influence of 
@@ -500,7 +604,7 @@ class LISA():
         D  = self.D
         qe = self.qext
         qb = self.qback
-        alpha = 25 * 1e-6*trapz(D**2*qe*Nd,D)*np.pi/4 # m^-1
+        alpha = 1e-6*trapz(D**2*qe*Nd,D)*np.pi/4 # m^-1 (25 * ) is missing
         beta  = 1e-6*trapz(D**2*qb*Nd,D)*np.pi/4 # m^-1
         return alpha, beta
     
