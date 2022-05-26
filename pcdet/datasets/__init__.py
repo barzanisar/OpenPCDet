@@ -9,13 +9,15 @@ from .kitti.kitti_dataset import KittiDataset
 from .nuscenes.nuscenes_dataset import NuScenesDataset
 from .waymo.waymo_dataset import WaymoDataset
 from .cadc.cadc_dataset import CadcDataset
+from .dense.dense_dataset import DenseDataset
 
 __all__ = {
     'DatasetTemplate': DatasetTemplate,
     'KittiDataset': KittiDataset,
     'NuScenesDataset': NuScenesDataset,
     'WaymoDataset': WaymoDataset,
-    'CadcDataset': CadcDataset
+    'CadcDataset': CadcDataset,
+    'DenseDataset': DenseDataset
 }
 
 
