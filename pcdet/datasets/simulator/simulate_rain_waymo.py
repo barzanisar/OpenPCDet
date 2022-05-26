@@ -31,7 +31,7 @@ def get_colors(pc, color_feature=None):
     elif color_feature == 3:
         feature = pc[:, 3]
         min_value = 0
-        max_value = 255
+        max_value = 1
 
     elif color_feature == 4:
         feature = pc[:, 4]
@@ -46,27 +46,23 @@ def get_colors(pc, color_feature=None):
         print(f'scattered % #: {100 * np.count_nonzero(colors[:, 1])/ pc.shape[0]}')
         print(f'attenuated % #: {100 * np.count_nonzero(colors[:, 2])/ pc.shape[0]}')
 
-
-        # min_value = np.min(feature)
-        # max_value = np.max(feature)
-
     else:
         feature = np.linalg.norm(pc[:, 0:3], axis=1)
         min_value = np.min(feature)
         max_value = np.max(feature)
 
 
+    if color_feature != 4:
+        norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
 
-    # norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
-    #
-    #
-    # cmap = cm.jet  # sequential
-    #
-    # m = cm.ScalarMappable(norm=norm, cmap=cmap)
-    #
-    # colors = m.to_rgba(feature)
-    # colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
-    # colors[:, 3] = 0.5
+
+        cmap = cm.jet  # sequential
+
+        m = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+        colors = m.to_rgba(feature)
+        colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
+        colors[:, 3] = 0.5
 
 
 
@@ -74,7 +70,7 @@ def get_colors(pc, color_feature=None):
 
 def genHistogram(pc, Rr=0):
     plt.close('all')
-    fig = plt.figure('hist', figsize=(10,10))
+    fig = plt.figure('hist', figsize=(15,5))
     range = np.linalg.norm(pc[:, 0:3], axis=1)
     intensity = pc[:,3]
 
@@ -94,7 +90,7 @@ def genHistogram(pc, Rr=0):
 
     fig.add_subplot(1, 2, 2)
     n, bins, patches = plt.hist(x=intensity,
-                                bins=np.linspace(start=0, stop=max(intensity.max(), 1), num=20 + 1, endpoint=True),
+                                bins=np.linspace(start=0, stop=min(intensity.max(), 1), num=20 + 1, endpoint=True),
                                 color='#0504aa',
                                 alpha=0.7, rwidth=0.85)
 
