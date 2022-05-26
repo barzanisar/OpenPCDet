@@ -1,12 +1,12 @@
 DATASET: 'WaymoDataset'
-DATA_PATH: '../data/waymo'
+DATA_PATH: '/media/barza/WD_BLACK/datasets/waymo'
 PROCESSED_DATA_TAG: 'waymo_processed_data_10'
 
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
     'train': train_clear_last718_train_da,
-    'test': val_da
+    'test': val_clear_sim_rain
 }
 
 SAMPLED_INTERVAL: {

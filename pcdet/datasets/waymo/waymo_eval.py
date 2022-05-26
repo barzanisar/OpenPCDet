@@ -23,7 +23,7 @@ def limit_period(val, offset=0.5, period=np.pi):
 class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
     WAYMO_CLASSES = ['unknown', 'Vehicle', 'Pedestrian', 'Truck', 'Cyclist']
 
-    def generate_waymo_type_results(self, infos, class_names, is_gt=False, fake_gt_infos=True):
+    def generate_waymo_type_results(self, infos, class_names, is_gt=False, fake_gt_infos=True, min_gt_points=0):
         def boxes3d_kitti_fakelidar_to_lidar(boxes3d_lidar):
             """
             Args:
@@ -37,15 +37,20 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             return np.concatenate([boxes3d_lidar[:, 0:3], l, w, h, -(r + np.pi / 2)], axis=-1)
 
         frame_id, boxes3d, obj_type, score, overlap_nlz, difficulty = [], [], [], [], [], []
+        total_num_boxes = 0
+        total_boxes_min_pts = 0
         for frame_index, info in enumerate(infos):
             if is_gt:
                 box_mask = np.array([n in class_names for n in info['name']], dtype=np.bool_)
+                total_num_boxes += box_mask.sum()
                 if 'num_points_in_gt' in info:
                     zero_difficulty_mask = info['difficulty'] == 0
                     info['difficulty'][(info['num_points_in_gt'] > 5) & zero_difficulty_mask] = 1
                     info['difficulty'][(info['num_points_in_gt'] <= 5) & zero_difficulty_mask] = 2
-                    nonzero_mask = info['num_points_in_gt'] > 0
+                    #nonzero_mask = (info['num_points_in_gt'] < min_gt_points) & (info['num_points_in_gt'] > 0)
+                    nonzero_mask = info['num_points_in_gt'] > min_gt_points
                     box_mask = box_mask & nonzero_mask
+                    total_boxes_min_pts += box_mask.sum()
                 else:
                     print('Please provide the num_points_in_gt for evaluating on Waymo Dataset '
                           '(If you create Waymo Infos before 20201126, please re-create the validation infos '
@@ -71,6 +76,10 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             obj_type += [self.WAYMO_CLASSES.index(name) for i, name in enumerate(box_name)]
             frame_id.append(np.array([frame_index] * num_boxes))
             overlap_nlz.append(np.zeros(num_boxes))  # set zero currently
+        # if is_gt:
+        #     with open('/home/barza/OpenPCDet/output/waymo_models/pv_rcnn_sim_rain/default/eval/epoch_60/val_clear_sim_rain/default/eval_across_range/percentage_boxes_max.txt', 'a') as f:
+        #         f.write(f'Percentage of boxes with points 0 - {min_gt_points}: {total_boxes_min_pts}/{total_num_boxes} = {100.*total_boxes_min_pts/total_num_boxes}\n')
+        #     print(f'Percentage of boxes with points 0 - {min_gt_points}: {total_boxes_min_pts}/{total_num_boxes} = {100.*total_boxes_min_pts/total_num_boxes}')
 
         frame_id = np.concatenate(frame_id).reshape(-1).astype(np.int64)
         boxes3d = np.concatenate(boxes3d, axis=0)
@@ -166,8 +175,8 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
     def eval_value_ops(self, sess, graph, metrics):
         return {item[0]: sess.run([item[1][0]]) for item in metrics.items()}
 
-    def mask_by_distance(self, distance_thresh, boxes_3d, *args):
-        mask = np.linalg.norm(boxes_3d[:, 0:2], axis=1) < distance_thresh + 0.5
+    def mask_by_distance(self, distance_thresh, lower_bound, boxes_3d, *args):
+        mask = (np.linalg.norm(boxes_3d[:, 0:2], axis=1) < distance_thresh) & (np.linalg.norm(boxes_3d[:, 0:2], axis=1) >= lower_bound)
         boxes_3d = boxes_3d[mask]
         ret_ans = [boxes_3d]
         for arg in args:
@@ -175,7 +184,7 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
 
         return tuple(ret_ans)
 
-    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True):
+    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True, lower_bound=-0.1, min_gt_points=0):
         print('Start the waymo evaluation...')
         assert len(prediction_infos) == len(gt_infos), '%d vs %d' % (prediction_infos.__len__(), gt_infos.__len__())
 
@@ -184,14 +193,14 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             prediction_infos, class_name, is_gt=False
         )
         gt_frameid, gt_boxes3d, gt_type, gt_score, gt_overlap_nlz, gt_difficulty = self.generate_waymo_type_results(
-            gt_infos, class_name, is_gt=True, fake_gt_infos=fake_gt_infos
+            gt_infos, class_name, is_gt=True, fake_gt_infos=fake_gt_infos, min_gt_points=min_gt_points
         )
 
         pd_boxes3d, pd_frameid, pd_type, pd_score, pd_overlap_nlz = self.mask_by_distance(
-            distance_thresh, pd_boxes3d, pd_frameid, pd_type, pd_score, pd_overlap_nlz
+            distance_thresh, lower_bound, pd_boxes3d, pd_frameid, pd_type, pd_score, pd_overlap_nlz
         )
         gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty = self.mask_by_distance(
-            distance_thresh, gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty
+            distance_thresh, lower_bound, gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty
         )
 
         print('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
