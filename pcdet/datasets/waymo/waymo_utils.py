@@ -173,11 +173,10 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
     sequence_name = os.path.splitext(os.path.basename(sequence_file))[0]
 
     # print('Load record (sampled_interval=%d): %s' % (sampled_interval, sequence_name))
-    if not sequence_file.exists():
+    if not sequence_file.exists() and not 'sim_rain' in sequence_name:
         print('NotFoundError: %s' % sequence_file)
         return []
 
-    dataset = tf.data.TFRecordDataset(str(sequence_file), compression_type='')
     cur_save_dir = save_path / sequence_name
     cur_save_dir.mkdir(parents=True, exist_ok=True)
     pkl_file = cur_save_dir / ('%s.pkl' % sequence_name)
@@ -187,6 +186,8 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
         sequence_infos = pickle.load(open(pkl_file, 'rb'))
         print('Skip sequence since it has been processed before: %s' % pkl_file)
         return sequence_infos
+
+    dataset = tf.data.TFRecordDataset(str(sequence_file), compression_type='')
 
     # data corresponds to one frame in a sequence
     for cnt, data in enumerate(dataset):
@@ -210,7 +211,7 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
 
         pose = np.array(frame.pose.transform, dtype=np.float32).reshape(4, 4)
         info['pose'] = pose
-        info['stats'] = frame.context.stats
+        #info['stats'] = frame.context.stats
         #print(info['stats'].weather, info['stats'].location) 
 
         if has_label:
