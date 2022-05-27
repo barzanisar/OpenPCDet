@@ -32,10 +32,12 @@ DATA_DIR_KITTI=/home/$USER/projects/def-swasland-ab/Datasets/Kitti
 INFOS_DIR_KITTI=data/kitti
 
 # ========== WAYMO ==========
-#/home/$USER/projects/rrg-swasland/Datasets/waymo-0000
-#/home/$USER/projects/rrg-swasland/Datasets/waymo-0000/Infos
 DATA_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo
 INFOS_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo/Infos
+
+# ========== DENSE ==========
+DATA_DIR_DENSE= /home/$USER/projects/def-swasland-ab/Datasets/Dense
+INFOS_DIR_DENSE= /home/$USER/projects/def-swasland-ab/Datasets/Dense/Infos
 
 # Additional parameters
 DATASET=kitti
@@ -122,6 +124,11 @@ while :; do
                 INFOS_DIR=$INFOS_DIR_WAYMO
                 WORKERS=$(($SLURM_CPUS_PER_TASK / 2))
                 echo "Using default Waymo dataset dirs"
+            elif [[ "$CFG_FILE" == *"dense_models"* ]]; then
+                DATASET=dense
+                DATA_DIR=$DATA_DIR_DENSE
+                INFOS_DIR=$INFOS_DIR_DENSE
+                echo "Using default Dense dataset dirs"
             else
                 die 'ERROR: Could not determine dataset from cfg_file path.'
             fi
