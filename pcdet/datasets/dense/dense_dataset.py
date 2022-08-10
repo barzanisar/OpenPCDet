@@ -15,6 +15,19 @@ from pcdet.datasets.dataset import DatasetTemplate, nth_repl
 from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from pcdet.utils import box_utils, calibration_kitti, common_utils, object3d_kitti
 
+import scipy.stats as stats
+import open3d as o3d
+from lib.LiDAR_snow_sim.tools.wet_ground.augmentation import ground_water_augmentation
+from lib.LiDAR_snow_sim.tools.snowfall.sampling import snowfall_rate_to_rainfall_rate
+# from lib.LISA.python.lisa import LISA
+
+from lib.LiDAR_fog_sim.fog_simulation import *
+from lib.LiDAR_fog_sim.SeeingThroughFog.tools.DatasetFoggification.beta_modification import BetaRadomization
+from lib.LiDAR_fog_sim.SeeingThroughFog.tools.DatasetFoggification.lidar_foggification import haze_point_cloud
+
+
+#from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
+
 
 class Namespace:
     def __init__(self, **kwargs):
@@ -70,6 +83,26 @@ class DenseDataset(DatasetTemplate):
 
         self.lidar_folder = f'lidar_{self.sensor_type}_{self.signal_type}'
         self.empty_annos = 0
+        # self.curriculum_stage = 0
+        # self.total_iterations = -1
+        # self.current_iteration = -1
+        # self.iteration_increment = -1
+        self.random_generator = np.random.default_rng()
+        self.snowfall_rates = [0.5, 0.5, 1.0, 2.0, 2.5, 1.5, 1.5, 1.0]      # mm/h
+        self.terminal_velocities = [2.0, 1.2, 1.6, 2.0, 1.6, 0.6, 0.4, 0.2] # m/s
+        self.rainfall_rates = []
+        for i in range(len(self.snowfall_rates)):
+            self.rainfall_rates.append(snowfall_rate_to_rainfall_rate(self.snowfall_rates[i],
+                                                                      self.terminal_velocities[i]))
+        # self.lisa = None
+        # if 'LISA' in self.dataset_cfg:
+        #     sampling, mode, chance = self.dataset_cfg['LISA'].split('_')
+        #     self.lisa = LISA(mode=mode)
+    
+    # def init_curriculum(self, it, epochs, workers):
+    #     self.current_iteration = it
+    #     self.iteration_increment = workers
+    #     self.total_iterations = epochs * len(self)
 
 
     def include_dense_data(self, mode):
@@ -485,7 +518,101 @@ class DenseDataset(DatasetTemplate):
 
         return len(self.dense_infos)
 
+    def foggify(self, points, sample_idx, alpha, augmentation_method, on_the_fly=False):
 
+        if augmentation_method == 'DENSE' and alpha != '0.000' and not on_the_fly:          # load from disk
+
+            curriculum_folder = f'{self.lidar_folder}_{augmentation_method}_beta_{alpha}'
+
+            lidar_file = self.root_path / 'fog_simulation' / curriculum_folder / ('%s.bin' % sample_idx)
+            assert lidar_file.exists(), f'could not find {lidar_file}'
+            points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 5)
+
+        if augmentation_method == 'DENSE' and alpha != '0.000' and on_the_fly:
+
+            B = BetaRadomization(beta=float(alpha), seed=0)
+            B.propagate_in_time(10)
+
+            arguments = Namespace(sensor_type='Velodyne HDL-64E S3D', fraction_random=0.05)
+            n_features = points.shape[1]
+            points = haze_point_cloud(points, B, arguments)
+            points = points[:, :n_features]
+
+        if augmentation_method == 'CVL' and alpha != '0.000':
+
+            p = ParameterSet(alpha=float(alpha), gamma=0.000001)
+
+            gain = self.dataset_cfg.get('FOG_GAIN', False)
+            fog_noise_variant = self.dataset_cfg.get('FOG_NOISE_VARIANT', 'v1')
+            soft = self.dataset_cfg.get('FOG_SOFT', True)
+            hard = self.dataset_cfg.get('FOG_HARD', True)
+
+            points, _, _ = simulate_fog(p, pc=points, noise=10, gain=gain, noise_variant=fog_noise_variant,
+                                        soft=soft, hard=hard)
+
+        return points
+
+    def o3d_dynamic_radius_outlier_filter(self, pc: np.ndarray, alpha: float = 0.45, beta: float = 3.0,
+                                    k_min: int = 3, sr_min: float = 0.04) -> np.ndarray:
+        """
+        :param pc:      pointcloud
+        :param alpha:   horizontal angular resolution of the lidar
+        :param beta:    multiplication factor
+        :param k_min:   minimum number of neighbors
+        :param sr_min:  minumum search radius
+
+        :return:        mask [False = snow, True = no snow]
+        """
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
+        num_points = len(pcd.points)
+
+        # initialize mask with False
+        mask = np.zeros(num_points, dtype=bool)
+
+        k = k_min + 1
+
+        kd_tree = o3d.geometry.KDTreeFlann(pcd)
+
+        for i in range(num_points):
+
+            x = pc[i,0]
+            y = pc[i,1]
+
+            r = np.linalg.norm([x, y], axis=0)
+
+            sr = alpha * beta * np.pi / 180 * r
+
+            if sr < sr_min:
+                sr = sr_min
+
+            [_, _, sqdist] = kd_tree.search_knn_vector_3d(pcd.points[i], k)
+
+            neighbors = -1      # start at -1 since it will always be its own neighbour
+
+            for val in sqdist:
+                if np.sqrt(val) < sr:
+                    neighbors += 1
+
+            if neighbors >= k_min:
+                mask[i] = True  # no snow -> keep
+
+        return mask
+
+    def crop_pc(self, pc):
+        upper_idx = np.sum((pc[:, 0:3] <= self.point_cloud_range[3:6]).astype(np.int32), 1) == 3
+        lower_idx = np.sum((pc[:, 0:3] >= self.point_cloud_range[0:3]).astype(np.int32), 1) == 3
+
+        new_pointidx = (upper_idx) & (lower_idx)
+        pc = pc[new_pointidx, :]
+
+        # Extract FOV points
+        if self.dataset_cfg['FOV_POINTS_ONLY']:
+            pts_rect = self.calib.lidar_to_rect(pc[:, 0:3])
+            fov_flag = get_fov_flag(pts_rect, (1024, 1920), self.calib)
+            pc = pc[fov_flag]
+
+        return pc
     def __getitem__(self, index):
         # index = 563                               # this VLP32 index does not have a single point in the camera FOV
         if self._merge_all_iters_to_one_epoch:
@@ -501,7 +628,172 @@ class DenseDataset(DatasetTemplate):
         #before_dict = {'points': copy.deepcopy(points)}
 
         img_shape = info['image']['image_shape']
+        weather = info['annos']['weather']
 
+        
+        apply_dror =  'DROR' in self.dataset_cfg #TODO: weather != 'clear' and Apply DROR only when training on all_60 and apply weather aug when training on clear only
+        dror_applied = False
+        if apply_dror:
+            try:
+                alpha = self.dataset_cfg['DROR']
+
+                dror_path = self.root_path / 'DROR' / f'alpha_{alpha}' / \
+                            'all' / self.sensor_type / self.signal_type / 'full' / f'{sample_idx}.pkl'
+                
+                if dror_path.exists():
+                    with open(str(dror_path), 'rb') as f:
+                        snow_indices = pickle.load(f)
+                else:
+                    #Crop points here to save time on dror
+                    self.logger.info(f'DROR path does not exist! {weather}, {sample_idx}')
+                    
+                    keep_mask = self.o3d_dynamic_radius_outlier_filter(points, alpha=alpha)
+                    snow_indices = (keep_mask == 0).nonzero()[0]#.astype(np.int16)
+
+                range_snow_indices = np.linalg.norm(points[snow_indices][:,:3], axis=1)
+                snow_indices = snow_indices[range_snow_indices < 30]
+                keep_indices = np.ones(len(points), dtype=bool)
+                keep_indices[snow_indices] = False
+
+                points = points[keep_indices]
+                dror_applied = True
+            except:
+                self.logger.info(f'DROR not applied! {weather}, {sample_idx}')
+                pass
+        
+        if self.training:
+            # Snowfall Augmentation
+            snowfall_augmentation_applied = False
+            apply_snow = 'SNOW' in self.dataset_cfg
+            if apply_snow:
+                assert info['annos']['weather'] == 'clear'
+                parameters = self.dataset_cfg['SNOW'].split('_')
+
+                sampling = parameters[0]        # e.g. uniform
+                mode = parameters[1]            # gunn or sekhon
+                chance = parameters[2]          # e.g. 8in9
+
+                choices = [0]
+
+                if chance == '8in9':
+                    choices = [1, 1, 1, 1, 1, 1, 1, 1, 0]
+                elif chance == '4in5':
+                    choices = [1, 1, 1, 1, 0]
+                elif chance == '1in2':
+                    choices = [1, 0]
+                elif chance == '1in1':
+                    choices = [1]
+                elif chance == '1in4':
+                    choices = [1, 0, 0, 0]
+                elif chance == '1in10': #recommended by lidar snow sim paper
+                    choices = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+                if np.random.choice(choices): 
+
+                    rainfall_rate = 0
+
+                    if sampling == 'uniform':
+                        rainfall_rate = int(np.random.choice(self.rainfall_rates))
+
+                    if self.dataset_cfg['FOV_POINTS_ONLY']:
+                        snow_sim_dir = 'snowfall_simulation_FOV'
+                    else:
+                        snow_sim_dir = 'snowfall_simulation'
+                    lidar_file = self.root_path / snow_sim_dir / mode / \
+                                f'{self.lidar_folder}_rainrate_{rainfall_rate}' / f'{sample_idx}.bin'
+
+                    try:
+                        points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 5)
+                        snowfall_augmentation_applied = True
+                    except FileNotFoundError:
+                        self.logger.info(f'\n{lidar_file} not found')
+                        pass
+        
+            wet_surface_applied = False
+            apply_wet_surface = 'WET_SURFACE' in self.dataset_cfg
+            if apply_wet_surface:
+                assert info['annos']['weather'] == 'clear'
+
+                method = self.dataset_cfg['WET_SURFACE']
+
+                choices = [0]
+
+                if '1in2' in method:
+                    choices = [0, 1]                            # pointcloud gets augmented with 50% chance
+                
+                elif '1in1' in method:
+                    choices = [1]
+
+                elif '1in4' in method:
+                    choices = [0, 0, 0, 1]                      # pointcloud gets augmented with 25% chance
+
+                elif '1in10' in method:
+                    choices = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]    # pointcloud gets augmented with 10% chance
+
+                apply_coupled = self.dataset_cfg.get('COUPLED', False) and snowfall_augmentation_applied
+
+                if np.random.choice(choices) or apply_coupled: 
+
+                    if 'norm' in method:
+
+                        lower, upper = 0.05, 0.5
+                        mu, sigma = 0.2, 0.1
+                        X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+
+                        water_height = X.rvs(1)
+
+                    else:
+
+                        elements = np.linspace(0.001, 0.012, 12) #np.linspace(0.1, 1.2, 12)
+                        probabilities = 5 * np.ones_like(elements)  # each element initially 5% chance
+
+                        probabilities[0] = 15   # 0.1
+                        probabilities[1] = 25   # 0.2
+                        probabilities[2] = 15   # 0.3
+
+                        probabilities = probabilities / 100
+
+                        water_height = np.random.choice(elements, 1, p=probabilities)
+
+                    try:
+                        points = ground_water_augmentation(points, water_height=water_height, debug=False)
+                        wet_surface_applied = True
+                    except (TypeError, ValueError):
+                        pass
+            
+            #Fog augmentation
+            apply_fog = 'FOG_AUGMENTATION' in self.dataset_cfg and not snowfall_augmentation_applied
+            if apply_fog:
+                assert info['annos']['weather'] == 'clear'
+                augmentation_method = self.dataset_cfg['FOG_AUGMENTATION'].split('_')[0]
+                chance = self.dataset_cfg['FOG_AUGMENTATION'].split('_')[-1]
+                choices = [0]
+
+                if chance == '8in9':
+                    choices = [1, 1, 1, 1, 1, 1, 1, 1, 0]
+                elif chance == '4in5':
+                    choices = [1, 1, 1, 1, 0]
+                elif chance == '1in2':
+                    choices = [1, 0]
+                elif chance == '1in1':
+                    choices = [1]
+                elif chance == '1in4':
+                    choices = [1, 0, 0, 0]
+                elif chance == '1in10': #recommended by lidar snow sim paper
+                    choices = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+                if np.random.choice(choices):
+
+                    alphas = ['0.005', '0.010', '0.020', '0.030', '0.060']
+                    curriculum_stage = int(np.random.randint(low=0, high=len(alphas)))
+                    alpha = alphas[curriculum_stage]
+
+                    if alpha != '0.000': 
+                        mor = np.log(20) / float(alpha)
+                        points = self.crop_pc(points) # to reduce time
+                        points = self.foggify(points, sample_idx, alpha, augmentation_method)
+
+        
         if self.dataset_cfg.FOV_POINTS_ONLY:
             pts_rect = calib.lidar_to_rect(points[:, 0:3])
             fov_flag = get_fov_flag(pts_rect, img_shape, calib)
@@ -524,6 +816,7 @@ class DenseDataset(DatasetTemplate):
                 return self.__getitem__(new_index)
 
             points = points[fov_flag]
+        
 
         input_dict = {
             'points': points,
@@ -554,16 +847,23 @@ class DenseDataset(DatasetTemplate):
                     except AttributeError:
                         pass
             
-            loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
-            gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
-            gt_boxes_lidar_test = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+            #loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+            #gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            #gt_boxes_lidar_test = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
 
             gt_names = annos['name']
             gt_boxes_lidar = annos['gt_boxes_lidar']
 
-            assert np.abs(gt_boxes_lidar_test - gt_boxes_lidar).sum() < 1e-4
+            #assert np.abs(gt_boxes_lidar_test - gt_boxes_lidar).sum() < 1e-4
 
             assert gt_names.shape[0] == gt_boxes_lidar.shape[0]
+
+            limit_by_mor = self.dataset_cfg.get('LIMIT_BY_MOR', False)
+            if limit_by_mor:
+                distances = np.linalg.norm(gt_boxes_lidar[:, 0:3], axis=1)
+                mor_mask = distances < mor
+                gt_names = gt_names[mor_mask]
+                gt_boxes_lidar = gt_boxes_lidar[mor_mask]
 
             input_dict.update({
                 'gt_names': gt_names,
@@ -576,6 +876,18 @@ class DenseDataset(DatasetTemplate):
         data_dict = self.prepare_data(data_dict=input_dict)
 
         data_dict['image_shape'] = img_shape
+
+        filter_out_of_mor_boxes = False
+        if 'FILTER_OUT_OF_MOR_BOXES' in self.dataset_cfg:
+            filter_out_of_mor_boxes = self.dataset_cfg.FILTER_OUT_OF_MOR_BOXES
+        # filter out empty bounding boxes that are outside of MOR
+        if 'gt_boxes' in data_dict and filter_out_of_mor_boxes:
+            max_point_dist = max(np.linalg.norm(data_dict['points'][:, 0:3], axis=1))
+            box_distances = np.linalg.norm(data_dict['gt_boxes'][:, 0:3], axis=1)
+            box_mask = box_distances < max_point_dist
+            data_dict['gt_boxes'] = data_dict['gt_boxes'][box_mask]
+            # print(f'{sum(box_mask == 0)}/{sum(box_mask)}')
+
 
         return data_dict
 

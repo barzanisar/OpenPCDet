@@ -6,3 +6,17 @@ easydict
 pyyaml
 scikit-image
 tqdm
+open3d
+wandb
+matplotlib 
+pandas 
+plyfile 
+pyaml 
+pyopengl 
+PyQt5 
+pyqtgraph 
+scipy 
+scikit-learn 
+tqdm
+PyMieScatt 
+pyquaternion
