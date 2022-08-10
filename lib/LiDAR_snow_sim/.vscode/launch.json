@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "pointcloud_viewer",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pointcloud_viewer.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--datasets",
+                "/media/barza/WD_BLACK/datasets"
+            ]
+        },
+        {
+            "name": "precompute",
+            "type": "python",
+            "request": "launch",
+            "module": "tools.snowfall.precompute",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "sampling",
+            "type": "python",
+            "request": "launch",
+            "module": "tools.snowfall.sampling",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "simulation",
+            "type": "python",
+            "request": "launch",
+            "module": "tools.snowfall.simulation",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "pc_viewer",
+            "type": "python",
+            "request": "launch",
+            "module": "tools.visual_utils.pc_viewer",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
