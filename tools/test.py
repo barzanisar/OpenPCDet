@@ -179,7 +179,7 @@ def main():
     logger = common_utils.create_logger(log_file, rank=cfg.LOCAL_RANK)
 
     if not args.disable_wandb:
-        wandb_utils.init(cfg, args, job_type='eval', extra_tags=args.eval_tag)
+        wandb_utils.init(cfg, args, job_type='eval', eval_tag=args.eval_tag)
 
     # log to file
     logger.info('**********************Start logging**********************')
