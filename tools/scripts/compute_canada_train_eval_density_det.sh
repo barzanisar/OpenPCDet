@@ -360,6 +360,7 @@ singularity exec
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tests:/OpenPCDet/tests
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
+--bind $PROJ_DIR/lib:/OpenPCDet/lib
 --bind $TMP_DATA_DIR:/OpenPCDet/data/$DATASET
 --bind $PROJ_DIR/data/$DATASET/ImageSets:/OpenPCDet/data/$DATASET/ImageSets
 $OPENPCDET_BINDS
