@@ -93,6 +93,33 @@
             ]
         },
         {
+            "name": "train_clear_FOV3000_60_weather",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60_weather.yaml",
+                "--ckpt_save_interval", "5"
+            ]
+        },
+        {
+            "name": "test_with_dror_train_clear_FOV3000_60",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
+                "--eval_all", "--eval_tag", "test-dror-snow", "--set", "DATA_CONFIG.INFO_PATH.test", 
+                "dense_infos_test_snow_FOV3000_25.pkl", "DATA_CONFIG.DROR", "0.45"
+            ]
+        },
+        {
             "name": "test-train-scratch",
             "type": "python",
             "request": "launch",

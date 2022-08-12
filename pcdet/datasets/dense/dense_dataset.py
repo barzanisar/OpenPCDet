@@ -605,11 +605,12 @@ class DenseDataset(DatasetTemplate):
 
         new_pointidx = (upper_idx) & (lower_idx)
         pc = pc[new_pointidx, :]
+        calib = get_calib(self.sensor_type)
 
         # Extract FOV points
         if self.dataset_cfg['FOV_POINTS_ONLY']:
-            pts_rect = self.calib.lidar_to_rect(pc[:, 0:3])
-            fov_flag = get_fov_flag(pts_rect, (1024, 1920), self.calib)
+            pts_rect = calib.lidar_to_rect(pc[:, 0:3])
+            fov_flag = get_fov_flag(pts_rect, (1024, 1920), calib)
             pc = pc[fov_flag]
 
         return pc
@@ -629,10 +630,15 @@ class DenseDataset(DatasetTemplate):
 
         img_shape = info['image']['image_shape']
         weather = info['annos']['weather']
-
-        
-        apply_dror =  'DROR' in self.dataset_cfg #TODO: weather != 'clear' and Apply DROR only when training on all_60 and apply weather aug when training on clear only
+        mor = np.inf
         dror_applied = False
+        snow_applied = False
+        wet_surface_applied = False
+        fog_applied = False
+
+        # Test DROR with train on clear, test on all splits with dror
+        apply_dror =  'DROR' in self.dataset_cfg and not self.training #TODO: weather != 'clear' and Apply DROR only when training on all_60 and apply weather aug when training on clear only
+        
         if apply_dror:
             try:
                 alpha = self.dataset_cfg['DROR']
@@ -663,7 +669,6 @@ class DenseDataset(DatasetTemplate):
         
         if self.training:
             # Snowfall Augmentation
-            snowfall_augmentation_applied = False
             apply_snow = 'SNOW' in self.dataset_cfg
             if apply_snow:
                 assert info['annos']['weather'] == 'clear'
@@ -704,12 +709,11 @@ class DenseDataset(DatasetTemplate):
 
                     try:
                         points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 5)
-                        snowfall_augmentation_applied = True
+                        snow_applied = True
                     except FileNotFoundError:
                         self.logger.info(f'\n{lidar_file} not found')
                         pass
         
-            wet_surface_applied = False
             apply_wet_surface = 'WET_SURFACE' in self.dataset_cfg
             if apply_wet_surface:
                 assert info['annos']['weather'] == 'clear'
@@ -730,7 +734,7 @@ class DenseDataset(DatasetTemplate):
                 elif '1in10' in method:
                     choices = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]    # pointcloud gets augmented with 10% chance
 
-                apply_coupled = self.dataset_cfg.get('COUPLED', False) and snowfall_augmentation_applied
+                apply_coupled = self.dataset_cfg.get('COUPLED', False) and snow_applied
 
                 if np.random.choice(choices) or apply_coupled: 
 
@@ -762,7 +766,7 @@ class DenseDataset(DatasetTemplate):
                         pass
             
             #Fog augmentation
-            apply_fog = 'FOG_AUGMENTATION' in self.dataset_cfg and not snowfall_augmentation_applied
+            apply_fog = 'FOG_AUGMENTATION' in self.dataset_cfg and not snow_applied
             if apply_fog:
                 assert info['annos']['weather'] == 'clear'
                 augmentation_method = self.dataset_cfg['FOG_AUGMENTATION'].split('_')[0]
@@ -792,30 +796,31 @@ class DenseDataset(DatasetTemplate):
                         mor = np.log(20) / float(alpha)
                         points = self.crop_pc(points) # to reduce time
                         points = self.foggify(points, sample_idx, alpha, augmentation_method)
+                        fog_applied = True
 
-        
-        if self.dataset_cfg.FOV_POINTS_ONLY:
-            pts_rect = calib.lidar_to_rect(points[:, 0:3])
-            fov_flag = get_fov_flag(pts_rect, img_shape, calib)
+        points = self.crop_pc(points)
+        # if self.dataset_cfg.FOV_POINTS_ONLY:
+        #     pts_rect = calib.lidar_to_rect(points[:, 0:3])
+        #     fov_flag = get_fov_flag(pts_rect, img_shape, calib)
 
-            # sanity check that there is no frame without a single point in the camera field of view left
-            if max(fov_flag) == 0:
+        #     # sanity check that there is no frame without a single point in the camera field of view left
+        #     if max(fov_flag) == 0:
 
-                sample = nth_repl(sample_idx, '_', ',', 2)
+        #         sample = nth_repl(sample_idx, '_', ',', 2)
 
-                message = f'stage: {"train" if self.training else "eval"}, split: {self.split}, ' \
-                          f'sample: {sample} does not have any points inside the camera FOV ' \
-                          f'and will be skipped'
+        #         message = f'stage: {"train" if self.training else "eval"}, split: {self.split}, ' \
+        #                   f'sample: {sample} does not have any points inside the camera FOV ' \
+        #                   f'and will be skipped'
 
-                try:
-                    self.logger.error(message)
-                except AttributeError:
-                    print(message)
+        #         try:
+        #             self.logger.error(message)
+        #         except AttributeError:
+        #             print(message)
 
-                new_index = np.random.randint(self.__len__())
-                return self.__getitem__(new_index)
+        #         new_index = np.random.randint(self.__len__())
+        #         return self.__getitem__(new_index)
 
-            points = points[fov_flag]
+        #     points = points[fov_flag]
         
 
         input_dict = {
@@ -835,7 +840,10 @@ class DenseDataset(DatasetTemplate):
             if self.dataset_cfg.DROP_EMPTY_ANNOTATIONS:
 
                 num_before = len(annos['name'])
-                annos = drop_infos_with_no_points(annos)
+                if snow_applied or fog_applied or wet_surface_applied:
+                    annos = drop_infos_with_no_points(annos, points)
+                else: 
+                    annos = drop_infos_with_no_points(annos)
                 num_after = len(annos['name'])
 
                 num_diff = num_before - num_after
@@ -877,9 +885,7 @@ class DenseDataset(DatasetTemplate):
 
         data_dict['image_shape'] = img_shape
 
-        filter_out_of_mor_boxes = False
-        if 'FILTER_OUT_OF_MOR_BOXES' in self.dataset_cfg:
-            filter_out_of_mor_boxes = self.dataset_cfg.FILTER_OUT_OF_MOR_BOXES
+        filter_out_of_mor_boxes = self.dataset_cfg.get('FILTER_OUT_OF_MOR_BOXES', False)
         # filter out empty bounding boxes that are outside of MOR
         if 'gt_boxes' in data_dict and filter_out_of_mor_boxes:
             max_point_dist = max(np.linalg.norm(data_dict['points'][:, 0:3], axis=1))
@@ -927,11 +933,19 @@ def drop_info_with_name(info, name):
     return ret_info
 
 
-def drop_infos_with_no_points(info):
-
+def drop_infos_with_no_points(info, points=None):
     ret_info = {}
 
-    keep_indices = [i for i, x in enumerate(info['num_points_in_gt']) if x > 0]
+    if points is not None: 
+        import torch   
+        num_obj = info['gt_boxes_lidar'].shape[0]
+        point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+            torch.from_numpy(points[:, 0:3]), torch.from_numpy(info['gt_boxes_lidar'])
+        ).numpy()
+        keep_indices = [i for i in range(num_obj) if point_indices[i].sum() > 0]
+        #info['num_points_in_gt'] = [point_indices[i].sum() for i in keep_indices]
+    else:
+        keep_indices = [i for i, x in enumerate(info['num_points_in_gt']) if x > 0]
 
     for key in info.keys():
         if key == 'weather':
