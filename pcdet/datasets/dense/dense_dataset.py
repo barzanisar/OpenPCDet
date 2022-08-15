@@ -88,8 +88,8 @@ class DenseDataset(DatasetTemplate):
         # self.current_iteration = -1
         # self.iteration_increment = -1
         self.random_generator = np.random.default_rng()
-        self.snowfall_rates = [0.5, 0.5, 1.0, 2.0, 2.5, 1.5, 1.5, 1.0]      # mm/h
-        self.terminal_velocities = [2.0, 1.2, 1.6, 2.0, 1.6, 0.6, 0.4, 0.2] # m/s
+        self.snowfall_rates = [0.5, 0.5, 1.0, 2.0, 2.5, 1.5]      # mm/h
+        self.terminal_velocities = [2.0, 1.2, 1.6, 2.0, 1.6, 0.6] # m/s
         self.rainfall_rates = []
         for i in range(len(self.snowfall_rates)):
             self.rainfall_rates.append(snowfall_rate_to_rainfall_rate(self.snowfall_rates[i],
