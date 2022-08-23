@@ -9,11 +9,37 @@ from .learning_schedules_fastai import CosineWarmupLR, OneCycle
 
 
 def build_optimizer(model, optim_cfg):
+    parameters = None
+    if optim_cfg.get("LR_BB", None) is not None:
+        print("Use different learning rates between the head and trunk.")
+
+        param_group_head = [
+            param for name, param in model.named_parameters()
+            if param.requires_grad and 'backbone_3d.' not in name]
+        param_group_trunk = [
+            param for name, param in model.named_parameters()
+            if param.requires_grad and 'backbone_3d.' in name]
+        param_group_all = [
+            param for key, param in model.named_parameters()
+            if param.requires_grad]
+        assert len(param_group_all) == (len(param_group_head) + len(param_group_trunk))
+
+        # weight_decay = optim_cfg["WEIGHT_DECAY"]
+        # weight_decay_head = optim_cfg["WEIGHT_DECAY_head"] if (optim_cfg["WEIGHT_DECAY_head"] is not None) else weight_decay
+        
+        parameters = [
+            {"params": iter(param_group_head), "lr": optim_cfg.LR}
+            ]
+        if len(param_group_trunk) > 0: # not optim_cfg.FREEZE_BB
+            parameters.append({"params": iter(param_group_trunk), "lr": optim_cfg.LR_BB})
+        print(f"==> Head:  #{len(param_group_head)} params with learning rate: {optim_cfg.LR}")
+        print(f"==> Trunk: #{len(param_group_trunk)} params with learning rate: {optim_cfg.LR_BB}")
+
     if optim_cfg.OPTIMIZER == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY)
+        optimizer = optim.Adam(model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY)
     elif optim_cfg.OPTIMIZER == 'sgd':
         optimizer = optim.SGD(
-            model.parameters(), lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY,
+            model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY,
             momentum=optim_cfg.MOMENTUM
         )
     elif optim_cfg.OPTIMIZER == 'adam_onecycle':
@@ -38,7 +64,14 @@ def build_optimizer(model, optim_cfg):
 
 def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch, optim_cfg):
     decay_steps = [x * total_iters_each_epoch for x in optim_cfg.DECAY_STEP_LIST]
-    def lr_lbmd(cur_epoch):
+    def lr_lbmd_head(cur_epoch):
+        cur_decay = 1
+        for decay_step in decay_steps:
+            if cur_epoch >= decay_step:
+                cur_decay = cur_decay * optim_cfg.LR_DECAY
+        return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR)
+
+    def lr_lbmd_bb(cur_epoch):
         cur_decay = 1
         for decay_step in decay_steps:
             if cur_epoch >= decay_step:
@@ -52,7 +85,12 @@ def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch,
             optimizer, total_steps, optim_cfg.LR, list(optim_cfg.MOMS), optim_cfg.DIV_FACTOR, optim_cfg.PCT_START
         )
     else:
-        lr_scheduler = lr_sched.LambdaLR(optimizer, lr_lbmd, last_epoch=last_epoch)
+        if len(optimizer.param_groups) < 2:
+            lr_lambda = lr_lbmd_head
+        else:
+            lr_lambda=[lr_lbmd_head, lr_lbmd_bb]
+
+        lr_scheduler = lr_sched.LambdaLR(optimizer, lr_lambda=lr_lambda, last_epoch=last_epoch)
 
         if optim_cfg.LR_WARMUP:
             lr_warmup_scheduler = CosineWarmupLR(

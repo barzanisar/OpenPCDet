@@ -127,8 +127,6 @@ def main():
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
 
-    optimizer = build_optimizer(model, cfg.OPTIMIZATION)
-
     # load checkpoint if it is possible
     start_epoch = it = 0
     last_epoch = -1
@@ -136,7 +134,9 @@ def main():
         #model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist, logger=logger)
         ### Change for finetuning
         state = torch.load(args.pretrained_model)
-        init_model_from_weights(model, state, freeze_bb=False)
+        init_model_from_weights(model, state, freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger)
+
+    optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
     if args.ckpt is not None:
         it, start_epoch = model.load_params_with_optimizer(args.ckpt, to_cpu=dist, optimizer=optimizer, logger=logger)

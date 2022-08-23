@@ -37,12 +37,13 @@ def append_module_suffix(state_dict, suffix):
 def init_model_from_weights(
     model,
     state_dict,
+    logger,
     state_dict_key_name="model",
     skip_layers=None,
-    print_init_layers=True,
+    print_init_layers=False,
     replace_suffix="module.trunk.",
     freeze_bb=False,
-    append_suffix="trunk.base_model.",
+    append_suffix="trunk.base_model."
 ):
     """
     Initialize the model from any given params file. This is particularly useful
@@ -83,7 +84,7 @@ def init_model_from_weights(
         elif "trunk.base_model.2"+tempname in state_dict:
             new_state_dict[param_name] = state_dict["trunk.base_model.2"+tempname]
         else:
-            print (param_name)
+            logger.info(param_name)
     state_dict = new_state_dict
             
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
@@ -94,7 +95,7 @@ def init_model_from_weights(
         ) or layername.find("num_batches_tracked") >= 0:
             if print_init_layers and (local_rank == 0):
                 not_init.append(layername)
-                print(f"Ignored layer:\t{layername}")
+                logger.info(f"Ignored layer:\t{layername}")
             continue
         if layername in state_dict:
             param = state_dict[layername]
@@ -103,13 +104,18 @@ def init_model_from_weights(
             all_layers[layername].copy_(param)
             init_layers[layername] = True
             if print_init_layers and (local_rank == 0):
-                print(f"Init layer:\t{layername}")
+                logger.info(f"Init layer:\t{layername}")
         else:
             not_found.append(layername)
             if print_init_layers and (local_rank == 0):
-                print(f"Not found:\t{layername}")
+                logger.info(f"Not found:\t{layername}")
     ####################### DEBUG ############################
     # _print_state_dict_shapes(model.state_dict())
+    if freeze_bb:
+        logger.info('Freezing Backbone!')
+        for name, param in model.named_parameters():
+            if 'backbone_3d' in name:
+                param.requires_grad = False
 
     torch.cuda.empty_cache()
     return model

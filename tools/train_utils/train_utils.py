@@ -22,8 +22,6 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             batch = next(dataloader_iter)
             print('new iters')
 
-        lr_scheduler.step(accumulated_iter)
-
         try:
             cur_lr = float(optimizer.lr)
         except:
@@ -40,6 +38,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
         optimizer.step()
+        lr_scheduler.step(accumulated_iter)
 
         accumulated_iter += 1
         disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
