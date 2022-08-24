@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_clear_FOV3000_60']
+    tags: ['train_clear_FOV3000_60', 'test_dror']
 
 
 DATA_CONFIG:
@@ -24,6 +24,7 @@ DATA_CONFIG:
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
+    DROR: 0.45
     FOV_POINTS_ONLY: True
     
     DATA_AUGMENTOR:
