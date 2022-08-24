@@ -748,7 +748,7 @@ class DenseDataset(DatasetTemplate):
 
                     else:
 
-                        elements = np.linspace(0.001, 0.012, 12) #np.linspace(0.1, 1.2, 12)
+                        elements = np.linspace(0.1, 1.2, 12) #np.linspace(0.1, 1.2, 12)
                         probabilities = 5 * np.ones_like(elements)  # each element initially 5% chance
 
                         probabilities[0] = 15   # 0.1
