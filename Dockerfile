@@ -94,12 +94,12 @@ RUN cp -r ./boost_1_68_0/boost /usr/include
 RUN rm -rf ./boost_1_68_0
 RUN rm -rf ./boost_1_68_0.tar.gz
 
-# Install spconv v1.1
-RUN git clone https://github.com/traveller59/spconv.git
-RUN cd ./spconv && git checkout v1.2.1 && git submodule update --init --recursive && SPCONV_FORCE_BUILD_CUDA=1 python setup.py bdist_wheel
-RUN python -m pip install /root/spconv/dist/spconv*.whl && \
-    rm -rf /root/spconv
-ENV LD_LIBRARY_PATH="/usr/local/lib/python3.8/dist-packages/spconv:${LD_LIBRARY_PATH}"
+# # Install spconv v1.1
+# RUN git clone https://github.com/traveller59/spconv.git
+# RUN cd ./spconv && git checkout v1.2.1 && git submodule update --init --recursive && SPCONV_FORCE_BUILD_CUDA=1 python setup.py bdist_wheel
+# RUN python -m pip install /root/spconv/dist/spconv*.whl && \
+#     rm -rf /root/spconv
+# ENV LD_LIBRARY_PATH="/usr/local/lib/python3.8/dist-packages/spconv:${LD_LIBRARY_PATH}"
 
 # setup environment
 ENV LANG C.UTF-8
