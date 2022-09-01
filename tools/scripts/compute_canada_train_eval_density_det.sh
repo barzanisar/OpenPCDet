@@ -26,9 +26,12 @@ PRETRAINED_MODEL=None
 TCP_PORT=18888
 SYNC_BN=true
 FIX_RANDOM_SEED=false
+#Save last 20 ckpts with interval 1
 CKPT_SAVE_INTERVAL=1
-MAX_CKPT_SAVE_NUM=50
+MAX_CKPT_SAVE_NUM=20
 SAVE_CKPT_AFTER_EPOCH=0
+# Epoch is evaluated if epoch > start epoch = 160 - NUM_EPOCHS_TO_EVAL
+NUM_EPOCHS_TO_EVAL=0
 
 # ========== KITTI ==========
 DATA_DIR_KITTI=/home/$USER/projects/def-swasland-ab/Datasets/Kitti
@@ -39,8 +42,8 @@ DATA_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo
 INFOS_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo/Infos
 
 # ========== DENSE ==========
-DATA_DIR_DENSE= /home/$USER/projects/def-swasland-ab/Datasets/Dense
-INFOS_DIR_DENSE= /home/$USER/projects/def-swasland-ab/Datasets/Dense/Infos
+DATA_DIR_DENSE= /home/$USER/projects/rrg-swasland/Datasets/Dense
+INFOS_DIR_DENSE= /home/$USER/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos
 
 # Additional parameters
 DATASET=kitti
@@ -92,6 +95,8 @@ additional parameters
 --ckpt_save_interval   CKPT_SAVE_INTERVAL Interval of saving checkpoints      [default=$CKPT_SAVE_INTERVAL]
 --save_ckpt_after_epoch  SAVE_CKPT_AFTER_EPOCH Save checkpoint after epoch    [default=$SAVE_CKPT_AFTER_EPOCH]
 --max_ckpt_save_num    MAX_CKPT_SAVE_NUM  Max number of saved checkpoints     [default=$MAX_CKPT_SAVE_NUM]
+--num_epochs_to_eval    NUM_EPOCHS_TO_EVAL Num last saved ckpts to eval       [default=$NUM_EPOCHS_TO_EVAL]
+
 
 --data_dir             DATA_DIR           Zipped data directory               [default=$DATA_DIR]
 --infos_dir            INFOS_DIR          Infos directory                     [default=$INFOS_DIR]
@@ -225,6 +230,14 @@ while :; do
             die 'ERROR: "--save_ckpt_after_epoch" requires a non-empty option argument.'
         fi
         ;;
+    -x|--num_epochs_to_eval)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            NUM_EPOCHS_TO_EVAL=$2
+            shift
+        else
+            die 'ERROR: "--num_epochs_to_eval" requires a non-empty option argument.'
+        fi
+        ;;
     -m|--max_ckpt_save_num)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             MAX_CKPT_SAVE_NUM=$2
@@ -307,6 +320,7 @@ FIX_RANDOM_SEED=$FIX_RANDOM_SEED
 CKPT_SAVE_INTERVAL=$CKPT_SAVE_INTERVAL
 SAVE_CKPT_AFTER_EPOCH=$SAVE_CKPT_AFTER_EPOCH
 MAX_CKPT_SAVE_NUM=$MAX_CKPT_SAVE_NUM
+NUM_EPOCHS_TO_EVAL=$NUM_EPOCHS_TO_EVAL
 
 Additional parameters
 DATA_DIR=$DATA_DIR
@@ -399,6 +413,7 @@ TRAIN_CMD+="
     --ckpt_save_interval $CKPT_SAVE_INTERVAL
     --save_ckpt_after_epoch $SAVE_CKPT_AFTER_EPOCH
     --max_ckpt_save_num $MAX_CKPT_SAVE_NUM
+    --num_epochs_to_eval $NUM_EPOCHS_TO_EVAL
 "
 
 # Additional arguments if necessary
