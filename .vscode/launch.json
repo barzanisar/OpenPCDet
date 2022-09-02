@@ -10,8 +10,23 @@
             "console": "integratedTerminal",
             "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset.yaml"]
         },
+        // {
+        //     "name": "finetune_train_all_60",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/dense_models/pointrcnn_finetune_train_all_60.yaml",
+        //         "--ckpt_save_interval", "5",
+        //         "--pretrained_model",
+        //         "../checkpoints/dc_200_checkpoint.pth.tar"
+        //     ]
+        // },
         {
-            "name": "finetune_train_all_60",
+            "name": "finetune_train_all_FOV3000_60_50",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -19,40 +34,25 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_train_all_60.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_freeze_bb.yaml",
                 "--ckpt_save_interval", "5",
                 "--pretrained_model",
-                "../checkpoints/dc_200_checkpoint.pth.tar"
+                "../checkpoints/dc_snow1in10_wet_fog1in10_cube_upsample_FOV3000_checkpoint-ep400.pth.tar"
             ]
         },
-        {
-            "name": "finetune_train_all_FOV3000_60",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60.yaml",
-                "--ckpt_save_interval", "5",
-                "--pretrained_model",
-                "../checkpoints/dc_200_checkpoint.pth.tar"
-            ]
-        },
-        {
-            "name": "train_all_60",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_all_60.yaml",
-                "--ckpt_save_interval", "5"
-            ]
-        },
+        // {
+        //     "name": "train_all_60",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/dense_models/pointrcnn_train_all_60.yaml",
+        //         "--ckpt_save_interval", "5"
+        //     ]
+        // },
         {
             "name": "train_all_FOV3000_60",
             "type": "python",
@@ -66,19 +66,19 @@
                 "--ckpt_save_interval", "5"
             ]
         },
-        {
-            "name": "train_clear_60",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_clear_60.yaml",
-                "--ckpt_save_interval", "5"
-            ]
-        },
+        // {
+        //     "name": "train_clear_60",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/dense_models/pointrcnn_train_clear_60.yaml",
+        //         "--ckpt_save_interval", "5"
+        //     ]
+        // },
         {
             "name": "train_clear_FOV3000_60",
             "type": "python",
@@ -92,33 +92,33 @@
                 "--ckpt_save_interval", "5"
             ]
         },
-        {
-            "name": "train_clear_FOV3000_60_weather",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60_weather.yaml",
-                "--ckpt_save_interval", "5"
-            ]
-        },
-        {
-            "name": "test_with_dror_train_clear_FOV3000_60",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
-                "--eval_all", "--eval_tag", "test-dror-snow", "--set", "DATA_CONFIG.INFO_PATH.test", 
-                "dense_infos_test_snow_FOV3000_25.pkl", "DATA_CONFIG.DROR", "0.45"
-            ]
-        },
+        // {
+        //     "name": "train_clear_FOV3000_60_weather",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60_weather.yaml",
+        //         "--ckpt_save_interval", "5"
+        //     ]
+        // },
+        // {
+        //     "name": "test_with_dror_train_clear_FOV3000_60",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
+        //         "--eval_all", "--eval_tag", "test-dror-snow", "--set", "DATA_CONFIG.INFO_PATH.test", 
+        //         "dense_infos_test_snow_FOV3000_25.pkl", "DATA_CONFIG.DROR", "0.45"
+        //     ]
+        // },
         {
             "name": "test-train-scratch",
             "type": "python",

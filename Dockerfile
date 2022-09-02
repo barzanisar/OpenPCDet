@@ -63,6 +63,7 @@ COPY requirements.txt requirements.txt
 RUN python -m pip --no-cache-dir install torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
 RUN python -m pip install --upgrade pip
 RUN python -m pip --no-cache-dir install --upgrade -r requirements.txt
+RUN pip install -U urllib3 requests
 
 # ==================================================================
 # config & cleanup
