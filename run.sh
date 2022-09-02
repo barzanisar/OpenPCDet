@@ -75,4 +75,4 @@ docker run -it --env="WANDB_API_KEY=$WANDB_API_KEY" \
         --volume $PROJ_DIR/lib:/OpenPCDet/lib \
         $PCDET_VOLUMES \
         --rm \
-        openpcdet_weather_sim:first_try bash
+        openpcdet_martin:SharedArrayFixed bash

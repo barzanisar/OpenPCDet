@@ -63,6 +63,7 @@ COPY requirements.txt requirements.txt
 RUN python -m pip --no-cache-dir install torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
 RUN python -m pip install --upgrade pip
 RUN python -m pip --no-cache-dir install --upgrade -r requirements.txt
+RUN python -m pip install SharedArray==3.1.0
 
 # ==================================================================
 # config & cleanup
@@ -131,5 +132,5 @@ COPY pcdet pcdet
 COPY setup.py setup.py
 ENV TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
 ENV PYTHONPATH="/usr/lib/python3.8/site-packages/:${PYTHONPATH}"
-RUN python setup.py develop --install-dir=/usr/local/lib/python3.8/dist-packages/
+RUN python setup.py develop
 RUN mkdir checkpoints && mkdir data && mkdir output && mkdir tests && mkdir tools && mkdir lib
