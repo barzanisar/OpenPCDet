@@ -28,10 +28,10 @@ def build_optimizer(model, optim_cfg):
         # weight_decay_head = optim_cfg["WEIGHT_DECAY_head"] if (optim_cfg["WEIGHT_DECAY_head"] is not None) else weight_decay
         
         parameters = [
-            {"params": iter(param_group_head), "lr": optim_cfg.LR}
+            {"params": param_group_head, "lr": optim_cfg.LR}
             ]
         if len(param_group_trunk) > 0: # not optim_cfg.FREEZE_BB
-            parameters.append({"params": iter(param_group_trunk), "lr": optim_cfg.LR_BB})
+            parameters.append({"params": param_group_trunk, "lr": optim_cfg.LR_BB})
         print(f"==> Head:  #{len(param_group_head)} params with learning rate: {optim_cfg.LR}")
         print(f"==> Trunk: #{len(param_group_trunk)} params with learning rate: {optim_cfg.LR_BB}")
 
