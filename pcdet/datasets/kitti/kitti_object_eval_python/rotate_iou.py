@@ -8,6 +8,9 @@ import math
 import numba
 import numpy as np
 from numba import cuda
+import logging
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.WARNING)  # Or any other desired level that has a value above that of "INFO".
 
 
 @numba.jit(nopython=True)
