@@ -36,7 +36,9 @@ def build_optimizer(model, optim_cfg):
         print(f"==> Trunk: #{len(param_group_trunk)} params with learning rate: {optim_cfg.LR_BB}")
 
     if optim_cfg.OPTIMIZER == 'adam':
-        optimizer = optim.Adam(model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY)
+        optimizer = optim.Adam(model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY, betas=(0.9, 0.99))
+    elif optim_cfg.OPTIMIZER == 'adamW':
+        optimizer = optim.AdamW(model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY, betas=(0.9, 0.99))
     elif optim_cfg.OPTIMIZER == 'sgd':
         optimizer = optim.SGD(
             model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY,
@@ -51,6 +53,10 @@ def build_optimizer(model, optim_cfg):
 
         flatten_model = lambda m: sum(map(flatten_model, m.children()), []) if num_children(m) else [m]
         get_layer_groups = lambda m: [nn.Sequential(*flatten_model(m))]
+        #get_layer_groups(model)[0]
+        #get_layer_groups(children(model)[1])[0]
+        #get_layer_groups(children(model)[2])[0]
+        #len(get_layer_groups(children(model)[0])[0]) + len(get_layer_groups(children(model)[1])[0]) + len(get_layer_groups(children(model)[2])[0])
 
         optimizer_func = partial(optim.Adam, betas=(0.9, 0.99))
         optimizer = OptimWrapper.create(
@@ -63,21 +69,6 @@ def build_optimizer(model, optim_cfg):
 
 
 def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch, optim_cfg):
-    decay_steps = [x * total_iters_each_epoch for x in optim_cfg.DECAY_STEP_LIST]
-    def lr_lbmd_head(cur_epoch):
-        cur_decay = 1
-        for decay_step in decay_steps:
-            if cur_epoch >= decay_step:
-                cur_decay = cur_decay * optim_cfg.LR_DECAY
-        return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR)
-
-    def lr_lbmd_bb(cur_epoch):
-        cur_decay = 1
-        for decay_step in decay_steps:
-            if cur_epoch >= decay_step:
-                cur_decay = cur_decay * optim_cfg.LR_DECAY
-        return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR)
-
     lr_warmup_scheduler = None
     total_steps = total_iters_each_epoch * total_epochs
     if optim_cfg.OPTIMIZER == 'adam_onecycle':
@@ -85,12 +76,47 @@ def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch,
             optimizer, total_steps, optim_cfg.LR, list(optim_cfg.MOMS), optim_cfg.DIV_FACTOR, optim_cfg.PCT_START
         )
     else:
-        if len(optimizer.param_groups) < 2:
-            lr_lambda = lr_lbmd_head
+        if optim_cfg.get("LR_SCHEDULER"):
+            if  optim_cfg["LR_SCHEDULER"] == 'steplr':
+                print('Scheduler: StepLR')
+                lr_scheduler = lr_sched.StepLR(
+                    optimizer, int(.9 * optim_cfg["NUM_EPOCHS"]),
+                )
+            elif optim_cfg["LR_SCHEDULER"] == 'cosine':
+                print('Scheduler: Cosine')
+                lr_scheduler = lr_sched.CosineAnnealingLR(
+                    optimizer, optim_cfg["NUM_EPOCHS"]
+                )
+            elif optim_cfg["LR_SCHEDULER"] == 'onecyle':
+                print('Scheduler: Onecyle')
+                if len(optimizer.param_groups) < 2:
+                    max_lr = optim_cfg.LR
+                else:
+                    max_lr=[optim_cfg.LR, optim_cfg.LR_BB]
+                lr_scheduler = lr_sched.OneCycleLR(optimizer, max_lr=max_lr, total_steps=total_steps, 
+                pct_start=optim_cfg.PCT_START, anneal_strategy='cos', div_factor=optim_cfg.DIV_FACTOR, verbose=False)
         else:
-            lr_lambda=[lr_lbmd_head, lr_lbmd_bb]
+            decay_steps = [x * total_iters_each_epoch for x in optim_cfg.DECAY_STEP_LIST]
+            def lr_lbmd_head(cur_epoch):
+                cur_decay = 1
+                for decay_step in decay_steps:
+                    if cur_epoch >= decay_step:
+                        cur_decay = cur_decay * optim_cfg.LR_DECAY
+                return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR)
 
-        lr_scheduler = lr_sched.LambdaLR(optimizer, lr_lambda=lr_lambda, last_epoch=last_epoch)
+            def lr_lbmd_bb(cur_epoch):
+                cur_decay = 1
+                for decay_step in decay_steps:
+                    if cur_epoch >= decay_step:
+                        cur_decay = cur_decay * optim_cfg.LR_DECAY
+                return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR_BB)
+
+            if len(optimizer.param_groups) < 2:
+                lr_lambda = lr_lbmd_head
+            else:
+                lr_lambda=[lr_lbmd_head, lr_lbmd_bb]
+
+            lr_scheduler = lr_sched.LambdaLR(optimizer, lr_lambda=lr_lambda, last_epoch=last_epoch)
 
         if optim_cfg.LR_WARMUP:
             lr_warmup_scheduler = CosineWarmupLR(
