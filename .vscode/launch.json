@@ -35,9 +35,23 @@
             "args": [
                 "--cfg_file",
                 "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_freeze_bb.yaml",
-                "--ckpt_save_interval", "5",
+                "--ckpt_save_interval", "1",
                 "--pretrained_model",
-                "../checkpoints/dc_snow1in10_wet_fog1in10_cube_upsample_FOV3000_checkpoint-ep400.pth.tar"
+                "../checkpoints/dc_snow1in10_wet_fog1in10_cube_upsample_FOV3000_checkpoint-ep400.pth.tar", "--fix_random_seed"
+            ]
+        },
+        {
+            "name": "test-finetune",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_freeze_bb.yaml",
+                "--eval_all", "--eval_tag", "test_clear_FOV3000_25", "--set", "DATA_CONFIG.INFO_PATH.test", 
+                "dense_infos_test_clear_FOV3000_25.pkl"
             ]
         },
         // {
@@ -63,7 +77,7 @@
             "args": [
                 "--cfg_file",
                 "cfgs/dense_models/pointrcnn_train_all_FOV3000_60.yaml",
-                "--ckpt_save_interval", "5"
+                "--ckpt_save_interval", "1"
             ]
         },
         // {
@@ -89,7 +103,7 @@
             "args": [
                 "--cfg_file",
                 "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
-                "--ckpt_save_interval", "5"
+                "--ckpt_save_interval", "1"
             ]
         },
         // {
@@ -145,19 +159,6 @@
                 "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
                 "--eval_all", "--eval_tag", "test_clear_FOV3000_25", "--set", "DATA_CONFIG.INFO_PATH.test", 
                 "dense_infos_test_snow_FOV3000_25.pkl"
-            ]
-        },
-        {
-            "name": "test-finetune",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune.yaml",
-                "--eval_all"
             ]
         }
     ]

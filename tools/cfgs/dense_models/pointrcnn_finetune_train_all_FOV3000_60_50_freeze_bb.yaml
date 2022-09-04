@@ -194,18 +194,18 @@ OPTIMIZATION:
     NUM_EPOCHS: 160
 
     FREEZE_BB: True
-    OPTIMIZER: adam
-    LR: 0.02
-    LR_BB: 0.002
-    WEIGHT_DECAY: 0.01
-    MOMENTUM: 0.9
+    OPTIMIZER: adam_onecycle
+    LR: 0.01 #max lr for adam_onecycle and min is 0.01/dic_factor = 0.001
+    LR_BB: 0
+    WEIGHT_DECAY: 0.01 #for all
+    MOMENTUM: 0.9 #for sgd
 
-    MOMS: [0.95, 0.85]
-    PCT_START: 0.4
-    DIV_FACTOR: 10
-    DECAY_STEP_LIST: [30, 45]
-    LR_DECAY: 0.1
-    LR_CLIP: 0.0000001
+    MOMS: [0.95, 0.85] #for adam and adam_onecycle
+    PCT_START: 0.4 #for onecycle
+    DIV_FACTOR: 10 #for onecycle
+    DECAY_STEP_LIST: [30, 45] #for adam, sgd but not adam_onecycle
+    LR_DECAY: 0.1 #for adam, sgd but not adam_onecycle
+    LR_CLIP: 0.0000001 #for adam, sgd but not adam_onecycle
 
     LR_WARMUP: False
     WARMUP_EPOCH: 1
