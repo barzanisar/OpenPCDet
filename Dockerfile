@@ -64,6 +64,7 @@ RUN python -m pip --no-cache-dir install torch==1.9.0+cu111 torchvision==0.10.0+
 RUN python -m pip install --upgrade pip
 RUN python -m pip --no-cache-dir install --upgrade -r requirements.txt
 RUN python -m pip install SharedArray==3.1.0
+RUN pip install -U urllib3 requests
 
 # ==================================================================
 # config & cleanup
