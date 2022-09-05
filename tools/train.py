@@ -4,6 +4,7 @@ import glob
 import os
 from pathlib import Path
 from test import repeat_eval_ckpt
+#import copy
 
 import torch
 import torch.nn as nn
@@ -129,6 +130,9 @@ def main():
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
 
+    # old_model = copy.deepcopy(model)
+
+
     # load checkpoint if it is possible
     start_epoch = it = 0
     last_epoch = -1
@@ -137,6 +141,8 @@ def main():
         ### Change for finetuning
         state = torch.load(args.pretrained_model)
         init_model_from_weights(model, state, freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger)
+        # for name, param in model.point_head.named_parameters():
+        #     print(old_model.point_head.state_dict()[name] == param)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
