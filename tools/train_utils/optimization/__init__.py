@@ -80,18 +80,19 @@ def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch,
             if  optim_cfg["LR_SCHEDULER"] == 'steplr':
                 print('Scheduler: StepLR')
                 lr_scheduler = lr_sched.StepLR(
-                    optimizer, int(.9 * optim_cfg["NUM_EPOCHS"]),
+                    optimizer, int(0.5 * total_steps),
                 )
             elif optim_cfg["LR_SCHEDULER"] == 'cosine':
                 print('Scheduler: Cosine')
                 lr_scheduler = lr_sched.CosineAnnealingLR(
-                    optimizer, optim_cfg["NUM_EPOCHS"]
+                    optimizer, total_steps, eta_min=0
                 )
             elif optim_cfg["LR_SCHEDULER"] == 'onecyle':
                 print('Scheduler: Onecyle')
                 if len(optimizer.param_groups) < 2:
                     max_lr = optim_cfg.LR
                 else:
+                    assert optim_cfg.get('FREEZE_BB', False) == False
                     max_lr=[optim_cfg.LR, optim_cfg.LR_BB]
                 lr_scheduler = lr_sched.OneCycleLR(optimizer, max_lr=max_lr, total_steps=total_steps, 
                 pct_start=optim_cfg.PCT_START, anneal_strategy='cos', div_factor=optim_cfg.DIV_FACTOR, verbose=False)

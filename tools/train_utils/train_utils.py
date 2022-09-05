@@ -30,7 +30,9 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             cur_lr = optimizer.param_groups[0]['lr']
 
         if tb_log is not None:
-            tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+            tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter) #lr_head
+            # if len(optimizer.param_groups) > 1:
+            #     tb_log.add_scalar('meta_data/learning_rate_1', optimizer.param_groups[1]['lr'], accumulated_iter) #lr_bb
 
         model.train()
         optimizer.zero_grad()
@@ -43,7 +45,11 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         
 
         accumulated_iter += 1
-        disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
+        
+        if len(optimizer.param_groups) > 1:
+            disp_dict.update({'loss': loss.item(), 'lr_h': cur_lr, 'lr_bb': optimizer.param_groups[1]['lr']})
+        else:
+            disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
 
         # log to console and tensorboard
         if rank == 0:
@@ -55,6 +61,8 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             if tb_log is not None:
                 tb_log.add_scalar('train/loss', loss, accumulated_iter)
                 tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+                # if len(optimizer.param_groups) > 1:
+                #     tb_log.add_scalar('meta_data/learning_rate_1', optimizer.param_groups[1]['lr'], accumulated_iter)
                 for key, val in tb_dict.items():
                     tb_log.add_scalar('train/' + key, val, accumulated_iter)
     if rank == 0:
