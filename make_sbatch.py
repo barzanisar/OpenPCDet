@@ -1,7 +1,7 @@
 import glob
 from pathlib import Path 
 
-mode = 'Test'
+mode = 'Train'
 root_path = '/home/barza/OpenPCDet'
 cfg_dir_path = f'{root_path}/tools/cfgs/dense_models'
 tcp_port = 18800
@@ -21,7 +21,7 @@ if mode == 'Train':
         cfg_name=cfg_path.split('/')[-1].replace('.yaml', '')
         job_name=cfg_name.split('pointrcnn_finetune_train_all_FOV3000_60_50_')[-1]
         tcp_port +=1
-        sbatch_cmd = f'sbatch --time=4:00:00 --array=1-1%1 --job-name=finetune-{job_name} --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh'
+        sbatch_cmd = f'sbatch --time=2:00:00 --array=1-1%1 --job-name=finetune-{job_name} --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh'
         sbatch_cmd += f' --tcp_port {tcp_port} --cfg_file --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml'
         sbatch_cmd += f' --train_batch_size 4 --ckpt_save_interval 1 --max_ckpt_save_num 5 --fix_random_seed'
         sbatch_cmd += f' --extra_tag {extra_tag} --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/{pretrained_model}\n' 
