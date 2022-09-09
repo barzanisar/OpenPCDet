@@ -1,5 +1,10 @@
 # Train on FOV3000 (Done)
-# sbatch --time=24:00:00 --array=1-2%1 --job-name=pointrcnn-clear-60-FOV3000 --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --sing_img /home/nisarbar/projects/rrg-swasland/singularity/openpcdet_martin.sif --cfg_file tools/cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml  --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos   --tcp_port 18880 --ckpt_save_interval 1 --fix_random_seed
+sbatch --time=24:00:00 --array=1-1%1 --job-name=pointrcnn-clear-60-FOV3000 --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml  --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos   --tcp_port 18880 --ckpt_save_interval 1 --fix_random_seed
+sbatch --time=24:00:00 --array=1-1%1 --job-name=pointrcnn-clear-60-FOV3000-b4 --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_clear_FOV3000_60_b4.yaml  --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos   --tcp_port 18881 --ckpt_save_interval 1 --fix_random_seed
+
+
+
+
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=pointrcnn-all-60-FOV3000 --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60.yaml  --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos   --tcp_port 18882 --ckpt_save_interval 5 --fix_random_seed
 
 #Train on clear FOV3000 with weather sim
