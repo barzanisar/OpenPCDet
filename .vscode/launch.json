@@ -8,7 +8,7 @@
             "module": "pcdet.datasets.dense.dense_dataset",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset.yaml"]
+            "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset_martin.yaml"]
         },
         // {
         //     "name": "finetune_train_all_60",

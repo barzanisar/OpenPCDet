@@ -3,22 +3,27 @@ DATA_PATH: '../data/dense'
 
 POINT_CLOUD_RANGE: [0, -40, -3, 70.4, 40, 1]
 
-# To create infos and gtdb infos
 DATA_SPLIT: {
-    'train': train_clear_60,
-    'test': val_clear_15
+    'train': train_clear,
+    'test': val_clear
 }
 
-# To train/eval:
 INFO_PATH: {
-    'train': [dense_infos_train_clear_60.pkl],
-    'test': [dense_infos_val_clear_15.pkl],
+    'train': [dense_infos_train_clear.pkl],
+    'test': [dense_infos_val_clear.pkl],
 }
 
+# COUPLED: True
+# WET_SURFACE: '1in10'
+# SNOW: 'uniform_gunn_1in10'
 FOV_POINTS_ONLY: True
+FOG_AUGMENTATION: False
 SENSOR_TYPE: 'hdl64'
 SIGNAL_TYPE: 'strongest'
+COMPENSATE: [0.0, 0.0, 0.0]
+STRONGEST_LAST_FILTER: False
 DROP_EMPTY_ANNOTATIONS: True
+FOG_AUGMENTATION_AFTER: False
 
 DATA_AUGMENTOR:
     DISABLE_AUG_LIST: ['placeholder']
@@ -26,7 +31,7 @@ DATA_AUGMENTOR:
         - NAME: gt_sampling
           USE_ROAD_PLANE: True
           DB_INFO_PATH:
-              - dense_dbinfos_train_clear_60.pkl
+              - dense_dbinfos_train_clear.pkl
           PREPARE: {
              filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
              filter_by_difficulty: [-1],
