@@ -21,13 +21,8 @@ if mode == 'Train':
         cfg_name=cfg_path.split('/')[-1].replace('.yaml', '')
         job_name=cfg_name.split('pointrcnn_finetune_train_all_FOV3000_60_50_')[-1]
         tcp_port +=1
-        # sbatch_cmd = f'sbatch --time=02:00:00 --array=1-1%1 --job-name=finetune-{job_name} --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh'
-        # sbatch_cmd += f' --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos'
-        # sbatch_cmd += f' --tcp_port {tcp_port} --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml'
-        # sbatch_cmd += f' --train_batch_size 4 --ckpt_save_interval 1 --max_ckpt_save_num 5 --fix_random_seed'
-        # sbatch_cmd += f' --extra_tag {extra_tag} --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/{pretrained_model}\n' 
 
-        sbatch_cmd = f'sbatch --time=02:00:00 --array=1-1%1 --job-name=finetune-{job_name} --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml  --extra_tag {extra_tag} --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos --train_batch_size 4 --max_ckpt_save_num 5 --tcp_port {tcp_port} --ckpt_save_interval 1 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/{pretrained_model}\n'
+        sbatch_cmd = f'sbatch --time=02:00:00 --array=1-1%1 --job-name=finetune-{job_name} --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml  --extra_tag {extra_tag} --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos --max_ckpt_save_num 5 --tcp_port {tcp_port} --ckpt_save_interval 1 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/{pretrained_model}\n'
         with open(sbatch_file, 'a') as f:
             f.write(sbatch_cmd)
 
@@ -42,7 +37,7 @@ elif mode == 'Test':
             cfg_name=cfg_path.split('/')[-1].replace('.yaml', '')
             job_name=cfg_name.split('pointrcnn_finetune_train_all_FOV3000_60_50_')[-1]
             tcp_port +=1
-            sbatch_cmd = f'sbatch --time=01:00:00 --array=1-1%1 --job-name=finetune-{job_name}-test-clear  --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml  --extra_tag {extra_tag} --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos --tcp_port {tcp_port} --test_batch_size 4 --test_only --fix_random_seed --eval_tag test_{weather}_FOV3000 --test_info_pkl dense_infos_test_{weather}_FOV3000_25.pkl\n' 
+            sbatch_cmd = f'sbatch --time=01:00:00 --array=1-1%1 --job-name=finetune-{job_name}-test-clear  --mail-user=barzanisar93@gmail.com tools/scripts/compute_canada_train_eval_density_det.sh --cfg_file tools/cfgs/dense_models/{cfg_name}.yaml  --extra_tag {extra_tag} --data_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense --infos_dir /home/nisarbar/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos --tcp_port {tcp_port} --test_only --fix_random_seed --eval_tag test_{weather}_FOV3000 --test_info_pkl dense_infos_test_{weather}_FOV3000_25.pkl\n' 
 
             with open(sbatch_file, 'a') as f:
                 f.write(sbatch_cmd)

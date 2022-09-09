@@ -15,7 +15,7 @@ die() { echo "$*" 1>&2 ; exit 1; }
 # Default Command line args
 # train.py script parameters
 CFG_FILE=tools/cfgs/kitti_models/pv_rcnn.yaml
-TRAIN_BATCH_SIZE=4
+TRAIN_BATCH_SIZE='default'
 TEST_BATCH_SIZE='default'
 WORKERS=$SLURM_CPUS_PER_TASK
 EXTRA_TAG='default'
