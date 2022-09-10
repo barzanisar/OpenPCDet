@@ -195,9 +195,9 @@ OPTIMIZATION:
 
     FREEZE_BB: False
     OPTIMIZER: adamW
-    LR_SCHEDULER: cosine #cosine, steplr
-    LR: 0.001
-    LR_BB: 0.0001
+    #LR_SCHEDULER: cosine #cosine, steplr
+    LR: 0.01
+    LR_BB: 0.001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
