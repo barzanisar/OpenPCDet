@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_all_FOV3000_60_50', 'finetune', 'lr0p02']
+    tags: ['train_all_FOV3000_60_50', 'finetune']
 
 
 DATA_CONFIG:

@@ -63,7 +63,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_lr0p02.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_adamw_cosine_0p01_0p001.yaml",
                 "--ckpt_save_interval", "1",
                 "--pretrained_model",
                 "../checkpoints/dc_snow1in10_wet_fog1in10_cube_upsample_FOV3000_checkpoint-ep400.pth.tar", "--fix_random_seed"
