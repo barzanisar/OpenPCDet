@@ -101,9 +101,9 @@ class DenseDataset(DatasetTemplate):
             self.rainfall_rates.append(snowfall_rate_to_rainfall_rate(self.snowfall_rates[i],
                                                                       self.terminal_velocities[i]))
 
-            self.occupancy_ratios.append(compute_occupancy(self.snowfall_rates[i], self.terminal_velocities[i]))
+            #self.occupancy_ratios.append(compute_occupancy(self.snowfall_rates[i], self.terminal_velocities[i]))
 
-        self.combos = np.column_stack((self.rainfall_rates, self.occupancy_ratios))
+        #self.combos = np.column_stack((self.rainfall_rates, self.occupancy_ratios))
 
         self.lisa = None
 
@@ -1100,7 +1100,7 @@ def drop_info_with_name(info, name):
     keep_indices = [i for i, x in enumerate(info['name']) if x != name]
 
     #We dont have DontCare in infos
-    assert len(keep_indices) == info['name'].shape[0]
+    # assert len(keep_indices) == info['name'].shape[0]
 
     try:
         for key in info.keys():
@@ -1142,7 +1142,7 @@ def create_dense_infos(dataset_cfg, class_names, data_path, save_path, logger, w
 
     dataset = DenseDataset(dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path, training=False)
     train_split, val_split = dataset_cfg.DATA_SPLIT['train'], dataset_cfg.DATA_SPLIT['test']
-    test_split = 'test_dense_clear' #TODO
+    test_split = 'test_snow_light' #TODO
 
     train_filename = save_path / ('dense_infos_%s.pkl' % train_split)
     val_filename = save_path / ('dense_infos_%s.pkl' % val_split)
@@ -1184,7 +1184,7 @@ if __name__ == '__main__':
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         log = common_utils.create_logger(f'{ROOT_DIR / "data" / "dense" / "1st_run.log"}', log_level=logging.INFO)
 
-        dataset_cfg = EasyDict(yaml.load(open(sys.argv[4])))
+        dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[4])))
         create_dense_infos(dataset_cfg=dataset_cfg,
                            class_names=['Car', 'Pedestrian', 'Cyclist'],
                            data_path=ROOT_DIR / 'data' / 'dense',

@@ -13,6 +13,9 @@ INFO_PATH: {
     'test': [dense_infos_val_clear.pkl],
 }
 
+COUPLED: True
+WET_SURFACE: '1in10'
+SNOW: 'uniform_gunn_1in10'
 FOV_POINTS_ONLY: True
 FOG_AUGMENTATION: False
 SENSOR_TYPE: 'hdl64'
