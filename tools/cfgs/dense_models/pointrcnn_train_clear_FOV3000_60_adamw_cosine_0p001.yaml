@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_clear_60']
+    tags: ['train_clear_FOV3000_60']
 
 
 DATA_CONFIG:
@@ -14,17 +14,18 @@ DATA_CONFIG:
 
     # To create infos and gtdb infos
     DATA_SPLIT: {
-        'train': train_clear_60,
-        'test': val_clear_15
+        'train': train_clear_FOV3000_60,
+        'test': val_clear_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
-        'train': [dense_infos_train_clear_60.pkl],
-        'test': [dense_infos_val_clear_15.pkl],
+        'train': [dense_infos_train_clear_FOV3000_60.pkl],
+        'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
-    FOV_POINTS_ONLY: False
+    # DROR: 0.45
+    FOV_POINTS_ONLY: True
     
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
@@ -191,10 +192,11 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 160
+    NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
-    LR: 0.01
+    OPTIMIZER: adamW
+    LR_SCHEDULER: cosine #cosine, steplr
+    LR: 0.001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
