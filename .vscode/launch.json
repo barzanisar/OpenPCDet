@@ -10,21 +10,27 @@
             "console": "integratedTerminal",
             "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset_martin.yaml"]
         },
-        // {
-        //     "name": "finetune_train_all_60",
-        //     "type": "python",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/tools/train.py",
-        //     "console": "integratedTerminal",
-        //     "cwd": "${workspaceFolder}/tools",
-        //     "args": [
-        //         "--cfg_file",
-        //         "cfgs/dense_models/pointrcnn_finetune_train_all_60.yaml",
-        //         "--ckpt_save_interval", "5",
-        //         "--pretrained_model",
-        //         "../checkpoints/dc_200_checkpoint.pth.tar"
-        //     ]
-        // },
+        {
+            "name": "dataset_viewer",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/dataset_viewer.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--dataset", "waymo", 
+                "--seq_path", "/home/barza/OpenPCDet/data/waymo/raw_data/segment-207754730878135627_1140_000_1160_000_with_camera_labels.tfrecord",
+                "--tfrecord"
+            ]
+        },
+        {
+            "name": "dense_range_img",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/dense_range_img.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools"
+        },
         {
             "name": "finetune_freeze_bb",
             "type": "python",
