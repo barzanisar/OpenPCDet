@@ -4,6 +4,9 @@ import cv2
 from visual_utils import open3d_vis_utils as V
 from sklearn.linear_model import RANSACRegressor
 import matplotlib.pyplot as plt
+import open3d as o3d
+from scipy import stats
+
 
 #https://www.wevolver.com/specs/hdl-64e.lidar.sensor
 beam_inclination_max = np.radians(2.0)
@@ -206,6 +209,53 @@ def extract_point_cloud_from_range_image(range_image, inclination):
     range_image_cartesian = compute_range_image_cartesian(range_image_polar)
     return range_image_cartesian
 
+def o3d_dynamic_radius_outlier_filter(pc: np.ndarray, alpha: float = 0.45, beta: float = 3.0,
+                                    k_min: int = 3, sr_min: float = 0.04) -> np.ndarray:
+        """
+        :param pc:      pointcloud
+        :param alpha:   horizontal angular resolution of the lidar
+        :param beta:    multiplication factor
+        :param k_min:   minimum number of neighbors
+        :param sr_min:  minumum search radius
+
+        :return:        mask [False = snow, True = no snow]
+        """
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
+        num_points = len(pcd.points)
+
+        # initialize mask with False
+        mask = np.zeros(num_points, dtype=bool)
+
+        k = k_min + 1
+
+        kd_tree = o3d.geometry.KDTreeFlann(pcd)
+
+        for i in range(num_points):
+
+            x = pc[i,0]
+            y = pc[i,1]
+
+            r = np.linalg.norm([x, y], axis=0)
+
+            sr = alpha * beta * np.pi / 180 * r
+
+            if sr < sr_min:
+                sr = sr_min
+
+            [_, _, sqdist] = kd_tree.search_knn_vector_3d(pcd.points[i], k)
+
+            neighbors = -1      # start at -1 since it will always be its own neighbour
+
+            for val in sqdist:
+                if np.sqrt(val) < sr:
+                    neighbors += 1
+
+            if neighbors >= k_min:
+                mask[i] = True  # no snow -> keep
+
+        return mask
+
 def build_range_image_from_point_cloud(points, inclination, point_features=None):
     """Build virtual range image from point cloud assuming uniform azimuth.
 
@@ -306,8 +356,18 @@ def build_range_image_from_point_cloud(points, inclination, point_features=None)
 inclinations = compute_inclinations(beam_inclination_min, beam_inclination_max)
 
 #Remove ground plane
-pc = filter_below_groundplane(points[:,:3], tolerance=0)
+pc = filter_below_groundplane(points[:,:3], tolerance=1)
 
+#Apply DROR
+keep_mask = o3d_dynamic_radius_outlier_filter(pc, alpha=0.45)
+snow_indices = (keep_mask == 0).nonzero()[0]#.astype(np.int16)
+range_snow_indices = np.linalg.norm(pc[snow_indices][:,:3], axis=1)
+snow_indices = snow_indices[range_snow_indices < 30]
+keep_indices = np.ones(len(pc), dtype=bool)
+keep_indices[snow_indices] = False
+pc = pc[keep_indices]
+
+# Build Range image
 range_image, ri_indices, ri_ranges = build_range_image_from_point_cloud(pc[:,:3], inclinations, point_features=None)
 # plt.hist(ri_ranges, bins = 20)
 # plt.show()
@@ -315,16 +375,57 @@ range_image, ri_indices, ri_ranges = build_range_image_from_point_cloud(pc[:,:3]
 # plt.hist((range_image[range_image > 0.1]).reshape((-1)), bins = 20)
 # plt.show()
 
+#__________________________________________________________________________________#
+
 # Fill empty pixels with highest range in the kernel
 empty_pixels = range_image < 0.1
 dilated = cv2.dilate(range_image, DIAMOND_KERNEL_5)
 range_image[empty_pixels] = dilated[empty_pixels]
 
+#__________________________________________________________________________________#
 
+# # Fill empty pixels with median of most freq range in neighbours
+# pad = 2
+# padded_range_image = np.pad(range_image, pad, 'edge')
+# new_padded_range_image = padded_range_image.copy()
+# range_bins = np.arange(0,121,10)
+
+# for row in range(pad, pad+HEIGHT):
+#     for col in range(pad, pad+WIDTH):
+#         #         # 5x5 diamond kernel
+#         # DIAMOND_KERNEL_5 = np.array(
+#         #     [
+#         #         [0, 0, 1, 0, 0],
+#         #         [0, 1, 1, 1, 0],
+#         #         [1, 1, 1, 1, 1],
+#         #         [0, 1, 1, 1, 0],
+#         #         [0, 0, 1, 0, 0],
+#         #     ], dtype=np.uint8)
+
+#         img_under_kernel = padded_range_image[row-pad:row+pad+1, col-pad:col+pad+1]
+#         values = img_under_kernel[DIAMOND_KERNEL_5.astype(bool)]
+        
+#         bin_counts, bin_edges, bin_num = stats.binned_statistic(values, values, 'count', bins = range_bins)
+
+#         most_freq_bin_idx = np.argmax(bin_counts) #this returns index which starts from 0
+#         most_freq_bin_values = values[bin_num == most_freq_bin_idx+1] #bin num starts from 1, 2, ...
+#         median = np.max(most_freq_bin_values) 
+#         if median > 3:
+#             new_padded_range_image[row, col] = median #if median > 3 else padded_range_image[row, col]
+
+# empty_pixels = range_image < 0.1
+# dilated = new_padded_range_image[pad:-pad, pad:-pad]
+# range_image[empty_pixels] = dilated[empty_pixels]
+# ##########__________________________________________________________________________________##########
+
+#Extract point cloud from range image
 range_image_cartesian = extract_point_cloud_from_range_image(range_image, inclinations)
 new_points = range_image_cartesian[empty_pixels].reshape((-1, 3))
-final_points = np.vstack((points[:,:3], new_points))
-
+#final_points = np.vstack((points[:,:3], new_points))
+final_points = np.vstack((pc[:,:3], new_points)) # pc has no ground plane and is DRORed
+old_new_mask = np.zeros((final_points.shape[0], 1))
+old_new_mask[pc.shape[0]:, 0] = 1
+final_points = np.hstack((final_points, old_new_mask))
 
 
 
@@ -335,7 +436,7 @@ final_points = np.vstack((points[:,:3], new_points))
 # cv2.imshow('range_img', range_image_color)
 # cv2.waitKey()
 
-V.draw_scenes(points[:,:3])
+#V.draw_scenes(points[:,:3])
 
-V.draw_scenes(final_points[:,:3])
+V.draw_scenes(final_points[:,:4], color_feature=4)
 b=1

@@ -33,11 +33,11 @@ def get_colors(pc, color_feature=None):
         max_value = 255
 
     elif color_feature == 4:
-        feature = pc[:, 4]
+        feature = pc[:, 3]
         colors = np.zeros((feature.shape[0], 3))
 
-        colors[feature == 0, 0] = 1 #lost red
-        colors[feature == 1, 1] = 1 # scattered green
+        colors[feature == 0, 0] = 1 # red old
+        colors[feature == 1, 1] = 1 # green new
         #colors[feature == 2, 2] = 1 # original but noisy blue
 
         # #colors[feature == 3, 1] = 1 # random scatter
