@@ -168,9 +168,16 @@ class KittiDataset(DatasetTemplate):
             calib_info = {'P2': P2, 'R0_rect': R0_4x4, 'Tr_velo_to_cam': V2C_4x4}
 
             info['calib'] = calib_info
+            info['weather'] = 'clear'
+            info['dataset'] = 'kitti'
+            info['velodyne_parent_dir'] = 'training' if self.split != 'test' else 'testing'
+
 
             if has_label:
                 obj_list = self.get_label(sample_idx)
+                # Ignore any class not in relevant classes for Depth Contrast
+                obj_list = [obj for obj in obj_list if obj.cls_type in self.class_names]
+
                 annotations = {}
                 annotations['name'] = np.array([obj.cls_type for obj in obj_list])
                 annotations['truncated'] = np.array([obj.truncation for obj in obj_list])
@@ -434,6 +441,7 @@ def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4
     train_filename = save_path / ('kitti_infos_%s.pkl' % train_split)
     val_filename = save_path / ('kitti_infos_%s.pkl' % val_split)
     trainval_filename = save_path / 'kitti_infos_trainval.pkl'
+    trainvaltest_filename = save_path / 'kitti_infos_all.pkl'
     test_filename = save_path / 'kitti_infos_test.pkl'
 
     print('---------------Start to generate data infos---------------')
@@ -460,20 +468,24 @@ def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4
         pickle.dump(kitti_infos_test, f)
     print('Kitti info test file is saved to %s' % test_filename)
 
-    print('---------------Start create groundtruth database for data augmentation---------------')
-    dataset.set_split(train_split)
-    dataset.create_groundtruth_database(train_filename, split=train_split)
+    with open(trainvaltest_filename, 'wb') as f:
+        pickle.dump(kitti_infos_train + kitti_infos_val + kitti_infos_test, f)
+    print('Kitti info trainvaltest file is saved to %s' % trainvaltest_filename)
 
-    print('---------------Data preparation Done---------------')
+    # print('---------------Start create groundtruth database for data augmentation---------------')
+    # dataset.set_split(train_split)
+    # dataset.create_groundtruth_database(train_filename, split=train_split)
+
+    # print('---------------Data preparation Done---------------')
 
 
 if __name__ == '__main__':
     import sys
-    if sys.argv.__len__() > 1 and sys.argv[1] == 'create_kitti_infos':
+    if sys.argv.__len__() > 1 and sys.argv[2] == 'create_kitti_infos':
         import yaml
         from pathlib import Path
         from easydict import EasyDict
-        dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[2])))
+        dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[4])))
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         create_kitti_infos(
             dataset_cfg=dataset_cfg,
