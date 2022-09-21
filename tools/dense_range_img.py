@@ -10,13 +10,38 @@ from scipy import stats
 
 #https://www.wevolver.com/specs/hdl-64e.lidar.sensor
 beam_inclination_max = np.radians(2.0)
-beam_inclination_min = np.radians(-24.9)
+beam_inclination_min = np.radians(-24.9)#np.radians(-24.9)
 
 
 #https://www.manualslib.com/download/1988532/Velodyne-Hdl-64e-S3.html
-horizontal_res = 3e-3 #np.radians(0.1728) #3e-3 in snow sim 
-HEIGHT = 64 #64  channels
+horizontal_res = np.radians(0.1728) #3e-3 in snow sim 
+HEIGHT = 64 # channels of lidar
 WIDTH = np.ceil(np.radians(360)/horizontal_res).astype(int)
+
+# Full kernels
+FULL_KERNEL_3 = np.ones((3, 3), np.uint8)
+FULL_KERNEL_5 = np.ones((5, 5), np.uint8)
+FULL_KERNEL_7 = np.ones((7, 7), np.uint8)
+FULL_KERNEL_9 = np.ones((9, 9), np.uint8)
+FULL_KERNEL_31 = np.ones((31, 31), np.uint8)
+
+# 3x3 cross kernel
+CROSS_KERNEL_3 = np.asarray(
+    [
+        [0, 1, 0],
+        [1, 1, 1],
+        [0, 1, 0],
+    ], dtype=np.uint8)
+
+# 5x5 cross kernel
+CROSS_KERNEL_5 = np.asarray(
+    [
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+        [1, 1, 1, 1, 1],
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+    ], dtype=np.uint8)
 
 # 5x5 diamond kernel
 DIAMOND_KERNEL_5 = np.array(
@@ -28,39 +53,65 @@ DIAMOND_KERNEL_5 = np.array(
         [0, 0, 1, 0, 0],
     ], dtype=np.uint8)
 
+# 7x7 cross kernel
+CROSS_KERNEL_7 = np.asarray(
+    [
+        [0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0],
+        [1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0],
+    ], dtype=np.uint8)
+
+# 7x7 diamond kernel
+DIAMOND_KERNEL_7 = np.asarray(
+    [
+        [0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 1, 1, 1, 0, 0],
+        [0, 1, 1, 1, 1, 1, 0],
+        [1, 1, 1, 1, 1, 1, 1],
+        [0, 1, 1, 1, 1, 1, 0],
+        [0, 0, 1, 1, 1, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0],
+    ], dtype=np.uint8)
+
 lidar_path = '/home/barza/OpenPCDet/data/dense/lidar_hdl64_strongest/2018-02-04_12-13-33_00100.bin'
 
 points = np.fromfile(lidar_path, dtype=np.float32).reshape(-1, 5)
 
-def filter_below_groundplane(pointcloud, tolerance=1):
-    valid_loc = (pointcloud[:, 2] < -1.4) & \
-                (pointcloud[:, 2] > -1.86) & \
-                (pointcloud[:, 0] > 0) & \
-                (pointcloud[:, 0] < 40) & \
-                (pointcloud[:, 1] > -15) & \
-                (pointcloud[:, 1] < 15)
-    pc_rect = pointcloud[valid_loc]
-    print(pc_rect.shape)
-    if pc_rect.shape[0] <= pc_rect.shape[1]:
-        w = [0, 0, 1]
-        h = -1.55
-    else:
-        reg = RANSACRegressor().fit(pc_rect[:, [0, 1]], pc_rect[:, 2])
-        w = np.zeros(3)
-        w[0] = reg.estimator_.coef_[0]
-        w[1] = reg.estimator_.coef_[1]
-        w[2] = 1.0
-        h = reg.estimator_.intercept_
-        w = w / np.linalg.norm(w)
+def filter_below_groundplane(pointcloud, tolerance=1, w=None, h=None):
+    if w is None or h is None:
+        valid_loc = (pointcloud[:, 2] < -1.4) & \
+                    (pointcloud[:, 2] > -1.86) & \
+                    (pointcloud[:, 0] > 0) & \
+                    (pointcloud[:, 0] < 40) & \
+                    (pointcloud[:, 1] > -15) & \
+                    (pointcloud[:, 1] < 15)
+        pc_rect = pointcloud[valid_loc]
+        print(pc_rect.shape)
+        if pc_rect.shape[0] <= pc_rect.shape[1]:
+            w = [0, 0, 1]
+            h = -1.55
+        else:
+            reg = RANSACRegressor().fit(pc_rect[:, [0, 1]], pc_rect[:, 2])
+            w = np.zeros(3)
+            w[0] = reg.estimator_.coef_[0]
+            w[1] = reg.estimator_.coef_[1]
+            w[2] = 1.0
+            h = reg.estimator_.intercept_
+            w = w / np.linalg.norm(w)
 
-        print(reg.estimator_.coef_)
-        print(reg.get_params())
-        print(w, h)
+            print(reg.estimator_.coef_)
+            print(reg.get_params())
+            print(w, h)
     height_over_ground = np.matmul(pointcloud[:, :3], np.asarray(w))
     height_over_ground = height_over_ground.reshape((len(height_over_ground), 1))
     above_ground = np.matmul(pointcloud[:, :3], np.asarray(w)) - h > -tolerance
     print(above_ground.shape)
-    return np.hstack((pointcloud[above_ground, :], height_over_ground[above_ground]))
+    #return np.hstack((pointcloud[above_ground, :], height_over_ground[above_ground]))
+    return pointcloud[above_ground, :], w, h
 
 def _combined_static_and_dynamic_shape(tensor):
     """Returns a list containing static and dynamic values for the dimensions.
@@ -125,7 +176,8 @@ def compute_inclinations(beam_inclination_min, beam_inclination_max):
     """Computes uniform inclination range based on the given range and height i.e. number of channels.
     """
     diff = beam_inclination_max - beam_inclination_min
-    ratios = (0.5 + np.arange(0, HEIGHT)) / HEIGHT #[0.5, ..., 63.5]
+    #ratios = (0.5 + np.arange(0, HEIGHT)) / HEIGHT #[0.5, ..., 63.5] #waymo
+    ratios = np.arange(0, HEIGHT) / (HEIGHT-1) #[0, ..., 63]
     inclination = ratios * diff + beam_inclination_min #[bottom row inclination, ..., top row]
     #reverse
     inclination = inclination[::-1]
@@ -143,7 +195,8 @@ def compute_range_image_polar(range_image, inclination):
         range_image_polar: [H, W, 3] polar coordinates.
     """
     # [W].
-    ratios = (np.arange(WIDTH, 0, -1) - 0.5) / WIDTH # [0.99, ..., 0.000]
+    #ratios = (np.arange(WIDTH, 0, -1) - 0.5) / WIDTH # [0.99, ..., 0.000] #waymo
+    ratios = (np.arange(WIDTH, 0, -1) - 1) / (WIDTH-1) #[1, ..., 0]
     
     # [W].
     azimuth = (ratios * 2. - 1.) * np.pi # [180 deg in rad, ..., -180]
@@ -351,12 +404,11 @@ def build_range_image_from_point_cloud(points, inclination, point_features=None)
     return range_images.numpy(), ri_indices.numpy(), ri_ranges.numpy()
 
 
-
 #compute inclinations
 inclinations = compute_inclinations(beam_inclination_min, beam_inclination_max)
 
-#Remove ground plane
-pc = filter_below_groundplane(points[:,:3], tolerance=1)
+#Remove points below ground plane
+pc, w, h = filter_below_groundplane(points[:,:3], tolerance=1)
 
 #Apply DROR
 keep_mask = o3d_dynamic_radius_outlier_filter(pc, alpha=0.45)
@@ -367,7 +419,7 @@ keep_indices = np.ones(len(pc), dtype=bool)
 keep_indices[snow_indices] = False
 pc = pc[keep_indices]
 
-# Build Range image
+# Build Range image from clean pc
 range_image, ri_indices, ri_ranges = build_range_image_from_point_cloud(pc[:,:3], inclinations, point_features=None)
 # plt.hist(ri_ranges, bins = 20)
 # plt.show()
@@ -375,54 +427,167 @@ range_image, ri_indices, ri_ranges = build_range_image_from_point_cloud(pc[:,:3]
 # plt.hist((range_image[range_image > 0.1]).reshape((-1)), bins = 20)
 # plt.show()
 
-#__________________________________________________________________________________#
-
-# Fill empty pixels with highest range in the kernel
+range_image = range_image.astype(np.float32)
+###################### Hole Filling Start ####################################################
 empty_pixels = range_image < 0.1
-dilated = cv2.dilate(range_image, DIAMOND_KERNEL_5)
-range_image[empty_pixels] = dilated[empty_pixels]
 
-#__________________________________________________________________________________#
+def fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5):
+    # Fill empty pixels with highest range in the kernel
+    dilated = cv2.dilate(range_image, kernel)
+    range_image[empty_pixels] = dilated[empty_pixels]
+    return range_image
 
-# # Fill empty pixels with median of most freq range in neighbours
-# pad = 2
-# padded_range_image = np.pad(range_image, pad, 'edge')
-# new_padded_range_image = padded_range_image.copy()
-# range_bins = np.arange(0,121,10)
+def fill_based_on_freq(range_image, empty_pixels, mode='max', freq_mode='least', kernel=DIAMOND_KERNEL_5):
 
-# for row in range(pad, pad+HEIGHT):
-#     for col in range(pad, pad+WIDTH):
-#         #         # 5x5 diamond kernel
-#         # DIAMOND_KERNEL_5 = np.array(
-#         #     [
-#         #         [0, 0, 1, 0, 0],
-#         #         [0, 1, 1, 1, 0],
-#         #         [1, 1, 1, 1, 1],
-#         #         [0, 1, 1, 1, 0],
-#         #         [0, 0, 1, 0, 0],
-#         #     ], dtype=np.uint8)
+    #Fill empty pixels with max, min or median of most freq range in neighbours
+    pad = 2
+    padded_range_image = np.pad(range_image, pad, 'edge')
+    new_padded_range_image = padded_range_image.copy()
+    range_bins = np.arange(0,121,10)
 
-#         img_under_kernel = padded_range_image[row-pad:row+pad+1, col-pad:col+pad+1]
-#         values = img_under_kernel[DIAMOND_KERNEL_5.astype(bool)]
-        
-#         bin_counts, bin_edges, bin_num = stats.binned_statistic(values, values, 'count', bins = range_bins)
+    for row in range(pad, pad+HEIGHT):
+        for col in range(pad, pad+WIDTH):
+            #         # 5x5 diamond kernel
+            # DIAMOND_KERNEL_5 = np.array(
+            #     [
+            #         [0, 0, 1, 0, 0],
+            #         [0, 1, 1, 1, 0],
+            #         [1, 1, 1, 1, 1],
+            #         [0, 1, 1, 1, 0],
+            #         [0, 0, 1, 0, 0],
+            #     ], dtype=np.uint8)
 
-#         most_freq_bin_idx = np.argmax(bin_counts) #this returns index which starts from 0
-#         most_freq_bin_values = values[bin_num == most_freq_bin_idx+1] #bin num starts from 1, 2, ...
-#         median = np.max(most_freq_bin_values) 
-#         if median > 3:
-#             new_padded_range_image[row, col] = median #if median > 3 else padded_range_image[row, col]
+            img_under_kernel = padded_range_image[row-pad:row+pad+1, col-pad:col+pad+1]
+            values = img_under_kernel[kernel.astype(bool)]
+            
+            bin_counts, bin_edges, bin_num = stats.binned_statistic(values, values, 'count', bins = range_bins)
+            bin_counts[bin_counts < 1] = np.nan
 
-# empty_pixels = range_image < 0.1
-# dilated = new_padded_range_image[pad:-pad, pad:-pad]
-# range_image[empty_pixels] = dilated[empty_pixels]
-# ##########__________________________________________________________________________________##########
+            if freq_mode == 'least':
+                selected_bin_idx = np.nanargmin(bin_counts) #this returns index which starts from 0
+            else:
+                selected_bin_idx = np.nanargmax(bin_counts)
+            selected_bin_values = values[bin_num == selected_bin_idx+1] #bin num starts from 1, 2, ...
+            if mode == 'max':
+                new_val = np.max(selected_bin_values) 
+            elif mode == 'min':
+                new_val = np.min(selected_bin_values)
+            elif mode == 'mean':
+                new_val = np.min(selected_bin_values)
+            elif mode == 'median':
+                new_val = np.median(selected_bin_values)
+            #if median > 0:
+            new_padded_range_image[row, col] = new_val #if median > 3 else padded_range_image[row, col]
+
+    dilated = new_padded_range_image[pad:-pad, pad:-pad]
+    range_image[empty_pixels] = dilated[empty_pixels]
+
+    return range_image
+
+# ip_basic
+def fill_in_fast(depth_map, max_depth=100.0, custom_kernel=DIAMOND_KERNEL_5,
+                 extrapolate=False, blur_type='bilateral'):
+    """Fast, in-place depth completion.
+
+    Args:
+        depth_map: projected depths
+        max_depth: max depth value for inversion
+        custom_kernel: kernel to apply initial dilation
+        extrapolate: whether to extrapolate by extending depths to top of
+            the frame, and applying a 31x31 full kernel dilation
+        blur_type:
+            'bilateral' - preserves local structure (recommended)
+            'gaussian' - provides lower RMSE
+
+    Returns:
+        depth_map: dense depth map
+    """
+    # vis_utils.cv2_show_image('initial', depth_map)
+    # cv2.waitKey()
+
+    # Invert
+    valid_pixels = (depth_map > 0.1) #non-empty pixels
+    depth_map[valid_pixels] = max_depth - depth_map[valid_pixels]
+
+    # vis_utils.cv2_show_image('invert depth', depth_map*256)
+    # cv2.waitKey()
+
+    # Dilate
+    depth_map = cv2.dilate(depth_map, custom_kernel)
+    # vis_utils.cv2_show_image('dilate', depth_map)
+    # cv2.waitKey()
+
+    # Hole closing
+    depth_map = cv2.morphologyEx(depth_map, cv2.MORPH_CLOSE, FULL_KERNEL_5)
+    # vis_utils.cv2_show_image('Hole closing', depth_map)
+    # cv2.waitKey()
+
+
+    # Fill empty spaces with dilated values
+    empty_pixels = (depth_map < 0.1)
+    dilated = cv2.dilate(depth_map, FULL_KERNEL_7)
+    depth_map[empty_pixels] = dilated[empty_pixels]
+
+    # vis_utils.cv2_show_image('fill empty pixels', depth_map)
+    # cv2.waitKey()
+
+    # Extend highest pixel to top of image
+    if extrapolate:
+        top_row_pixels = np.argmax(depth_map > 0.1, axis=0)
+        top_pixel_values = depth_map[top_row_pixels, range(depth_map.shape[1])]
+
+        for pixel_col_idx in range(depth_map.shape[1]):
+            depth_map[0:top_row_pixels[pixel_col_idx], pixel_col_idx] = \
+                top_pixel_values[pixel_col_idx]
+
+        # Large Fill
+        empty_pixels = depth_map < 0.1
+        dilated = cv2.dilate(depth_map, FULL_KERNEL_31)
+        depth_map[empty_pixels] = dilated[empty_pixels]
+
+    # Median blur
+    depth_map = cv2.medianBlur(depth_map, 5)
+
+    # vis_utils.cv2_show_image('median blur', depth_map)
+    # cv2.waitKey()
+
+    # Bilateral or Gaussian blur
+    if blur_type == 'bilateral':
+        # Bilateral blur
+        depth_map = cv2.bilateralFilter(depth_map, 5, 1.5, 2.0)
+    elif blur_type == 'gaussian':
+        # Gaussian blur
+        valid_pixels = (depth_map > 0.1)
+        blurred = cv2.GaussianBlur(depth_map, (5, 5), 0)
+        depth_map[valid_pixels] = blurred[valid_pixels]
+    
+    
+    # vis_utils.cv2_show_image('bilateral blur', depth_map)
+    # cv2.waitKey()
+    # Invert
+    valid_pixels = (depth_map > 0.1)
+    depth_map[valid_pixels] = max_depth - depth_map[valid_pixels]
+
+    # vis_utils.cv2_show_image('final', depth_map)
+    # cv2.waitKey()
+
+    return depth_map
+
+
+
+#range_image = fill_in_fast(range_image)
+#range_image = fill_based_on_freq(range_image, empty_pixels, mode='max', freq_mode='least', kernel=DIAMOND_KERNEL_5)
+range_image = fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5)
+###################### Hole Filling End ####################################################
 
 #Extract point cloud from range image
 range_image_cartesian = extract_point_cloud_from_range_image(range_image, inclinations)
 new_points = range_image_cartesian[empty_pixels].reshape((-1, 3))
+#Remove new points below previously estimated ground plane
+new_points, _,_ = filter_below_groundplane(new_points[:,:3], tolerance=0.1,  w=w, h=h)
+
 #final_points = np.vstack((points[:,:3], new_points))
-final_points = np.vstack((pc[:,:3], new_points)) # pc has no ground plane and is DRORed
+final_points = np.vstack((pc[:,:3], new_points)) # pc has no points below ground plane and is DRORed
 old_new_mask = np.zeros((final_points.shape[0], 1))
 old_new_mask[pc.shape[0]:, 0] = 1
 final_points = np.hstack((final_points, old_new_mask))
