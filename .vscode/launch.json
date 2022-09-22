@@ -8,7 +8,16 @@
             "module": "pcdet.datasets.dense.dense_dataset",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset_martin.yaml"]
+            "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset.yaml"]
+        },
+        {
+            "name": "Python: create kitti infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.kitti.kitti_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": ["--func", "create_kitti_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/kitti_dataset.yaml"]
         },
         {
             "name": "dataset_viewer",

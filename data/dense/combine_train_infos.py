@@ -4,7 +4,7 @@ import numpy as np
 np.random.seed(100)
 root_path = "/home/barza/OpenPCDet/data/dense"
 split_base_mode = ['train', '60'] #['train', '60'] #['test', '25'] #['val', '15']
-percent_list = [5, 10, 20, 30, 40, 50, 100]  #[100]
+percent_list = [1] #[5, 10, 20, 30, 40, 50, 100]  #[100]
 weather_splits = [f'{split_base_mode[0]}_light_fog_FOV3000_{split_base_mode[1]}.pkl', 
 f'{split_base_mode[0]}_dense_fog_FOV3000_{split_base_mode[1]}.pkl', 
 f'{split_base_mode[0]}_snow_FOV3000_{split_base_mode[1]}.pkl']
