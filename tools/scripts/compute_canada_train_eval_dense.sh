@@ -8,6 +8,7 @@
 #SBATCH --output=./output/log/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
 #SBATCH --array=1-2%1   # 4 is the number of jobs in the chain
+#SBATCH --mail-user=barzanisar93@gmail.com
 
 # die function
 die() { echo "$*" 1>&2 ; exit 1; }
