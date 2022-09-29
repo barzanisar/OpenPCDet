@@ -35,8 +35,8 @@ SAVE_CKPT_AFTER_EPOCH=0
 NUM_EPOCHS_TO_EVAL=0
 
 # ========== DENSE ==========
-DATA_DIR= /home/$USER/projects/rrg-swasland/Datasets/Dense
-INFOS_DIR= /home/$USER/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos
+DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Dense
+INFOS_DIR=/home/$USER/projects/rrg-swasland/Datasets/Dense/FOV3000_Infos
 
 # Additional parameters
 DATASET=dense
