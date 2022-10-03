@@ -43,17 +43,33 @@
 
 ########### Finetune with one LR for both head and BB #############
 
-########### dc _ weather aug _ dense + kitti ###########
+########### Pretrained on dense + kitti ###########
+########### dc+weather aug ###########
 # adamOnecycle 
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18855 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_wd0p001_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO_wd0p001.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18865 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_0p02_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO_0p02.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18875 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
-sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_0p015_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO_0p015.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18875 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
+# sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_0p015_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO_0p015.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18875 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 
 # # adamw_cosine 
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamC_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamw_cosine_0p001.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18655 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamC_wd0p001_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamw_cosine_0p001_wd0p001.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18665 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 # sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamC_0p002_dc_1in2_cube_up_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamw_cosine_0p002.yaml --extra_tag dc_1in2_cube_up_red_dense_kitti_ep330 --tcp_port 18675 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_b14_lr0p15_red_dense_kitti_ep330.pth.tar
 
-########### dc _ without weather aug _ dense + kitti ###########
-sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_dc_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_dense_kitti_ep330 --tcp_port 18855 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_b14_lr0p15_red_dense_kitti_ep330.pth.tar
+########### dc ###########
+#sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_dc_red_dense_kitti_ep330 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_dense_kitti_ep330 --tcp_port 18855 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_b14_lr0p15_red_dense_kitti_ep330.pth.tar
+
+
+########### Pretrained on dense + semkitti ###########
+########### dc+weather aug ###########
+sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_dc_1in2_cube_up_dense_semkitti_ep200 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_1in2_cube_up_dense_semkitti_ep200 --tcp_port 18855 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_1in2_cube_up_dense_semkitti_ep200.pth.tar
+
+########### dc ###########
+sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_dc_dense_semkitti_ep200 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_1in2_cube_up_dense_semkitti_ep200 --tcp_port 18865 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/dc_dense_semkitti_ep200.pth.tar
+
+########### seg + weather aug ###########
+sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_seg_1in2_cube_up_dense_semkitti_ep200 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_1in2_cube_up_dense_semkitti_ep200 --tcp_port 18875 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/seg_1in2_cube_up_dense_semkitti_ep200.pth.tar
+
+########### seg + without weather aug ###########
+sbatch --time=24:00:00 --array=1-2%1 --job-name=finetune-all_splits_5_adamO_seg_dense_semkitti_ep200 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_finetune_train_all_splits_60_5_adamO.yaml --extra_tag dc_1in2_cube_up_dense_semkitti_ep200 --tcp_port 18885 --ckpt_save_interval 20 --fix_random_seed --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/seg_dense_semkitti_ep200.pth.tar
+
