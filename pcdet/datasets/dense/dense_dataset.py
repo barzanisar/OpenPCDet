@@ -25,6 +25,7 @@ from lib.LiDAR_fog_sim.fog_simulation import *
 from lib.LiDAR_fog_sim.SeeingThroughFog.tools.DatasetFoggification.beta_modification import BetaRadomization
 from lib.LiDAR_fog_sim.SeeingThroughFog.tools.DatasetFoggification.lidar_foggification import haze_point_cloud
 
+#from pcdet.datasets.dense.dense_range_img import upsample
 
 #from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
 
@@ -707,7 +708,10 @@ class DenseDataset(DatasetTemplate):
 
         # Test DROR with train on clear, test on all splits with dror
         apply_dror =  'DROR' in self.dataset_cfg and not self.training #TODO: weather != 'clear' and Apply DROR only when training on all_60 and apply weather aug when training on clear only
-        
+        # apply_upsampling = 'UPSAMPLE' in self.dataset_cfg and not self.training
+        # if apply_upsampling:
+        #     points, _ = upsample(points)
+
         if apply_dror:
             try:
                 alpha = self.dataset_cfg['DROR']
@@ -868,7 +872,7 @@ class DenseDataset(DatasetTemplate):
 
         snowfall_augmentation_applied = False
 
-        if self.training and 'SNOW' in self.dataset_cfg:
+        if self.training and 'SNOW' in self.dataset_cfg and weather == 'clear':
 
             parameters = self.dataset_cfg['SNOW'].split('_')
 
@@ -896,17 +900,18 @@ class DenseDataset(DatasetTemplate):
                 if sampling == 'uniform':
                     rainfall_rate = int(np.random.choice(self.rainfall_rates))
 
-                lidar_file = self.root_path / 'snowfall_simulation_FOV' / mode / \
+                lidar_file = self.root_path / 'snowfall_simulation_FOV_clustered' / mode / \
                              f'{self.lidar_folder}_rainrate_{rainfall_rate}' / f'{sample_idx}.bin'
 
                 try:
-                    points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 5)
+                    points = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 6)
+                    points = points[:,:-1]
                     snowfall_augmentation_applied = True
                 except FileNotFoundError:
                     print(f'\n{lidar_file} not found')
                     pass
 
-        if self.training and 'WET_SURFACE' in self.dataset_cfg:
+        if self.training and 'WET_SURFACE' in self.dataset_cfg and weather == 'clear':
 
             method = self.dataset_cfg['WET_SURFACE']
 
