@@ -962,11 +962,11 @@ class DenseDataset(DatasetTemplate):
                 except (TypeError, ValueError):
                     pass
 
-        if self.dataset_cfg.COMPENSATE:
+        # if self.dataset_cfg.COMPENSATE:
 
-            compensation = np.zeros(points.shape)
-            compensation[:, :3] = np.array(self.dataset_cfg.COMPENSATE)
-            points = points + compensation
+        #     compensation = np.zeros(points.shape)
+        #     compensation[:, :3] = np.array(self.dataset_cfg.COMPENSATE)
+        #     points = points + compensation
 
         input_dict = {
             'points': points,

@@ -24,7 +24,7 @@ DATA_CONFIG:
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
-    #DROR: 0.45
+    # DROR: 0.45
     FOV_POINTS_ONLY: True
     
     DATA_AUGMENTOR:
@@ -194,8 +194,9 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
-    LR: 0.01
+    OPTIMIZER: adamW
+    LR_SCHEDULER: cosine #cosine, steplr
+    LR: 0.001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

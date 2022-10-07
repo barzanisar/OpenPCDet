@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_clear_FOV3000_60']
+    tags: ['train_adverse_FOV3000_60', 'finetune']
 
 
 DATA_CONFIG:
@@ -14,26 +14,25 @@ DATA_CONFIG:
 
     # To create infos and gtdb infos
     DATA_SPLIT: {
-        'train': train_clear_FOV3000_60,
+        'train': dense_infos_train_adverse_FOV3000_60,
         'test': val_clear_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
-        'train': [dense_infos_train_clear_FOV3000_60.pkl],
+        'train': [dense_infos_train_adverse_FOV3000_60.pkl],
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
-    #DROR: 0.45
     FOV_POINTS_ONLY: True
-    
+
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - dense_dbinfos_train_clear_60.pkl
+                    - dense_dbinfos_train_all_60.pkl
                 PREPARE: {
                     filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
@@ -194,8 +193,11 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
-    LR: 0.01
+    FREEZE_BB: False
+    OPTIMIZER: adamW
+    LR_SCHEDULER: cosine #cosine, steplr
+    LR: 0.001
+    LR_BB: 0.0001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
