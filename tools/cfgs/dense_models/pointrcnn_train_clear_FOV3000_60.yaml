@@ -24,7 +24,7 @@ DATA_CONFIG:
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
-    # DROR: 0.45
+    DROR: 0.45
     FOV_POINTS_ONLY: True
     
     DATA_AUGMENTOR:
