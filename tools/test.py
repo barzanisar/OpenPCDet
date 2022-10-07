@@ -157,18 +157,14 @@ def main():
         assert args.batch_size % total_gpus == 0, 'Batch size should match the number of gpus'
         args.batch_size = args.batch_size // total_gpus
 
-    print('Making output dir!!!!11')
     output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG
     if args.extra_tag != 'default':
         output_dir = output_dir / args.extra_tag
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if cfg.LOCAL_RANK == 0:
-        print(f'Output dir: {str(output_dir)}, {output_dir.exists()}')
 
     eval_output_dir = output_dir / 'eval'
 
-    print('Making eval dir!!!!11')
     if not args.eval_all:
         num_list = re.findall(r'\d+', args.ckpt) if args.ckpt is not None else []
         epoch_id = num_list[-1] if num_list.__len__() > 0 else 'no_number'
@@ -180,16 +176,8 @@ def main():
         eval_output_dir = eval_output_dir / args.eval_tag
 
     eval_output_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.LOCAL_RANK == 0:
-        print(f'eval_output_dir: {str(eval_output_dir)}, {eval_output_dir.exists()}')
-
-    assert eval_output_dir.exists(), 'eval dir does not exist!'
-
     log_file = eval_output_dir / ('log_eval_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
     logger = common_utils.create_logger(log_file, rank=cfg.LOCAL_RANK)
-
-    if cfg.LOCAL_RANK == 0:
-        print(f'log_file: {str(log_file)}, {log_file.exists()}')
 
     if not args.disable_wandb:
         wandb_utils.init(cfg, args, job_type='eval', eval_tag=args.eval_tag)
@@ -206,8 +194,6 @@ def main():
     log_config_to_file(cfg, logger=logger)
 
     ckpt_dir = args.ckpt_dir if args.ckpt_dir is not None else output_dir / 'ckpt'
-    if cfg.LOCAL_RANK == 0:
-        print(f'ckpt_dir: {str(ckpt_dir)}, {ckpt_dir.exists()}')
 
     test_set, test_loader, sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
@@ -240,8 +226,6 @@ def main():
         model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
         with torch.no_grad():
             if args.eval_all:
-                if cfg.LOCAL_RANK == 0:
-                    print(f'Starting Eval!!!!')
                 repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
             else:
                 eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=dist_test)
