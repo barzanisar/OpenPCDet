@@ -12,6 +12,7 @@
 ## Adam one cycle (on 5%, 10% etc of all weather data)
 sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-6%1 --job-name=pointrcnn-all-splits-5-snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_splits_60_5_snowsim.yaml -tcp_port 18451 --ckpt_save_interval 20 --fix_random_seed
 sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-6%1 --job-name=pointrcnn-all-splits-5 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_splits_60_5.yaml -tcp_port 18461 --ckpt_save_interval 20 --fix_random_seed
+
 ## TODO (low priority)
 #sbatch --time=15:00:00 --array=1-1%1 --job-name=pointrcnn-all-splits-10 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_splits_60_10.yaml -tcp_port 18863 --ckpt_save_interval 10 --fix_random_seed
 #sbatch --time=15:00:00 --array=1-1%1 --job-name=pointrcnn-all-splits-20 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_splits_60_20.yaml -tcp_port 18864 --ckpt_save_interval 5 --fix_random_seed
@@ -20,10 +21,10 @@ sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-6%1 --job-name=pointrcnn-all
 #sbatch --time=15:00:00 --array=1-1%1 --job-name=pointrcnn-all-splits-50 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_splits_60_50.yaml -tcp_port 18862 --ckpt_save_interval 1 --fix_random_seed
 
 
-sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-1_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1_snowsim.yaml -tcp_port 18465 --ckpt_save_interval 1 --fix_random_seed
-sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-5_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5_snowsim.yaml -tcp_port 18470 --ckpt_save_interval 1 --fix_random_seed
-sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-1 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1.yaml -tcp_port 18490 --ckpt_save_interval 1 --fix_random_seed
-sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-5 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5.yaml -tcp_port 18481 --ckpt_save_interval 1 --fix_random_seed
+# sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-1_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1_snowsim.yaml -tcp_port 18465 --ckpt_save_interval 1 --fix_random_seed
+# sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-2%1 --job-name=pointrcnn-all-60-5_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5_snowsim.yaml -tcp_port 18470 --ckpt_save_interval 1 --fix_random_seed
+# sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-2%1 --job-name=pointrcnn-all-60-1 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1.yaml -tcp_port 18490 --ckpt_save_interval 1 --fix_random_seed
+# sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-2%1 --job-name=pointrcnn-all-60-5 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5.yaml -tcp_port 18481 --ckpt_save_interval 1 --fix_random_seed
 ## TODO (High priority)
 ## Adam one cycle (on 60% clear and 5%, 10% etc of adverse weather data)
 #sbatch --time=05:00:00 --array=1-3%1 --job-name=pointrcnn-all-60-10 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_10.yaml -tcp_port 18863 --ckpt_save_interval 1 --fix_random_seed
