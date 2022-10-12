@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_clear_FOV3000_60', 'weather_aug']
+    tags: ['train_all_FOV3000_60_1', 'snow_aug']
 
 
 DATA_CONFIG:
@@ -14,24 +14,21 @@ DATA_CONFIG:
 
     # To create infos and gtdb infos
     DATA_SPLIT: {
-        'train': train_clear_FOV3000_60,
+        'train': train_all_FOV3000_60_1,
         'test': val_clear_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
-        'train': [dense_infos_train_clear_FOV3000_60.pkl],
+        'train': [dense_infos_train_all_FOV3000_60_1.pkl],
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
-
+    
     COUPLED: True
     WET_SURFACE: '1in10' #'1in10'
     SNOW: 'uniform_gunn_1in10' #'1in10'
-    FOG_AUGMENTATION: 'CVL_1in10'
-    FOG_NOISE_VARIANT: 'v2'
-    FOG_GAIN: True
     FOV_POINTS_ONLY: True
-    
+
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
@@ -199,7 +196,7 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
+    OPTIMIZER: adamW
     LR: 0.01
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9

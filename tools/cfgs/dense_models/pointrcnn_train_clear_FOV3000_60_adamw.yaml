@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_clear_FOV3000_60', 'weather_aug']
+    tags: ['train_clear_FOV3000_60']
 
 
 DATA_CONFIG:
@@ -24,12 +24,7 @@ DATA_CONFIG:
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
-    COUPLED: True
-    WET_SURFACE: '1in10' #'1in10'
-    SNOW: 'uniform_gunn_1in10' #'1in10'
-    FOG_AUGMENTATION: 'CVL_1in10'
-    FOG_NOISE_VARIANT: 'v2'
-    FOG_GAIN: True
+    #DROR: 0.45
     FOV_POINTS_ONLY: True
     
     DATA_AUGMENTOR:
@@ -199,7 +194,7 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
+    OPTIMIZER: adamW
     LR: 0.01
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
