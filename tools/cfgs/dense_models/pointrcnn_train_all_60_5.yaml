@@ -15,13 +15,13 @@ DATA_CONFIG:
     # To create infos and gtdb infos
     DATA_SPLIT: {
         'train': train_all_FOV3000_60_5,
-        'test': val_clear_FOV3000_15
+        'test': val_all_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
         'train': [dense_infos_train_all_FOV3000_60_5.pkl],
-        'test': [dense_infos_val_clear_FOV3000_15.pkl],
+        'test': [dense_infos_val_all_FOV3000_15.pkl],
     }
 
     FOV_POINTS_ONLY: True
@@ -32,7 +32,7 @@ DATA_CONFIG:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - dense_dbinfos_train_clear_60.pkl
+                    - dense_dbinfos_train_all_FOV3000_60_5.pkl
                 PREPARE: {
                     filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
@@ -193,7 +193,7 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    OPTIMIZER: adam_onecycle
+    OPTIMIZER: adamW
     LR: 0.01
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9

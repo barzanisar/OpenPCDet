@@ -35,7 +35,7 @@ DATA_CONFIG:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - dense_dbinfos_train_clear_60.pkl
+                    - dense_dbinfos_train_all_FOV3000_60_5.pkl
                 PREPARE: {
                     filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
