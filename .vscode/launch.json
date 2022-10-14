@@ -20,6 +20,19 @@
             "args": ["--func", "create_kitti_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/kitti_dataset.yaml"]
         },
         {
+            "name": "test-upsample",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
+                "--eval_all", "--eval_tag", "test_dense_fog_FOV3000_25_upsample"
+            ]
+        },
+        {
             "name": "dataset_viewer",
             "type": "python",
             "request": "launch",
@@ -41,7 +54,7 @@
             "cwd": "${workspaceFolder}/tools"
         },
         {
-            "name": "finetune_freeze_bb",
+            "name": "finetune_project",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -49,10 +62,10 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_freeze_bb.yaml",
+                "cfgs/dense_models/project/pointrcnn_finetune_train_adverse_lr0p001_lr0p0001.yaml",
                 "--ckpt_save_interval", "1",
                 "--pretrained_model",
-                "../checkpoints/dc_snow1in10_wet_fog1in10_cube_upsample_FOV3000_checkpoint-ep400.pth.tar", "--fix_random_seed"
+                "../checkpoints/checkpoint_epoch_73.pth", "--fix_random_seed"
             ]
         },
         {
@@ -112,7 +125,7 @@
         //     ]
         // },
         {
-            "name": "train_all_FOV3000_60",
+            "name": "train_all_60_5",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -120,7 +133,33 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_all_FOV3000_60.yaml",
+                "cfgs/dense_models/pointrcnn_train_all_60_5.yaml",
+                "--ckpt_save_interval", "1"
+            ]
+        },
+        {
+            "name": "train_find_lr",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train_find_lr.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_train_all_60_5.yaml",
+                "--ckpt_save_interval", "1"
+            ]
+        },
+        {
+            "name": "train_snow_fog",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60_snow_fog_adamw.yaml",
                 "--ckpt_save_interval", "1"
             ]
         },

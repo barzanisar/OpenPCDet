@@ -1,7 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import cv2
-from visual_utils import open3d_vis_utils as V
+from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
+#from tools.visual_utils import open3d_vis_utils as V
 from sklearn.linear_model import RANSACRegressor
 import matplotlib.pyplot as plt
 import open3d as o3d
@@ -9,8 +10,8 @@ from scipy import stats
 
 
 #https://www.wevolver.com/specs/hdl-64e.lidar.sensor
-beam_inclination_max = np.radians(2.0)
-beam_inclination_min = np.radians(-24.9)#np.radians(-24.9)
+BEAM_INCLINATION_MAX = np.radians(2.0) #np.radians(9.7188225)
+BEAM_INCLINATION_MIN = np.radians(-24.9) #np.radians(-22.77476)
 
 
 #https://www.manualslib.com/download/1988532/Velodyne-Hdl-64e-S3.html
@@ -77,9 +78,7 @@ DIAMOND_KERNEL_7 = np.asarray(
         [0, 0, 0, 1, 0, 0, 0],
     ], dtype=np.uint8)
 
-lidar_path = '/home/barza/OpenPCDet/data/dense/lidar_hdl64_strongest/2018-02-04_12-13-33_00100.bin'
 
-points = np.fromfile(lidar_path, dtype=np.float32).reshape(-1, 5)
 
 def filter_below_groundplane(pointcloud, tolerance=1, w=None, h=None):
     if w is None or h is None:
@@ -309,7 +308,7 @@ def o3d_dynamic_radius_outlier_filter(pc: np.ndarray, alpha: float = 0.45, beta:
 
         return mask
 
-def build_range_image_from_point_cloud(points, inclination, point_features=None):
+def build_range_image_from_point_cloud(points, inclination, point_features=None, channel=None):
     """Build virtual range image from point cloud assuming uniform azimuth.
 
     Args:
@@ -333,6 +332,18 @@ def build_range_image_from_point_cloud(points, inclination, point_features=None)
     xy_norm = np.linalg.norm(points[:, 0:2], axis=-1)
     # [B, N]
     point_inclination = np.arctan2(points[..., 2], xy_norm)
+
+    # channel_wise_min_max_incl = np.zeros((64, 3))
+    # for i in range(64):
+    #     idx = channel == i
+    #     max_inc = point_inclination[idx].max()
+    #     min_inc = point_inclination[idx].min()
+    #     median_inc = np.median(point_inclination[idx])
+    #     channel_wise_min_max_incl[i, 0] = min_inc
+    #     channel_wise_min_max_incl[i, 1] = max_inc
+    #     channel_wise_min_max_incl[i, 2] = median_inc
+    #     b=1
+
     # [B, N, H]
     point_inclination_diff = np.abs(inclination.reshape((1,-1)) - point_inclination.reshape((-1,1)))
     # [B, N]
@@ -395,41 +406,14 @@ def build_range_image_from_point_cloud(points, inclination, point_features=None)
 
     num_points = ri_ranges.shape[0]
     elems = [ri_indices, ri_ranges, num_points]
-    if point_features is not None:
-        elems.append(point_features)
+    # if point_features is not None:
+    #     elems.append(point_features)
     # range_images = tf.map_fn(
     #     fn, elems=elems, dtype=points_vehicle_frame_dtype, back_prop=False)
     
     range_images = build_range_image(elems)
     return range_images.numpy(), ri_indices.numpy(), ri_ranges.numpy()
 
-
-#compute inclinations
-inclinations = compute_inclinations(beam_inclination_min, beam_inclination_max)
-
-#Remove points below ground plane
-pc, w, h = filter_below_groundplane(points[:,:3], tolerance=1)
-
-#Apply DROR
-keep_mask = o3d_dynamic_radius_outlier_filter(pc, alpha=0.45)
-snow_indices = (keep_mask == 0).nonzero()[0]#.astype(np.int16)
-range_snow_indices = np.linalg.norm(pc[snow_indices][:,:3], axis=1)
-snow_indices = snow_indices[range_snow_indices < 30]
-keep_indices = np.ones(len(pc), dtype=bool)
-keep_indices[snow_indices] = False
-pc = pc[keep_indices]
-
-# Build Range image from clean pc
-range_image, ri_indices, ri_ranges = build_range_image_from_point_cloud(pc[:,:3], inclinations, point_features=None)
-# plt.hist(ri_ranges, bins = 20)
-# plt.show()
-
-# plt.hist((range_image[range_image > 0.1]).reshape((-1)), bins = 20)
-# plt.show()
-
-range_image = range_image.astype(np.float32)
-###################### Hole Filling Start ####################################################
-empty_pixels = range_image < 0.1
 
 def fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5):
     # Fill empty pixels with highest range in the kernel
@@ -439,7 +423,7 @@ def fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5):
 
 def fill_based_on_freq(range_image, empty_pixels, mode='max', freq_mode='least', kernel=DIAMOND_KERNEL_5):
 
-    #Fill empty pixels with max, min or median of most freq range in neighbours
+    #Fill empty pixels with max, min or median of most freq range bin in neighbours
     pad = 2
     padded_range_image = np.pad(range_image, pad, 'edge')
     new_padded_range_image = padded_range_image.copy()
@@ -574,34 +558,122 @@ def fill_in_fast(depth_map, max_depth=100.0, custom_kernel=DIAMOND_KERNEL_5,
     return depth_map
 
 
+def get_nn_intensity(old_pc, new_points):
+    n_neighbors = 2
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(old_pc[:, :3])
+    pcd_tree = o3d.geometry.KDTreeFlann(pcd)
 
-#range_image = fill_in_fast(range_image)
-#range_image = fill_based_on_freq(range_image, empty_pixels, mode='max', freq_mode='least', kernel=DIAMOND_KERNEL_5)
-range_image = fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5)
-###################### Hole Filling End ####################################################
+    num_new_pts = new_points.shape[0]
+    new_intensities = np.zeros(num_new_pts)
 
-#Extract point cloud from range image
-range_image_cartesian = extract_point_cloud_from_range_image(range_image, inclinations)
-new_points = range_image_cartesian[empty_pixels].reshape((-1, 3))
-#Remove new points below previously estimated ground plane
-new_points, _,_ = filter_below_groundplane(new_points[:,:3], tolerance=0.1,  w=w, h=h)
+    for i in range(num_new_pts):
+        [_, idx, _] = pcd_tree.search_knn_vector_3d(new_points[i], n_neighbors)
+        new_intensities[i] = np.mean(old_pc[idx][:,3], axis=0)
 
-#final_points = np.vstack((points[:,:3], new_points))
-final_points = np.vstack((pc[:,:3], new_points)) # pc has no points below ground plane and is DRORed
-old_new_mask = np.zeros((final_points.shape[0], 1))
-old_new_mask[pc.shape[0]:, 0] = 1
-final_points = np.hstack((final_points, old_new_mask))
+    new_pc = np.hstack((new_points, new_intensities.reshape((-1, 1))))
+
+    return new_pc
+
+def upsample(points, use_points_beam_inc = False):
+
+    """
+    Input: points [N, 5] xyzi, channel
+    Output: aug_points [N+M, 4] xyzi
+    Output: old_new_mask [N+M,]
+    """
+
+    if use_points_beam_inc:
+        # [B, N]
+        xy_norm = np.linalg.norm(points[:, 0:2], axis=-1)
+        # [B, N]
+        point_inclination = np.arctan2(points[..., 2], xy_norm)
+        beam_inclination_min = point_inclination.min()
+        beam_inclination_max = point_inclination.max()
+        assert points[:,-1].min() == 0.0
+        assert points[:,-1].max() == 63.0
+    else:
+        beam_inclination_min = BEAM_INCLINATION_MIN
+        beam_inclination_max = BEAM_INCLINATION_MAX
+    
+    #compute inclinations
+    inclinations = compute_inclinations(beam_inclination_min, beam_inclination_max)
+
+    #V.draw_scenes(points[:,:3])
+
+    #Remove points below ground plane
+    #pc, w, h = filter_below_groundplane(points, tolerance=1)
+    #V.draw_scenes(pc[:,:3])
+    pc = points
+
+    #Apply DROR
+    keep_mask = o3d_dynamic_radius_outlier_filter(pc, alpha=0.45)
+    snow_indices = (keep_mask == 0).nonzero()[0]#.astype(np.int16)
+    range_snow_indices = np.linalg.norm(pc[snow_indices][:,:3], axis=1)
+    snow_indices = snow_indices[range_snow_indices < 30]
+    keep_indices = np.ones(len(pc), dtype=bool)
+    keep_indices[snow_indices] = False
+    pc = pc[keep_indices]
+
+    # Build Range image from clean pc
+    range_image, _, _ = build_range_image_from_point_cloud(pc[:,:3], inclinations, point_features=None, channel = pc[:, -1])
+    # plt.hist(ri_ranges, bins = 20)
+    # plt.show()
+
+    # plt.hist((range_image[range_image > 0.1]).reshape((-1)), bins = 20)
+    # plt.show()
+
+    range_image = range_image.astype(np.float32)
+    ###################### Hole Filling Start ####################################################
+    empty_pixels = range_image < 0.1
 
 
+    #range_image = fill_in_fast(range_image)
+    #range_image = fill_based_on_freq(range_image, empty_pixels, mode='max', freq_mode='least', kernel=DIAMOND_KERNEL_5)
+    range_image = fill_max(range_image, empty_pixels, kernel=DIAMOND_KERNEL_5)
+    ###################### Hole Filling End ####################################################
 
+    #Extract point cloud from range image
+    range_image_cartesian = extract_point_cloud_from_range_image(range_image, inclinations)
+    new_points = range_image_cartesian[empty_pixels].reshape((-1, 3))
+    
+    #Remove new points below previously estimated ground plane
+    #new_points, _,_ = filter_below_groundplane(new_points, tolerance=0.1,  w=w, h=h)
+    new_pt_ranges = np.linalg.norm(new_points, axis=-1)
+    new_points = new_points[new_pt_ranges > 0.1]
 
-# range_image_color = cv2.applyColorMap(np.uint8(range_image / np.amax(range_image) * 255),
-#                     cv2.COLORMAP_JET)
-# cv2.namedWindow('range_img', cv2.WINDOW_AUTOSIZE)
-# cv2.imshow('range_img', range_image_color)
-# cv2.waitKey()
+    #Filter points based on probability
+    keep_indices = np.random.choice(np.array([False, True], dtype=bool), size=new_points.shape[0], replace=True, p=[0.7, 0.3])
+    new_points = new_points[keep_indices]
+    # Get intensity
+    new_points = get_nn_intensity(pc, new_points)
+    final_points = np.vstack((pc[:,:4], new_points)) # pc has no points below ground plane and is DRORed
+    #final_points = np.vstack((pc[:,:3], new_points))
+    
+    old_new_mask = np.zeros((final_points.shape[0], 1))
+    old_new_mask[pc.shape[0]:, 0] = 1
 
-#V.draw_scenes(points[:,:3])
+    # range_image_color = cv2.applyColorMap(np.uint8(range_image / np.amax(range_image) * 255),
+    #                     cv2.COLORMAP_JET)
+    # cv2.namedWindow('range_img', cv2.WINDOW_AUTOSIZE)
+    # cv2.imshow('range_img', range_image_color)
+    # cv2.waitKey() 
+    # V.draw_scenes(np.hstack((final_points, old_new_mask)), color_feature=4)
+    #V.draw_scenes(np.hstack((final_points, old_new_mask)), color_feature=3)
 
-V.draw_scenes(final_points[:,:4], color_feature=4)
-b=1
+    return final_points, old_new_mask
+
+    
+    
+
+def main():
+    lidar_path = '/home/barza/OpenPCDet/data/dense/lidar_hdl64_strongest/2018-02-04_12-13-33_00100.bin'
+
+    points = np.fromfile(lidar_path, dtype=np.float32).reshape(-1, 5) #xyzi, channel
+
+    final_points, old_new_mask = upsample(points)
+    final_points = np.hstack((final_points, old_new_mask))
+    
+    #V.draw_scenes(points[:,:3])
+
+    V.draw_scenes(final_points, color_feature=4)
