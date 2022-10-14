@@ -194,9 +194,9 @@ OPTIMIZATION:
     NUM_EPOCHS: 1600
 
     FREEZE_BB: False
-    OPTIMIZER: adam_onecycle
-    LR: 0.01
-    WEIGHT_DECAY: 0.01
+    OPTIMIZER: adamW_onecycle
+    LR: 0.003
+    WEIGHT_DECAY: 0.001
     MOMENTUM: 0.9
 
     MOMS: [0.95, 0.85]
