@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_all_FOV3000_60_1', 'finetune']
+    tags: ['train_all_FOV3000_60_1']
 
 
 DATA_CONFIG:
@@ -193,10 +193,9 @@ OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 80
 
-    FREEZE_BB: False
     OPTIMIZER: adam_onecycle
-    LR: 0.01
-    WEIGHT_DECAY: 0.01
+    LR: 0.003
+    WEIGHT_DECAY: 0.001
     MOMENTUM: 0.9
 
     MOMS: [0.95, 0.85]

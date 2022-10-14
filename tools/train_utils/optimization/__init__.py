@@ -44,7 +44,7 @@ def build_optimizer(model, optim_cfg):
             model.parameters() if parameters is None else parameters, lr=optim_cfg.LR, weight_decay=optim_cfg.WEIGHT_DECAY,
             momentum=optim_cfg.MOMENTUM
         )
-    elif optim_cfg.OPTIMIZER == 'adam_onecycle':
+    elif optim_cfg.OPTIMIZER == 'adam_onecycle' or optim_cfg.OPTIMIZER == 'adamW_onecycle':
         def children(m: nn.Module):
             return list(m.children())
 
@@ -58,7 +58,10 @@ def build_optimizer(model, optim_cfg):
         #get_layer_groups(children(model)[2])[0]
         #len(get_layer_groups(children(model)[0])[0]) + len(get_layer_groups(children(model)[1])[0]) + len(get_layer_groups(children(model)[2])[0])
 
-        optimizer_func = partial(optim.Adam, betas=(0.9, 0.99))
+        if optim_cfg.OPTIMIZER == 'adam_onecycle':
+            optimizer_func = partial(optim.Adam, betas=(0.9, 0.99))
+        elif optim_cfg.OPTIMIZER == 'adamW_onecycle':
+            optimizer_func = partial(optim.AdamW, betas=(0.9, 0.99))
         optimizer = OptimWrapper.create(
             optimizer_func, 3e-3, get_layer_groups(model), wd=optim_cfg.WEIGHT_DECAY, true_wd=True, bn_wd=True
         )
