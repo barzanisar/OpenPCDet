@@ -30,8 +30,8 @@ sbatch --time=02:00:00 --gres=gpu:t4:4 --array=1-20%1 --job-name=pointrcnn-all-s
 
 # sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-3%1 --job-name=pointrcnn-all-60-1_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1_snowsim.yaml -tcp_port 18465 --ckpt_save_interval 1 --fix_random_seed
 # sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-2%1 --job-name=pointrcnn-all-60-5_snowsim tools/scripts/compute_canada_train_eval_dense_snow_sim.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5_snowsim.yaml -tcp_port 18470 --ckpt_save_interval 1 --fix_random_seed
-# sbatch --time=02:00:00 --gres=gpu:t4:4 --array=1-6%1 --job-name=pointrcnn-all-60-1 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1.yaml -tcp_port 18490 --ckpt_save_interval 1 --fix_random_seed
-# sbatch --time=02:00:00 --gres=gpu:t4:4 --array=1-6%1 --job-name=pointrcnn-all-60-1-adamO-0p003-0p001-0p4 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1_adamO_0p003_0p001_0p4.yaml -tcp_port 18491 --ckpt_save_interval 1 --fix_random_seed
+sbatch --time=02:00:00 --gres=gpu:t4:4 --array=1-6%1 --job-name=pointrcnn-all-60-1 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1.yaml -tcp_port 18490 --ckpt_save_interval 1 --fix_random_seed
+sbatch --time=02:00:00 --gres=gpu:t4:4 --array=1-6%1 --job-name=pointrcnn-all-60-1-adamO-0p003-0p001-0p4 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_1_adamO_0p003_0p001_0p4.yaml -tcp_port 18491 --ckpt_save_interval 1 --fix_random_seed
 
 # sbatch --time=05:00:00  --gres=gpu:v100:4 --array=1-2%1 --job-name=pointrcnn-all-60-5 tools/scripts/compute_canada_train_eval_dense.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_60_5.yaml -tcp_port 18481 --ckpt_save_interval 1 --fix_random_seed
 
