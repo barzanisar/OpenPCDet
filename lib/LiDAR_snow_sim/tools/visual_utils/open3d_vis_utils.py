@@ -11,51 +11,105 @@ import matplotlib.cm as cm
 
 def get_colors(pc, color_feature=None):
     # create colormap
-    if color_feature == 'x':
+    if color_feature == 0:
         feature = pc[:, 0]
         min_value = np.min(feature)
         max_value = np.max(feature)
 
-    elif color_feature == 'y':
+    elif color_feature == 1:
 
         feature = pc[:, 1]
         min_value = np.min(feature)
         max_value = np.max(feature)
 
-    elif color_feature == 'z':
+    elif color_feature == 2:
         feature = pc[:, 2]
         min_value = np.min(feature)
         max_value = np.max(feature)
 
-    elif color_feature == 'intensity':
+    elif color_feature == 3:
         feature = pc[:, 3]
         min_value = np.min(feature)
         max_value = 255
 
-    elif color_feature == 'label' or color_feature == 'channel':
-        feature = pc[:, 4]
-        min_value = np.min(feature)
-        max_value = np.max(feature)
+    elif color_feature == 4:
+        feature = pc[:, -1]
+        colors = np.zeros((feature.shape[0], 3))
 
+        colors[feature == 0, 0] = 1 # red old
+        colors[feature == 1, 1] = 1 # green new
+        #colors[feature == 2, 2] = 1 # original but noisy blue
+
+        # #colors[feature == 3, 1] = 1 # random scatter
+        # print(f'\nlost % #: {100 * np.count_nonzero(colors[:,0])/ pc.shape[0]}')
+        # print(f'scattered % #: {100 * np.count_nonzero(colors[:, 1])/ pc.shape[0]}')
+        # print(f'attenuated % #: {100 * np.count_nonzero(colors[:, 2])/ pc.shape[0]}')
     else:
-        #color_feature == 'range'
         feature = np.linalg.norm(pc[:, 0:3], axis=1)
         min_value = np.min(feature)
         max_value = np.max(feature)
 
+    if color_feature != 4:
+        norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
 
-    norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
 
+        cmap = cm.jet  # sequential
 
-    cmap = cm.jet  # sequential
+        m = cm.ScalarMappable(norm=norm, cmap=cmap)
 
-    m = cm.ScalarMappable(norm=norm, cmap=cmap)
-
-    colors = m.to_rgba(feature)
-    colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
-    colors[:, 3] = 0.5
+        colors = m.to_rgba(feature)
+        colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
+        colors[:, 3] = 0.5
 
     return colors[:, :3]
+
+# def get_colors(pc, color_feature=None):
+#     # create colormap
+#     if color_feature == 'x':
+#         feature = pc[:, 0]
+#         min_value = np.min(feature)
+#         max_value = np.max(feature)
+
+#     elif color_feature == 'y':
+
+#         feature = pc[:, 1]
+#         min_value = np.min(feature)
+#         max_value = np.max(feature)
+
+#     elif color_feature == 'z':
+#         feature = pc[:, 2]
+#         min_value = np.min(feature)
+#         max_value = np.max(feature)
+
+#     elif color_feature == 'intensity':
+#         feature = pc[:, 3]
+#         min_value = np.min(feature)
+#         max_value = 255
+
+#     elif color_feature == 'label' or color_feature == 'channel':
+#         feature = pc[:, 4]
+#         min_value = np.min(feature)
+#         max_value = np.max(feature)
+
+#     else:
+#         #color_feature == 'range'
+#         feature = np.linalg.norm(pc[:, 0:3], axis=1)
+#         min_value = np.min(feature)
+#         max_value = np.max(feature)
+
+
+#     norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
+
+
+#     cmap = cm.jet  # sequential
+
+#     m = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+#     colors = m.to_rgba(feature)
+#     colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
+#     colors[:, 3] = 0.5
+
+#     return colors[:, :3]
 
 
 box_colormap = [

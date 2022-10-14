@@ -33,7 +33,7 @@ def get_colors(pc, color_feature=None):
         max_value = 255
 
     elif color_feature == 4:
-        feature = pc[:, 3]
+        feature = pc[:, -1]
         colors = np.zeros((feature.shape[0], 3))
 
         colors[feature == 0, 0] = 1 # red old
