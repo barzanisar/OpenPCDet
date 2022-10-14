@@ -6,9 +6,11 @@ import tqdm
 import time
 from torch.nn.utils import clip_grad_norm_
 from pcdet.utils import common_utils, commu_utils
+from pcdet.utils import wandb_utils
 
 
-def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
+
+def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False):
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
@@ -85,6 +87,17 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             tbar.set_postfix(disp_dict)
             tbar.refresh()
 
+
+            wb_dict = {}
+            if len(optimizer.param_groups) > 1:
+                for i, pg in enumerate(optimizer.param_groups):
+                    wb_dict[f'lr_{i}'] = pg['lr']
+            else:
+                wb_dict['lr'] = cur_lr
+            wb_dict['loss'] = loss
+            wb_dict['epoch'] = cur_epoch
+            wandb_utils.log(cfg, wb_dict, accumulated_iter)
+
             if tb_log is not None:
                 tb_log.add_scalar('train/loss', loss, accumulated_iter)
                 tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
@@ -97,7 +110,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
     return accumulated_iter
 
 
-def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
+def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
                 merge_all_iters_to_one_epoch=False, save_ckpt_after_epoch=0):
@@ -119,7 +132,7 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
                 cur_scheduler = lr_warmup_scheduler
             else:
                 cur_scheduler = lr_scheduler
-            accumulated_iter = train_one_epoch(
+            accumulated_iter = train_one_epoch(cfg, cur_epoch,
                 model, optimizer, train_loader, model_func,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,

@@ -24,14 +24,16 @@ def init(cfg, args, job_type='train_eval', eval_tag=''):
 
     dir = cfg['WANDB'].get('dir', None)
     tag_list = cfg['WANDB'].get('tag', None)
-    tags = [eval_tag]
+    tags = []
     if tag_list is not None:
         tags += tag_list
     name = cfg.TAG
     if args.extra_tag != 'default':
         name = name + '-' + args.extra_tag
         tags += [args.extra_tag]
-    name = name + '-' + eval_tag
+    if len(eval_tag):
+        name = name + '-' + eval_tag
+        tags += [eval_tag]
 
     wandb.init(name=name,
                config=cfg,

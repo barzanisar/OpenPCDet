@@ -169,11 +169,12 @@ def main():
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
-
+    
+    wandb_utils.init(cfg, args, job_type='train')
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
-    train_model(
+    train_model(cfg, 
         model,
         optimizer,
         train_loader,

@@ -87,8 +87,8 @@ def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch,
                 lr_scheduler = lr_sched.CosineAnnealingLR(
                     optimizer, total_steps, eta_min=0
                 )
-            elif optim_cfg["LR_SCHEDULER"] == 'onecyle':
-                print('Scheduler: Onecyle')
+            elif optim_cfg["LR_SCHEDULER"] == 'onecycle':
+                print('Scheduler: Onecycle')
                 if len(optimizer.param_groups) < 2:
                     max_lr = optim_cfg.LR
                 else:
