@@ -29,7 +29,7 @@ TCP_PORT=18888
 SYNC_BN=true
 FIX_RANDOM_SEED=false
 #Save last 20 ckpts with interval 1
-CKPT_SAVE_INTERVAL=20
+CKPT_SAVE_INTERVAL=1
 MAX_CKPT_SAVE_NUM=80
 SAVE_CKPT_AFTER_EPOCH=0
 # Epoch is evaluated if epoch > start epoch = 160 - NUM_EPOCHS_TO_EVAL
