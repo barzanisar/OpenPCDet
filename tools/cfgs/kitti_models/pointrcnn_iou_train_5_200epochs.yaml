@@ -148,7 +148,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 3
-    NUM_EPOCHS: 1600
+    NUM_EPOCHS: 200
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
