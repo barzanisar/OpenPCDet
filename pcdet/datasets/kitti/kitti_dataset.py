@@ -175,8 +175,8 @@ class KittiDataset(DatasetTemplate):
 
             if has_label:
                 obj_list = self.get_label(sample_idx)
-                # Ignore any class not in relevant classes for Depth Contrast
-                obj_list = [obj for obj in obj_list if obj.cls_type in self.class_names]
+                # # Ignore any class not in relevant classes for Depth Contrast
+                # obj_list = [obj for obj in obj_list if obj.cls_type in self.class_names]
 
                 annotations = {}
                 annotations['name'] = np.array([obj.cls_type for obj in obj_list])
@@ -231,7 +231,7 @@ class KittiDataset(DatasetTemplate):
     def create_groundtruth_database(self, info_path=None, used_classes=None, split='train'):
         import torch
 
-        database_save_path = Path(self.root_path) / ('gt_database' if split == 'train' else ('gt_database_%s' % split))
+        database_save_path = Path(self.root_path) / 'gt_database' #('gt_database' if split == 'train' else ('gt_database_%s' % split))
         db_info_save_path = Path(self.root_path) / ('kitti_dbinfos_%s.pkl' % split)
 
         database_save_path.mkdir(parents=True, exist_ok=True)
@@ -436,7 +436,7 @@ class KittiDataset(DatasetTemplate):
 
 def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4):
     dataset = KittiDataset(dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path, training=False)
-    train_split, val_split = 'train', 'val'
+    train_split, val_split = dataset_cfg['DATA_SPLIT']['train'], dataset_cfg['DATA_SPLIT']['test']
 
     train_filename = save_path / ('kitti_infos_%s.pkl' % train_split)
     val_filename = save_path / ('kitti_infos_%s.pkl' % val_split)
@@ -472,11 +472,11 @@ def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4
         pickle.dump(kitti_infos_train + kitti_infos_val + kitti_infos_test, f)
     print('Kitti info trainvaltest file is saved to %s' % trainvaltest_filename)
 
-    # print('---------------Start create groundtruth database for data augmentation---------------')
-    # dataset.set_split(train_split)
-    # dataset.create_groundtruth_database(train_filename, split=train_split)
+    print('---------------Start create groundtruth database for data augmentation---------------')
+    dataset.set_split(train_split)
+    dataset.create_groundtruth_database(train_filename, split=train_split)
 
-    # print('---------------Data preparation Done---------------')
+    print('---------------Data preparation Done---------------')
 
 
 if __name__ == '__main__':
