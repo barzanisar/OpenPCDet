@@ -133,18 +133,20 @@ def main():
     start_epoch = it = 0
     last_epoch = -1
     if args.pretrained_model is not None:
-        ## For project
-        # model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist_train, logger=logger) 
-        # if cfg.OPTIMIZATION.get('FREEZE_BB', False):
-        #     logger.info('Freezing Backbone!')
-        #     for name, param in model.named_parameters():
-        #         if 'backbone_3d' in name:
-        #             param.requires_grad = False
-
-        # torch.cuda.empty_cache()
-        ### Change for finetuning
-        state = torch.load(args.pretrained_model)
-        init_model_from_weights(model, state, freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger)
+        if cfg.get('LOAD_WHOLE_MODEL', False):
+            ## For project
+            logger.info('**********************Loading whole model**********************')
+            model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist_train, logger=logger) 
+            # if cfg.OPTIMIZATION.get('FREEZE_BB', False):
+            #     logger.info('Freezing Backbone!')
+            #     for name, param in model.named_parameters():
+            #         if 'backbone_3d' in name:
+            #             param.requires_grad = False
+        else:
+            ### Change for finetuning
+            logger.info('**********************Loading SSL backbone**********************')
+            state = torch.load(args.pretrained_model)
+            init_model_from_weights(model, state, freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 

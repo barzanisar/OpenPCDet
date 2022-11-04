@@ -2,6 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: create kitti infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.kitti.kitti_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": ["--func", "create_kitti_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/kitti_dataset.yaml"]
+        },
+        {
             "name": "Python: create dense infos",
             "type": "python",
             "request": "launch",
@@ -62,10 +71,10 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/project/pointrcnn_finetune_train_adverse_lr0p001_lr0p0001.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60.yaml",
                 "--ckpt_save_interval", "1",
                 "--pretrained_model",
-                "../checkpoints/checkpoint_epoch_73.pth", "--fix_random_seed"
+                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
             ]
         },
         {
@@ -111,19 +120,34 @@
                 "dense_infos_test_clear_FOV3000_25.pkl"
             ]
         },
-        // {
-        //     "name": "train_all_60",
-        //     "type": "python",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/tools/train.py",
-        //     "console": "integratedTerminal",
-        //     "cwd": "${workspaceFolder}/tools",
-        //     "args": [
-        //         "--cfg_file",
-        //         "cfgs/dense_models/pointrcnn_train_all_60.yaml",
-        //         "--ckpt_save_interval", "5"
-        //     ]
-        // },
+        {
+            "name": "train_second",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/project/second/second_clear.yaml",
+                "--ckpt_save_interval", "5"
+            ]
+        },
+        {
+            "name": "train_second-dist",
+            "type": "python",
+            "request": "launch",
+            "module": "torch.distributed.launch",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [ "--nproc_per_node=1", 
+                "${workspaceFolder}/tools/train.py", 
+                "--launcher", "pytorch", 
+                "--cfg_file",
+                "cfgs/dense_models/project/second/second_clear.yaml",
+                "--ckpt_save_interval", "5"
+            ]
+        },
         {
             "name": "train_all_60_5",
             "type": "python",
