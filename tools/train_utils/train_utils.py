@@ -63,7 +63,12 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 fisher.cuda()
                 optpar.cuda()
                 print(f'After Name: {name}, Rank: {rank}, Model {model.device}, Param {param.device}, Fisher {fisher.device}, OptPar {optpar.device}')
-                loss += (fisher * (optpar - param).pow(2)).sum() * cfg.EWC.LAMBDA
+                try:
+                    loss += (fisher * (optpar - param).pow(2)).sum() * cfg.EWC.LAMBDA
+                except:
+                    print(f'ERROR! Name: {name}, Rank: {rank}, Model {model.device}, Param {param.device}, Fisher {fisher.device}, OptPar {optpar.device}')
+                    loss += (fisher * (optpar - param).pow(2)).sum() * cfg.EWC.LAMBDA
+
 
         cur_forward_time = time.time() - data_timer
 
