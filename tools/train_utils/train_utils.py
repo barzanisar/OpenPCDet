@@ -59,14 +59,10 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 except:
                     fisher = ewc_params['fisher'][name[7:]]
                     optpar = ewc_params['optpar'][name[7:]]
-                print(f'Rank: {rank}, Model {model.device}, Name: {name}')
-                print(f'{name} before Fisher device{fisher.device}')
-                print(f'{name} before Optpar device{optpar.device}')
-                fisher.to(param.device)
-                optpar.to(param.device)
-                print(f'{name} after Fisher device{fisher.device}')
-                print(f'{name} after Optpar device{optpar.device}')
-                print(f'{name} param device{param.device}')
+                print(f'Before Name: {name}, Rank: {rank}, Model {model.device}, Param {param.device}, Fisher {fisher.device}, OptPar {optpar.device}')
+                fisher.cuda()
+                optpar.cuda()
+                print(f'After Name: {name}, Rank: {rank}, Model {model.device}, Param {param.device}, Fisher {fisher.device}, OptPar {optpar.device}')
                 loss += (fisher * (optpar - param).pow(2)).sum() * cfg.EWC.LAMBDA
 
         cur_forward_time = time.time() - data_timer
