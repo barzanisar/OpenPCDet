@@ -53,8 +53,14 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
 
         if ewc_params is not None:
             for name, param in model.named_parameters():
-                fisher = ewc_params['fisher'][name]
-                optpar = ewc_params['optpar'][name]
+                try:
+                    fisher = ewc_params['fisher'][name]
+                    optpar = ewc_params['optpar'][name]
+                except:
+                    fisher = ewc_params['fisher'][name[7:]]
+                    optpar = ewc_params['optpar'][name[7:]]
+                fisher.to(param.device)
+                optpar.to(param.device)
                 loss += (fisher * (optpar - param).pow(2)).sum() * cfg.EWC.LAMBDA
 
         cur_forward_time = time.time() - data_timer
