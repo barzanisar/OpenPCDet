@@ -27,74 +27,53 @@ def get_thresholds(scores: np.ndarray, num_gt, num_sample_pts=41):
     return thresholds
 
 
-def clean_data(gt_anno, dt_anno, current_class, difficulty, eval_params):
-
+def clean_data(gt_anno, dt_anno, current_class, difficulty):
     CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck']
     MIN_HEIGHT = [40, 25, 25]
     MAX_OCCLUSION = [0, 1, 2]
     MAX_TRUNCATION = [0.15, 0.3, 0.5]
-    MIN_DISTANCE = eval_params["min_distance"]
-    MAX_DISTANCE = eval_params["max_distance"]
-
     dc_bboxes, ignored_gt, ignored_dt = [], [], []
-
     current_cls_name = CLASS_NAMES[current_class].lower()
-
     num_gt = len(gt_anno["name"])
     num_dt = len(dt_anno["name"])
-
     num_valid_gt = 0
-
     for i in range(num_gt):
-
         bbox = gt_anno["bbox"][i]
         gt_name = gt_anno["name"][i].lower()
-
         height = bbox[3] - bbox[1]
-        distance = gt_anno["location"][i][2]                                    # TODO: z-value or eucledian distance?
-
-        if gt_name == current_cls_name:
+        valid_class = -1
+        if (gt_name == current_cls_name):
             valid_class = 1
-        elif current_cls_name == "Pedestrian".lower() and "Person_sitting".lower() == gt_name:
+        elif (current_cls_name == "Pedestrian".lower()
+              and "Person_sitting".lower() == gt_name):
             valid_class = 0
-        elif current_cls_name == "Car".lower() and "Van".lower() == gt_name:
+        elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name):
             valid_class = 0
         else:
             valid_class = -1
-
         ignore = False
-
-        if gt_anno["occluded"][i] > MAX_OCCLUSION[difficulty] or \
-           gt_anno["truncated"][i] > MAX_TRUNCATION[difficulty] or \
-           height <= MIN_HEIGHT[difficulty] or \
-           distance < MIN_DISTANCE or \
-           distance > MAX_DISTANCE:
+        if ((gt_anno["occluded"][i] > MAX_OCCLUSION[difficulty])
+                or (gt_anno["truncated"][i] > MAX_TRUNCATION[difficulty])
+                or (height <= MIN_HEIGHT[difficulty])):
+            # if gt_anno["difficulty"][i] > difficulty or gt_anno["difficulty"][i] == -1:
             ignore = True
-
         if valid_class == 1 and not ignore:
             ignored_gt.append(0)
             num_valid_gt += 1
-        elif valid_class == 0 or (ignore and (valid_class == 1)):
+        elif (valid_class == 0 or (ignore and (valid_class == 1))):
             ignored_gt.append(1)
         else:
             ignored_gt.append(-1)
-
+    # for i in range(num_gt):
         if gt_anno["name"][i] == "DontCare":
             dc_bboxes.append(gt_anno["bbox"][i])
-
     for i in range(num_dt):
-
-        if dt_anno["name"][i].lower() == current_cls_name:
+        if (dt_anno["name"][i].lower() == current_cls_name):
             valid_class = 1
         else:
             valid_class = -1
-
         height = abs(dt_anno["bbox"][i, 3] - dt_anno["bbox"][i, 1])
-        distance = dt_anno["location"][i][2]                                    # TODO: z-value or eucledian distance?
-
-        if height < MIN_HEIGHT[difficulty] or \
-           distance < MIN_DISTANCE or \
-           distance > MAX_DISTANCE:
+        if height < MIN_HEIGHT[difficulty]:
             ignored_dt.append(1)
         elif valid_class == 1:
             ignored_dt.append(0)
@@ -435,14 +414,14 @@ def calculate_iou_partly(gt_annos, dt_annos, metric, num_parts=50):
     return overlaps, parted_overlaps, total_gt_num, total_dt_num
 
 
-def _prepare_data(gt_annos, dt_annos, current_class, difficulty, eval_params):
+def _prepare_data(gt_annos, dt_annos, current_class, difficulty):
     gt_datas_list = []
     dt_datas_list = []
     total_dc_num = []
     ignored_gts, ignored_dets, dontcares = [], [], []
     total_num_valid_gt = 0
     for i in range(len(gt_annos)):
-        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty, eval_params)
+        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty)
         num_valid_gt, ignored_gt, ignored_det, dc_bboxes = rets
         ignored_gts.append(np.array(ignored_gt, dtype=np.int64))
         ignored_dets.append(np.array(ignored_det, dtype=np.int64))
@@ -469,30 +448,25 @@ def _prepare_data(gt_annos, dt_annos, current_class, difficulty, eval_params):
 def eval_class(gt_annos,
                dt_annos,
                current_classes,
-               difficulties,
+               difficultys,
                metric,
                min_overlaps,
-               eval_params,
                compute_aos=False,
                num_parts=100):
     """Kitti eval. support 2d/bev/3d/aos eval. support 0.5:0.05:0.95 coco AP.
     Args:
-        gt_annos:           dict, must from get_label_annos() in kitti_common.py
-        dt_annos:           dict, must from get_label_annos() in kitti_common.py
-        current_classes:    list of int, 0: car, 1: pedestrian, 2: cyclist
-        difficulties:        list of int. eval difficulty, 0: easy, 1: normal, 2: hard
-        metric:             eval type. 0: bbox, 1: bev, 2: 3d
-        min_overlaps:       float, min overlap. format: [num_overlap, metric, class].
-        num_parts:          int. a parameter for fast calculate algorithm
-        eval_params:        dict, e.g. used for distance based evaluation
-        compute_aos:        bool, flag if AOS should be computed
+        gt_annos: dict, must from get_label_annos() in kitti_common.py
+        dt_annos: dict, must from get_label_annos() in kitti_common.py
+        current_classes: list of int, 0: car, 1: pedestrian, 2: cyclist
+        difficultys: list of int. eval difficulty, 0: easy, 1: normal, 2: hard
+        metric: eval type. 0: bbox, 1: bev, 2: 3d
+        min_overlaps: float, min overlap. format: [num_overlap, metric, class].
+        num_parts: int. a parameter for fast calculate algorithm
 
     Returns:
         dict of recall, precision and aos
     """
-
-    assert len(gt_annos) == len(dt_annos), f'gt_annos: {len(gt_annos)}, dt_annos: {len(dt_annos)}'
-
+    assert len(gt_annos) == len(dt_annos)
     num_examples = len(gt_annos)
     split_parts = get_split_parts(num_examples, num_parts)
 
@@ -501,18 +475,15 @@ def eval_class(gt_annos,
     N_SAMPLE_PTS = 41
     num_minoverlap = len(min_overlaps)
     num_class = len(current_classes)
-    num_difficulty = len(difficulties)
+    num_difficulty = len(difficultys)
     precision = np.zeros(
         [num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
     recall = np.zeros(
         [num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
     aos = np.zeros([num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
-
     for m, current_class in enumerate(current_classes):
-
-        for l, difficulty in enumerate(difficulties):
-
-            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty, eval_params)
+        for l, difficulty in enumerate(difficultys):
+            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty)
             (gt_datas_list, dt_datas_list, ignored_gts, ignored_dets,
              dontcares, total_dc_num, total_num_valid_gt) = rets
             for k, min_overlap in enumerate(min_overlaps[:, metric, m]):
@@ -608,16 +579,14 @@ def print_str(value, *arg, sstream=None):
 def do_eval(gt_annos,
             dt_annos,
             current_classes,
-            min_overlaps,           # [num_minoverlap, metric, num_class]
-            eval_params,
+            min_overlaps,
             compute_aos=False,
             PR_detail_dict=None):
-
-    difficulties = [0, 1, 2]
-
-  # ret: [num_class, num_diff, num_minoverlap, num_sample_points]
-    ret = eval_class(gt_annos, dt_annos, current_classes, difficulties, 0, min_overlaps, eval_params, compute_aos)
-
+    # min_overlaps: [num_minoverlap, metric, num_class]
+    difficultys = [0, 1, 2]
+    ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 0,
+                     min_overlaps, compute_aos)
+    # ret: [num_class, num_diff, num_minoverlap, num_sample_points]
     mAP_bbox = get_mAP(ret["precision"])
     mAP_bbox_R40 = get_mAP_R40(ret["precision"])
 
@@ -625,7 +594,6 @@ def do_eval(gt_annos,
         PR_detail_dict['bbox'] = ret['precision']
 
     mAP_aos = mAP_aos_R40 = None
-
     if compute_aos:
         mAP_aos = get_mAP(ret["orientation"])
         mAP_aos_R40 = get_mAP_R40(ret["orientation"])
@@ -633,22 +601,20 @@ def do_eval(gt_annos,
         if PR_detail_dict is not None:
             PR_detail_dict['aos'] = ret['orientation']
 
-    ret = eval_class(gt_annos, dt_annos, current_classes, difficulties, 1, min_overlaps, eval_params)
-
+    ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 1,
+                     min_overlaps)
     mAP_bev = get_mAP(ret["precision"])
     mAP_bev_R40 = get_mAP_R40(ret["precision"])
 
     if PR_detail_dict is not None:
         PR_detail_dict['bev'] = ret['precision']
 
-    ret = eval_class(gt_annos, dt_annos, current_classes, difficulties, 2, min_overlaps, eval_params)
-
+    ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 2,
+                     min_overlaps)
     mAP_3d = get_mAP(ret["precision"])
     mAP_3d_R40 = get_mAP_R40(ret["precision"])
-
     if PR_detail_dict is not None:
         PR_detail_dict['3d'] = ret['precision']
-
     return mAP_bbox, mAP_bev, mAP_3d, mAP_aos, mAP_bbox_R40, mAP_bev_R40, mAP_3d_R40, mAP_aos_R40
 
 
@@ -670,23 +636,15 @@ def do_coco_style_eval(gt_annos, dt_annos, current_classes, overlap_ranges,
     return mAP_bbox, mAP_bev, mAP_3d, mAP_aos
 
 
-def get_official_eval_result(gt_annos, dt_annos, current_classes, logger=None, PR_detail_dict=None):
-
-    difficulty_names = ['easy', 'mod.', 'hard']
-
-    # official
-    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7],                             # image
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7],                             # bev
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7]])                            # 3d
-
-    # unofficial
-    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5],                             # image
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],                          # bev
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])                         # 3d
-
+def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict=None):
+    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7,
+                             0.5, 0.7], [0.7, 0.5, 0.5, 0.7, 0.5, 0.7],
+                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7]])
+    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7,
+                             0.5, 0.5], [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
+                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
     min_overlaps = np.stack([overlap_0_7, overlap_0_5], axis=0)  # [2, 3, 5]
-
-    names = {
+    class_to_name = {
         0: 'Car',
         1: 'Pedestrian',
         2: 'Cyclist',
@@ -694,101 +652,96 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, logger=None, P
         4: 'Person_sitting',
         5: 'Truck'
     }
-
-    name_to_class = {v: n for n, v in names.items()}
-
+    name_to_class = {v: n for n, v in class_to_name.items()}
     if not isinstance(current_classes, (list, tuple)):
         current_classes = [current_classes]
-
     current_classes_int = []
-
-    for cls in current_classes:
-
-        if isinstance(cls, str):
-            current_classes_int.append(name_to_class[cls])
+    for curcls in current_classes:
+        if isinstance(curcls, str):
+            current_classes_int.append(name_to_class[curcls])
         else:
-            current_classes_int.append(cls)
-
+            current_classes_int.append(curcls)
     current_classes = current_classes_int
-
+    min_overlaps = min_overlaps[:, :, current_classes]
+    result = ''
     # check whether alpha is valid
     compute_aos = False
-
     for anno in dt_annos:
         if anno['alpha'].shape[0] != 0:
             if anno['alpha'][0] != -10:
                 compute_aos = True
             break
+    mAPbbox, mAPbev, mAP3d, mAPaos, mAPbbox_R40, mAPbev_R40, mAP3d_R40, mAPaos_R40 = do_eval(
+        gt_annos, dt_annos, current_classes, min_overlaps, compute_aos, PR_detail_dict=PR_detail_dict)
 
-    result = '\n'
     ret_dict = {}
-    min_overlaps = min_overlaps[:, :, current_classes]
-    distance_thresholds = [(0, 80),
-                           (0, 30), (30, 50), (50, 80)]
+    for j, curcls in enumerate(current_classes):
+        # mAP threshold array: [num_minoverlap, metric, class]
+        # mAP result: [num_class, num_diff, num_minoverlap]
+        for i in range(min_overlaps.shape[0]):
+            result += print_str(
+                (f"{class_to_name[curcls]} "
+                 "AP@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
+            result += print_str((f"bbox AP:{mAPbbox[j, 0, i]:.4f}, "
+                                 f"{mAPbbox[j, 1, i]:.4f}, "
+                                 f"{mAPbbox[j, 2, i]:.4f}"))
+            result += print_str((f"bev  AP:{mAPbev[j, 0, i]:.4f}, "
+                                 f"{mAPbev[j, 1, i]:.4f}, "
+                                 f"{mAPbev[j, 2, i]:.4f}"))
+            result += print_str((f"3d   AP:{mAP3d[j, 0, i]:.4f}, "
+                                 f"{mAP3d[j, 1, i]:.4f}, "
+                                 f"{mAP3d[j, 2, i]:.4f}"))
 
-    for distance_values in distance_thresholds:
+            if compute_aos:
+                result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
+                                     f"{mAPaos[j, 1, i]:.2f}, "
+                                     f"{mAPaos[j, 2, i]:.2f}"))
+                # if i == 0:
+                   # ret_dict['%s_aos/easy' % class_to_name[curcls]] = mAPaos[j, 0, 0]
+                   # ret_dict['%s_aos/moderate' % class_to_name[curcls]] = mAPaos[j, 1, 0]
+                   # ret_dict['%s_aos/hard' % class_to_name[curcls]] = mAPaos[j, 2, 0]
 
-        min_dist, max_dist = distance_values
-
-        if logger:
-            logger.info(f'evaluating {min_dist:2d}-{max_dist}m ...')
-
-        eval_params = {'min_distance': min_dist,
-                       'max_distance': max_dist}
-
-        mAPbbox, mAPbev, mAP3d, mAPaos, mAPbbox_R40, mAPbev_R40, mAP3d_R40, mAPaos_R40 = do_eval(
-            gt_annos, dt_annos, current_classes, min_overlaps, eval_params, compute_aos, PR_detail_dict=PR_detail_dict)
-
-        for j, cls in enumerate(current_classes):
-
-            # mAP threshold array: [num_minoverlap, metric, class]
-            # mAP result: [num_class, num_diff, num_minoverlap]
-
-            result += print_str(f'\n###############################')
-            result += print_str(f'{names[cls]} ({min_dist}-{max_dist}m)')
-            result += print_str(f'###############################')
-
-            for i in range(min_overlaps.shape[0]):
-
-                result += print_str('\nDifficulty\t' + '\t '.join([d for d in difficulty_names]))
-
+            result += print_str(
+                (f"{class_to_name[curcls]} "
+                 "AP_R40@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
+            result += print_str((f"bbox AP:{mAPbbox_R40[j, 0, i]:.4f}, "
+                                 f"{mAPbbox_R40[j, 1, i]:.4f}, "
+                                 f"{mAPbbox_R40[j, 2, i]:.4f}"))
+            result += print_str((f"bev  AP:{mAPbev_R40[j, 0, i]:.4f}, "
+                                 f"{mAPbev_R40[j, 1, i]:.4f}, "
+                                 f"{mAPbev_R40[j, 2, i]:.4f}"))
+            result += print_str((f"3d   AP:{mAP3d_R40[j, 0, i]:.4f}, "
+                                 f"{mAP3d_R40[j, 1, i]:.4f}, "
+                                 f"{mAP3d_R40[j, 2, i]:.4f}"))
+            if compute_aos:
+                result += print_str((f"aos  AP:{mAPaos_R40[j, 0, i]:.2f}, "
+                                     f"{mAPaos_R40[j, 1, i]:.2f}, "
+                                     f"{mAPaos_R40[j, 2, i]:.2f}"))
                 if i == 0:
+                   ret_dict['%s_aos/easy_R40' % class_to_name[curcls]] = mAPaos_R40[j, 0, 0]
+                   ret_dict['%s_aos/moderate_R40' % class_to_name[curcls]] = mAPaos_R40[j, 1, 0]
+                   ret_dict['%s_aos/hard_R40' % class_to_name[curcls]] = mAPaos_R40[j, 2, 0]
 
-                    if compute_aos:
+            if i == 0:
+                # ret_dict['%s_3d/easy' % class_to_name[curcls]] = mAP3d[j, 0, 0]
+                # ret_dict['%s_3d/moderate' % class_to_name[curcls]] = mAP3d[j, 1, 0]
+                # ret_dict['%s_3d/hard' % class_to_name[curcls]] = mAP3d[j, 2, 0]
+                # ret_dict['%s_bev/easy' % class_to_name[curcls]] = mAPbev[j, 0, 0]
+                # ret_dict['%s_bev/moderate' % class_to_name[curcls]] = mAPbev[j, 1, 0]
+                # ret_dict['%s_bev/hard' % class_to_name[curcls]] = mAPbev[j, 2, 0]
+                # ret_dict['%s_image/easy' % class_to_name[curcls]] = mAPbbox[j, 0, 0]
+                # ret_dict['%s_image/moderate' % class_to_name[curcls]] = mAPbbox[j, 1, 0]
+                # ret_dict['%s_image/hard' % class_to_name[curcls]] = mAPbbox[j, 2, 0]
 
-                        result += print_str(
-                            "aos AP:    \t" + "\t ".join(["{:.2f}".format(x) for x in mAPaos[j, :, i]]))
-
-                        ret_dict[f'{names[cls]}_aos/easy_{min_dist}-{max_dist}m'] = mAPaos_R40[j, 0, 0]
-                        ret_dict[f'{names[cls]}_aos/mod._{min_dist}-{max_dist}m'] = mAPaos_R40[j, 1, 0]
-                        ret_dict[f'{names[cls]}_aos/hard_{min_dist}-{max_dist}m'] = mAPaos_R40[j, 2, 0]
-
-                    result += print_str("2d  AP @{}:\t".format(min_overlaps[i, 0, j]) + "\t ".join(
-                        ["{:3.2f}".format(x) for x in mAPbbox_R40[j, :, i]]))
-
-                    ret_dict[f'{names[cls]}_3d/easy_{min_dist}-{max_dist}m'] = mAP3d_R40[j, 0, 0]
-                    ret_dict[f'{names[cls]}_3d/mod._{min_dist}-{max_dist}m'] = mAP3d_R40[j, 1, 0]
-                    ret_dict[f'{names[cls]}_3d/hard_{min_dist}-{max_dist}m'] = mAP3d_R40[j, 2, 0]
-                    ret_dict[f'{names[cls]}_bev/easy_{min_dist}-{max_dist}m'] = mAPbev_R40[j, 0, 0]
-                    ret_dict[f'{names[cls]}_bev/mod._{min_dist}-{max_dist}m'] = mAPbev_R40[j, 1, 0]
-                    ret_dict[f'{names[cls]}_bev/hard_{min_dist}-{max_dist}m'] = mAPbev_R40[j, 2, 0]
-                    ret_dict[f'{names[cls]}_image/easy_{min_dist}-{max_dist}m'] = mAPbbox_R40[j, 0, 0]
-                    ret_dict[f'{names[cls]}_image/mod._{min_dist}-{max_dist}m'] = mAPbbox_R40[j, 1, 0]
-                    ret_dict[f'{names[cls]}_image/hard_{min_dist}-{max_dist}m'] = mAPbbox_R40[j, 2, 0]
-
-                result += print_str("bev AP @{}:\t".format(min_overlaps[i, 1, j]) + "\t ".join(
-                    ["{:3.2f}".format(x) for x in mAPbev_R40[j, :, i]]))
-                result += print_str("3d  AP @{}:\t".format(min_overlaps[i, 2, j]) + "\t ".join(
-                    ["{:3.2f}".format(x) for x in mAP3d_R40[j, :, i]]))
-
-                if i == 1:
-
-                    ret_dict[f'unofficial_{names[cls]}_3d/easy_{min_dist}-{max_dist}m'] = mAP3d_R40[j, 0, 1]
-                    ret_dict[f'unofficial_{names[cls]}_3d/mod._{min_dist}-{max_dist}m'] = mAP3d_R40[j, 1, 1]
-                    ret_dict[f'unofficial_{names[cls]}_3d/hard_{min_dist}-{max_dist}m'] = mAP3d_R40[j, 2, 1]
-                    ret_dict[f'unofficial_{names[cls]}_bev/easy_{min_dist}-{max_dist}m'] = mAPbev_R40[j, 0, 1]
-                    ret_dict[f'unofficial_{names[cls]}_bev/mod._{min_dist}-{max_dist}m'] = mAPbev_R40[j, 1, 1]
-                    ret_dict[f'unofficial_{names[cls]}_bev/hard_{min_dist}-{max_dist}m'] = mAPbev_R40[j, 2, 1]
+                ret_dict['%s_3d/easy_R40' % class_to_name[curcls]] = mAP3d_R40[j, 0, 0]
+                ret_dict['%s_3d/moderate_R40' % class_to_name[curcls]] = mAP3d_R40[j, 1, 0]
+                ret_dict['%s_3d/hard_R40' % class_to_name[curcls]] = mAP3d_R40[j, 2, 0]
+                ret_dict['%s_bev/easy_R40' % class_to_name[curcls]] = mAPbev_R40[j, 0, 0]
+                ret_dict['%s_bev/moderate_R40' % class_to_name[curcls]] = mAPbev_R40[j, 1, 0]
+                ret_dict['%s_bev/hard_R40' % class_to_name[curcls]] = mAPbev_R40[j, 2, 0]
+                ret_dict['%s_image/easy_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 0, 0]
+                ret_dict['%s_image/moderate_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 1, 0]
+                ret_dict['%s_image/hard_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 2, 0]
 
     return result, ret_dict
 
