@@ -8,21 +8,6 @@ WANDB:
     dir: '/OpenPCDet/output'
     tags: ['train_5_0']
 
-DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-
-    DATA_SPLIT: {
-    'train': train_5_0,
-    'test': val
-    }
-
-    INFO_PATH: {
-        'train': [kitti_infos_train_5_0.pkl],
-        'test': [kitti_infos_val.pkl],
-    }
-
-    FOV_POINTS_ONLY: True
-
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml

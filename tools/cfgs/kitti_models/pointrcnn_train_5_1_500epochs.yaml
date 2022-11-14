@@ -6,19 +6,18 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_5_0']
-
+    tags: ['train_5_1']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
 
     DATA_SPLIT: {
-        'train': train_5_0,
-        'test': val
+    'train': train_5_1,
+    'test': val
     }
 
     INFO_PATH: {
-        'train': [kitti_infos_train_5_0.pkl],
+        'train': [kitti_infos_train_5_1.pkl],
         'test': [kitti_infos_val.pkl],
     }
 
@@ -30,7 +29,7 @@ DATA_CONFIG:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - kitti_dbinfos_train_5_0.pkl
+                    - kitti_dbinfos_train_5_1.pkl
                 PREPARE: {
                     filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
@@ -188,7 +187,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 1600
+    NUM_EPOCHS: 500
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
