@@ -63,6 +63,38 @@
             "cwd": "${workspaceFolder}/tools"
         },
         {
+            "name": "ewc_compute",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/ewc_compute_fisher.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60_ewc.yaml",
+                "--ckpt_save_interval", "1",
+                "--pretrained_model",
+                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
+            ]
+        },
+        {
+            "name": "finetune_project-dist",
+            "type": "python",
+            "request": "launch",
+            "module": "torch.distributed.launch",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [ "--nproc_per_node=1", 
+                "${workspaceFolder}/tools/train.py", 
+                "--launcher", "pytorch", 
+                "--cfg_file",
+                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60_ewc.yaml",
+                "--ckpt_save_interval", "5",
+                "--pretrained_model",
+                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
+            ]
+        },
+        {
             "name": "finetune_project",
             "type": "python",
             "request": "launch",
@@ -71,7 +103,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60_ewc.yaml",
                 "--ckpt_save_interval", "1",
                 "--pretrained_model",
                 "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
