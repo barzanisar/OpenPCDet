@@ -11,9 +11,10 @@ from tensorboardX import SummaryWriter
 import pickle
 from tqdm import tqdm
 import copy
+import numpy as np
 
 from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
-from pcdet.datasets import build_dataloader
+from pcdet.datasets import build_dataloader, build_dataset
 from pcdet.models import build_network, model_fn_decorator
 from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
@@ -198,6 +199,24 @@ def main():
                     pickle.dump(ewc_params, f)
 
     # -----------------------create dataloader & network & optimizer---------------------------
+    if 'REPLAY' in cfg:
+        original_dataset = build_dataset(dataset_cfg=cfg.DATA_CONFIG,
+        class_names=cfg.CLASS_NAMES,
+        logger=logger,
+        training=True)
+
+        train_set = copy.deepcopy(original_dataset)
+        
+        # include 5% randomly selected clear weather examples 
+        adverse_indices = train_set.get_adverse_indices()
+        clear_indices = train_set.get_clear_indices()
+        #all samples = 6996 = 3365 adverse + 3631 clear
+        clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+        all_indices = adverse_indices + clear_indices_selected
+        train_set.update_infos(all_indices)
+        #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
+
+
     train_set, train_loader, train_sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
@@ -207,7 +226,8 @@ def main():
         training=True,
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs,
-        seed=666 if args.fix_random_seed else None
+        seed=666 if args.fix_random_seed else None, 
+        dataset = train_set if 'REPLAY' in cfg else None
     )
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
@@ -276,7 +296,10 @@ def main():
         max_ckpt_save_num=args.max_ckpt_save_num,
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         save_ckpt_after_epoch=args.save_ckpt_after_epoch,
-        ewc_params=ewc_params
+        ewc_params=ewc_params,
+        original_dataset= original_dataset if 'REPLAY' in cfg else None,
+        dist_train=dist_train,
+        args= args if 'REPLAY' in cfg else None
     )
 
     if hasattr(train_set, 'use_shared_memory') and train_set.use_shared_memory:

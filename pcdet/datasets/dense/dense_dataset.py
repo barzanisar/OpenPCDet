@@ -143,6 +143,18 @@ class DenseDataset(DatasetTemplate):
             self.logger.info('Total skipped info %s' % num_skipped_infos)
             self.logger.info('Total samples for DENSE dataset: %d' % (len(dense_infos)))
 
+    def update_infos(self, indices):
+        dense_infos = [self.dense_infos[idx] for idx in indices]
+        self.dense_infos = dense_infos
+        
+
+    def get_adverse_indices(self):
+        adverse_indices = [i for i, info in enumerate(self.dense_infos) if info['annos']['weather'] != 'clear']
+        return adverse_indices
+    
+    def get_clear_indices(self):
+        clear_indices = [i for i, info in enumerate(self.dense_infos) if info['annos']['weather'] == 'clear']
+        return clear_indices
 
     def set_split(self, split):
 
