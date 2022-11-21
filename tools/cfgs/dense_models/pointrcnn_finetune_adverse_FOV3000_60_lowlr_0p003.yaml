@@ -9,12 +9,7 @@ WANDB:
     tags: ['train_adverse_FOV3000_60']
 
 LOAD_WHOLE_MODEL: True
-EWC:
-    LAMBDA: 0.4
-    PREVIOUS_DATA_SPLIT: train_clear_FOV3000_60
-    PREVIOUS_INFO_PATH: [dense_infos_train_clear_FOV3000_60.pkl]
-    PREVIOUS_DBINFO_PATH: [dense_dbinfos_train_clear_FOV3000_60.pkl]
-    
+
 DATA_CONFIG:
     _BASE_CONFIG_: ../tools/cfgs/dataset_configs/dense_dataset.yaml
 
@@ -38,7 +33,7 @@ DATA_CONFIG:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - dense_dbinfos_train_all_FOV3000_60.pkl
+                    - dense_dbinfos_train_adverse_FOV3000_60.pkl
                 PREPARE: {
                     filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
