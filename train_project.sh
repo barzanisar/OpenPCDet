@@ -3,9 +3,12 @@
 # sbatch --time=3:00:00 --array=1-8%1 --job-name=pointrcnn-all-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60.yaml --tcp_port 18820 --ckpt_save_interval 1 --fix_random_seed
 # sbatch --time=3:00:00 --array=1-4%1 --job-name=pointrcnn-adverse-60-adverse-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_adverse_FOV3000_60.yaml --tcp_port 18830 --ckpt_save_interval 1 --fix_random_seed
 # sbatch --time=3:00:00 --array=1-4%1 --job-name=pointrcnn--adverse-60-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18840 --ckpt_save_interval 1 --fix_random_seed
-sbatch --time=3:00:00 --array=1-4%1 --job-name=pointrcnn-all-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60_40epochs.yaml --tcp_port 18820 --ckpt_save_interval 1 --fix_random_seed
+# sbatch --time=3:00:00 --array=1-4%1 --job-name=pointrcnn-all-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60_40epochs.yaml --tcp_port 18820 --ckpt_save_interval 1 --fix_random_seed
 
 # Test baselines
+sbatch --time=04:00:00 --array=1-1%1 --job-name=pointrcnn-all-60-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60_40epochs.yaml  --tcp_port 18882 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
+sbatch --time=04:00:00 --array=1-1%1 --job-name=pointrcnn-all-60-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_all_FOV3000_60_40epochs.yaml  --tcp_port 18883 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
+
 # sbatch --time=02:00:00 --array=1-2%1 --job-name=pointrcnn-clear-60-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml  --tcp_port 18880 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
 # sbatch --time=02:00:00 --array=1-2%1 --job-name=pointrcnn-clear-60-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml  --tcp_port 18881 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
 
