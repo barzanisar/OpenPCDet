@@ -74,7 +74,7 @@ def compute_fisher(cfg, args, dist_train, logger):
     train_set, train_loader, train_sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
-        batch_size=1,
+        batch_size=args.batch_size,
         dist=dist_train, workers=args.workers,
         logger=logger,
         training=True,
@@ -110,15 +110,7 @@ def compute_fisher(cfg, args, dist_train, logger):
     dataloader_iter = iter(train_loader)
 
     model.train()
-
-    fisher_dict= {}
-    optpar_dict = {}
-
-    # gradients accumulated can be used to calculate fisher
-    for name, param in model.named_parameters():
-        optpar_dict[name] = 0
-        fisher_dict[name] = 0
-    
+    optimizer.zero_grad()
 
     # Accumulate gradients for one epoch
     for cur_it in tqdm(range(total_it_each_epoch)):
@@ -130,20 +122,18 @@ def compute_fisher(cfg, args, dist_train, logger):
             print('new iters')
 
         loss, _, _ = model_func(model, batch)
-        
-        optimizer.zero_grad()
-        loss.backward()
-        # fisher_param_i = sum over all x_old: (grad_param_i_(x_old)^2)
-        for name, param in model.named_parameters():
-            fisher_dict[name] += param.grad.data.clone().pow(2)  
 
-    # normalize fisher and store opt param values from previous task/dataset
+        loss.backward()        
+    
+    fisher_dict= {}
+    optpar_dict = {}
+
+    # gradients accumulated can be used to calculate fisher
     for name, param in model.named_parameters():
         optpar_dict[name] = param.data.clone()
-        fisher_dict[name] = fisher_dict[name] / total_it_each_epoch
+        fisher_dict[name] = param.grad.data.clone().pow(2)
 
     return {'fisher' :fisher_dict, 'optpar': optpar_dict}
-
 
 def main():
     args, cfg = parse_config()
