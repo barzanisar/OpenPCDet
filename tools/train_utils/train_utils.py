@@ -142,6 +142,104 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
         dataloader_iter = iter(train_loader)
         for cur_epoch in tbar:
+            if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
+                clear_indices = original_dataset.get_clear_indices()
+                model.train()
+
+                if  cfg.REPLAY.method == 'MIR' and cur_epoch == 0:
+                    loss_prev_epoch_for_all_clear_samples = []
+
+                    # Calculate loss using cur epoch params for each sample in original dataset
+                    # here single batch is single sample
+                    with torch.no_grad():
+                        for idx in clear_indices:
+                            sample = original_dataset[idx]
+                            batch = original_dataset.collate_batch([sample])
+
+                            loss, _, _ = model_func(model, batch)
+                            loss_prev_epoch_for_all_clear_samples.append(loss.item())
+                else:
+                    if cur_epoch > 0 and (cur_epoch) % cfg.REPLAY.epoch_interval == 0:
+                        # Generate new trainset, train loader and sampler
+
+                        if cfg.REPLAY.method == 'MIR':
+
+                            decrease_in_loss_all_clear_samples = []
+                                
+                            # Calculate loss using cur epoch params for each sample in original dataset
+                            # here single batch is single sample
+                            with torch.no_grad():
+                                for idx in clear_indices:
+                                    sample = original_dataset[idx]
+                                    batch = original_dataset.collate_batch([sample])
+
+                                    loss, _, _ = model_func(model, batch)
+                                    prev_loss = loss_prev_epoch_for_all_clear_samples[idx]
+                                    decrease_in_loss_all_clear_samples.append(prev_loss-loss.item())
+                                    loss_prev_epoch_for_all_clear_samples[idx] = loss.item()
+                                
+                            #Sort decrease_in_loss_all_clear_samples in ascending order and choose k samples with lowest decrease in loss
+                            decrease_in_loss_idx_selected = np.argsort(np.array(decrease_in_loss_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
+                            clear_indices_selected = [clear_indices[idx] for idx in decrease_in_loss_idx_selected]
+
+
+                        elif cfg.REPLAY.method == 'random':
+                            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+
+                        elif cfg.REPLAY.method == 'EMIR':
+                            models_current_grad = {}
+                            for name, param in model.named_parameters():
+                                models_current_grad[name] = param.grad.data.clone()
+                            
+                            cos_theta_for_all_clear_samples = []
+
+                            model.train()
+                            
+                            # Calculate cos_theta = - interference score for each sample in original dataset
+                            # here single batch is single sample
+                            for idx in clear_indices:
+                                sample = original_dataset[idx]
+                                batch = original_dataset.collate_batch([sample])
+
+                                loss, _, _ = model_func(model, batch)
+
+                                optimizer.zero_grad()
+                                loss.backward() 
+                                a_dot_b = 0
+                                norm_a = 0
+                                norm_b = 0
+                                # Take dot product between current gradient vector and gradient vector
+                                # due to this sample to get the cos(angle) = a . b / (norm_a * norm_b)
+                                for name, param in model.named_parameters():
+                                    a_dot_b += torch.dot(models_current_grad[name].view(-1), param.grad.data.clone().view(-1)).item()
+                                    norm_a += models_current_grad[name].pow(2).sum().item()
+                                    norm_b += param.grad.data.clone().pow(2).sum().item()
+
+                                norm_a = math.sqrt(norm_a)
+                                norm_b = math.sqrt(norm_b)
+
+                                cos_theta_for_all_clear_samples.append(a_dot_b/(norm_a * norm_b))
+
+                            #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
+                            cos_theta_idx_selected = np.argsort(np.array(cos_theta_for_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
+                            clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
+
+            
+                        # include max interfered clear weather examples 
+                        train_set = copy.deepcopy(original_dataset)
+                        adverse_indices = original_dataset.get_adverse_indices()
+                        all_indices = adverse_indices + clear_indices_selected
+                        train_set.update_infos(all_indices)
+                        train_set, train_loader, train_sampler = build_dataloader(
+                            dataset_cfg=cfg.DATA_CONFIG,
+                            class_names=cfg.CLASS_NAMES,
+                            batch_size=args.batch_size,
+                            dist=dist_train, workers=4,
+                            training=True,
+                            seed=666 if args.fix_random_seed else None, 
+                            dataset = train_set
+                        )
+
             if train_sampler is not None:
                 train_sampler.set_epoch(cur_epoch)
 
@@ -159,69 +257,6 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 total_it_each_epoch=total_it_each_epoch,
                 dataloader_iter=dataloader_iter, ewc_params=ewc_params
             )
-
-            
-            if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
-                if cur_epoch > 0 and (cur_epoch) % cfg.REPLAY.epoch_interval == 0:
-                    # Generate new trainset, train loader and sampler
-                    clear_indices = original_dataset.get_clear_indices()
-
-                    if cfg.REPLAY.method == 'random':
-                        clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
-
-                    elif cfg.REPLAY.method == 'MIR':
-                        models_current_grad = {}
-                        for name, param in model.named_parameters():
-                            models_current_grad[name] = param.grad.data.clone()
-                        
-                        cos_theta_for_all_clear_samples = []
-
-                        model.train()
-                        
-                        # Calculate cos_theta = - interference score for each sample in original dataset
-                        # here single batch as single sample
-                        for idx in clear_indices:
-                            sample = original_dataset[idx]
-                            batch = original_dataset.collate_batch([sample])
-
-                            loss, _, _ = model_func(model, batch)
-
-                            optimizer.zero_grad()
-                            loss.backward() 
-                            a_dot_b = 0
-                            norm_a = 0
-                            norm_b = 0
-                            # Take dot product between current gradient vector and gradient vector
-                            # due to this sample to get the cos(angle) = a . b / (norm_a * norm_b)
-                            for name, param in model.named_parameters():
-                                a_dot_b += torch.dot(models_current_grad[name].view(-1), param.grad.data.clone().view(-1)).item()
-                                norm_a += models_current_grad[name].pow(2).sum().item()
-                                norm_b += param.grad.data.clone().pow(2).sum().item()
-
-                            norm_a = math.sqrt(norm_a)
-                            norm_b = math.sqrt(norm_b)
-
-                            cos_theta_for_all_clear_samples.append(a_dot_b/(norm_a * norm_b))
-
-                        #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
-                        cos_theta_idx_selected = np.argsort(np.array(cos_theta_for_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
-                        clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
-
-        
-                    # include max interfered clear weather examples 
-                    train_set = copy.deepcopy(original_dataset)
-                    adverse_indices = original_dataset.get_adverse_indices()
-                    all_indices = adverse_indices + clear_indices_selected
-                    train_set.update_infos(all_indices)
-                    train_set, train_loader, train_sampler = build_dataloader(
-                        dataset_cfg=cfg.DATA_CONFIG,
-                        class_names=cfg.CLASS_NAMES,
-                        batch_size=args.batch_size,
-                        dist=dist_train, workers=4,
-                        training=True,
-                        seed=666 if args.fix_random_seed else None, 
-                        dataset = train_set
-                    )
 
 
             # save trained model
