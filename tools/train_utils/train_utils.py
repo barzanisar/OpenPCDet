@@ -161,6 +161,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
                 
                 if  cfg.REPLAY.method == 'MIR':
+                    start_condition = False
                     if cfg.REPLAY.epoch_interval == 1:
                         start_condition =  (cur_epoch == 0)
                     else:
@@ -192,18 +193,18 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                             # Calculate loss using cur epoch params for each sample in original dataset
                             # here single batch is single sample
                             with torch.no_grad():
-                                for idx in clear_indices:
+                                for i, idx in enumerate(clear_indices):
                                     sample = original_dataset[idx]
                                     batch = original_dataset.collate_batch([sample])
 
                                     loss, _, _ = model_func(model, batch)
-                                    prev_loss = loss_prev_epoch_for_all_clear_samples[idx]
+                                    prev_loss = loss_prev_epoch_for_all_clear_samples[i]
                                     decrease_in_loss_all_clear_samples.append(prev_loss-loss.item())
-                                    loss_prev_epoch_for_all_clear_samples[idx] = loss.item()
+                                    loss_prev_epoch_for_all_clear_samples[i] = loss.item()
                                 
                             #Sort decrease_in_loss_all_clear_samples in ascending order and choose k samples with lowest decrease in loss
                             decrease_in_loss_idx_selected = np.argsort(np.array(decrease_in_loss_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
-                            clear_indices_selected = [clear_indices[idx] for idx in decrease_in_loss_idx_selected]
+                            clear_indices_selected = [clear_indices[i] for i in decrease_in_loss_idx_selected]
 
 
                         elif cfg.REPLAY.method == 'random':
