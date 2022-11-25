@@ -146,14 +146,27 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             epoch_time = common_utils.AverageMeter()
             overhead_time = common_utils.AverageMeter()
 
+        if 'REPLAY' in cfg:
+            clear_indices = original_dataset.get_clear_indices()
+            adverse_indices = original_dataset.get_adverse_indices()
+            if cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1:
+                # Reduce and fix samples in dataset buffer to save time
+                clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
+
+
         for cur_epoch in tbar:
             
             end = time.time()
 
             if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
+                
+                if  cfg.REPLAY.method == 'MIR':
+                    if cfg.REPLAY.epoch_interval == 1:
+                        start_condition =  (cur_epoch == 0)
+                    else:
+                        start_condition = (cur_epoch > 0) and ((cur_epoch + 1) % cfg.REPLAY.epoch_interval == 0)
 
-                if  cfg.REPLAY.method == 'MIR' and cur_epoch > 0 and (cur_epoch + 1) % cfg.REPLAY.epoch_interval == 0:
-                    clear_indices = original_dataset.get_clear_indices()
+                if  cfg.REPLAY.method == 'MIR' and start_condition:
                     model.train()
                     loss_prev_epoch_for_all_clear_samples = []
 
@@ -169,7 +182,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 else:
                     if cur_epoch > 0 and (cur_epoch) % cfg.REPLAY.epoch_interval == 0:
                         # Generate new trainset, train loader and sampler
-                        clear_indices = original_dataset.get_clear_indices()
+                        
                         model.train()
 
                         if cfg.REPLAY.method == 'MIR':
@@ -237,7 +250,6 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             
                         # include max interfered clear weather examples 
                         train_set = copy.deepcopy(original_dataset)
-                        adverse_indices = original_dataset.get_adverse_indices()
                         all_indices = adverse_indices + clear_indices_selected
                         train_set.update_infos(all_indices)
                         train_set, train_loader, train_sampler = build_dataloader(
