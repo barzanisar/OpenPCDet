@@ -151,10 +151,10 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             end = time.time()
 
             if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
-                clear_indices = original_dataset.get_clear_indices()
-                model.train()
 
-                if  cfg.REPLAY.method == 'MIR' and cur_epoch == 0:
+                if  cfg.REPLAY.method == 'MIR' and cur_epoch > 0 and (cur_epoch + 1) % cfg.REPLAY.epoch_interval == 0:
+                    clear_indices = original_dataset.get_clear_indices()
+                    model.train()
                     loss_prev_epoch_for_all_clear_samples = []
 
                     # Calculate loss using cur epoch params for each sample in original dataset
@@ -169,6 +169,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 else:
                     if cur_epoch > 0 and (cur_epoch) % cfg.REPLAY.epoch_interval == 0:
                         # Generate new trainset, train loader and sampler
+                        clear_indices = original_dataset.get_clear_indices()
+                        model.train()
 
                         if cfg.REPLAY.method == 'MIR':
 
