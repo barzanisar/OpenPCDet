@@ -116,13 +116,13 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             wb_dict['epoch'] = cur_epoch
             wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
-            if tb_log is not None:
-                tb_log.add_scalar('train/loss', loss, accumulated_iter)
-                tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
-                # if len(optimizer.param_groups) > 1:
-                #     tb_log.add_scalar('meta_data/learning_rate_1', optimizer.param_groups[1]['lr'], accumulated_iter)
-                for key, val in tb_dict.items():
-                    tb_log.add_scalar('train/' + key, val, accumulated_iter)
+            # if tb_log is not None:
+            #     tb_log.add_scalar('train/loss', loss, accumulated_iter)
+            #     tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+            #     # if len(optimizer.param_groups) > 1:
+            #     #     tb_log.add_scalar('meta_data/learning_rate_1', optimizer.param_groups[1]['lr'], accumulated_iter)
+            #     for key, val in tb_dict.items():
+            #         tb_log.add_scalar('train/' + key, val, accumulated_iter)
     if rank == 0:
         pbar.close()
     return accumulated_iter
@@ -141,7 +141,15 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             total_it_each_epoch = len(train_loader) // max(total_epochs, 1)
 
         dataloader_iter = iter(train_loader)
+
+        if rank == 0:
+            epoch_time = common_utils.AverageMeter()
+            overhead_time = common_utils.AverageMeter()
+
         for cur_epoch in tbar:
+            
+            end = time.time()
+
             if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
                 clear_indices = original_dataset.get_clear_indices()
                 model.train()
@@ -240,6 +248,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                             dataset = train_set
                         )
 
+            cur_overhead_time = time.time() - end
+
             if train_sampler is not None:
                 train_sampler.set_epoch(cur_epoch)
 
@@ -248,6 +258,9 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 cur_scheduler = lr_warmup_scheduler
             else:
                 cur_scheduler = lr_scheduler
+
+            end = time.time()
+
             accumulated_iter = train_one_epoch(cfg, cur_epoch,
                 model, optimizer, train_loader, model_func,
                 lr_scheduler=cur_scheduler,
@@ -258,6 +271,16 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 dataloader_iter=dataloader_iter, ewc_params=ewc_params
             )
 
+            cur_epoch_time = time.time() - end
+
+            if rank == 0:
+                overhead_time.update(cur_overhead_time)
+                epoch_time.update(cur_epoch_time)
+                wb_dict = {'overhead_time': overhead_time.val, 
+                           'overhead_time_avg': overhead_time.avg,
+                           'epoch_time': epoch_time.val, 
+                           'epoch_time_avg': epoch_time.avg}
+                wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
             # save trained model
             trained_epoch = cur_epoch + 1
