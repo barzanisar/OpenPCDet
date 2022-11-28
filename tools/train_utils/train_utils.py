@@ -162,7 +162,8 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 wb_dict['lr'] = cur_lr
             wb_dict['loss'] = loss
             wb_dict['epoch'] = cur_epoch
-            wb_dict['overhead_time_agem'] = overhead_time
+            if old_dataloader is not None:
+                wb_dict['overhead_time_agem'] = overhead_time
             wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
             # if tb_log is not None:
@@ -291,8 +292,23 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         elif cfg.REPLAY.method == 'EMIR':
                             models_current_grad = {}
                             for name, param in model.named_parameters():
-                                models_current_grad[name] = param.grad.data.clone()
+                                models_current_grad[name] = torch.zeros_like(param.grad)
                             
+                            # Calculate average gradient over all adverse data using current model
+                            for idx in adverse_indices:
+                                sample = original_dataset[idx]
+                                batch = original_dataset.collate_batch([sample])
+
+                                loss, _, _ = model_func(model, batch)
+
+                                optimizer.zero_grad()
+                                loss.backward()
+                                for name, param in model.named_parameters():
+                                    models_current_grad[name] += param.grad.data
+
+                            for name, param in model.named_parameters():
+                                models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
+
                             cos_theta_for_all_clear_samples = []
 
                             model.train()
@@ -364,7 +380,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 rank=rank, tbar=tbar, tb_log=tb_log,
                 leave_pbar=(cur_epoch + 1 == total_epochs),
                 total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter, ewc_params=ewc_params, old_dataloader = old_train_loader
+                dataloader_iter=dataloader_iter, ewc_params=ewc_params, old_dataloader = old_train_loader if 'REPLAY' in cfg and cfg.REPLAY.method == 'AGEM' else None
             )
 
             cur_epoch_time = time.time() - end
