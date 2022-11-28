@@ -289,6 +289,24 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         elif cfg.REPLAY.method == 'random':
                             clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
 
+                        elif cfg.REPLAY.method == 'AGEM' and cfg.REPLAY.method_variant == 'plus':
+                            # Reduce and fix samples in dataset buffer to save time
+                            clear_indices = original_dataset.get_clear_indices()
+                            clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                                                    # include max interfered clear weather examples 
+
+                            old_train_set = copy.deepcopy(original_dataset)
+                            old_train_set.update_infos(clear_indices)
+                            old_train_set, old_train_loader, old_train_sampler = build_dataloader(
+                                dataset_cfg=cfg.DATA_CONFIG,
+                                class_names=cfg.CLASS_NAMES,
+                                batch_size=args.batch_size,
+                                dist=dist_train, workers=4,
+                                training=True,
+                                seed=666 if args.fix_random_seed else None, 
+                                dataset = old_train_set
+                            )
+
                         elif cfg.REPLAY.method == 'EMIR':
                             models_current_grad = {}
                             for name, param in model.named_parameters():
