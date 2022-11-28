@@ -13,9 +13,11 @@ import math
 import numpy as np
 
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
-                    rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None):
+                    rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None, old_dataloader = None):
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
+    if old_dataloader is not None:
+        old_dataloader_iter = iter(old_dataloader)
 
     if rank == 0:
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
@@ -23,7 +25,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         batch_time = common_utils.AverageMeter()
         forward_time = common_utils.AverageMeter()
 
-    
+   
     for cur_it in range(total_it_each_epoch):
         end = time.time()
         try:
@@ -33,6 +35,18 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             batch = next(dataloader_iter)
             print('new iters')
         
+        if old_dataloader is not None:
+            overhead_start = time.time()
+            overhead_time = 0
+            try:
+                old_batch = next(old_dataloader_iter)
+            except StopIteration:
+                old_dataloader_iter = iter(old_dataloader)
+                old_batch = next(old_dataloader_iter)
+                print('new iters')
+            
+            overhead_time += time.time() - overhead_start 
+
         data_timer = time.time()
         cur_data_time = data_timer - end
 
@@ -49,8 +63,20 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             #     tb_log.add_scalar('meta_data/learning_rate_1', optimizer.param_groups[1]['lr'], accumulated_iter) #lr_bb
 
         model.train()
-        optimizer.zero_grad()
+        if old_dataloader is not None:
+            start_time  = time.time()
+            optimizer.zero_grad()
+            old_loss, _, _ = model_func(model, old_batch)
+            old_loss.backward()
+            clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
+            grad_old = []
+            for p in model.parameters():
+                if p.requires_grad:
+                    grad_old.append(p.grad.view(-1))  
+            grad_old = torch.cat(grad_old) 
+            overhead_time += time.time() - start_time
 
+        optimizer.zero_grad()
         loss, tb_dict, disp_dict = model_func(model, batch)
 
         if ewc_params is not None:
@@ -73,8 +99,30 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
-        optimizer.step()
+        if old_dataloader is not None:
+            start_time = time.time()
+            grad_new = []
+            for p in model.parameters():
+                if p.requires_grad:
+                    grad_new.append(p.grad.view(-1))  
+            grad_new = torch.cat(grad_new) 
 
+            angle = (grad_old * grad_new).sum()
+            if angle < 0:
+                grad_old_sq_mag = (grad_old * grad_old).sum()
+                grad_proj = grad_new - (angle/grad_old_sq_mag) * grad_old
+
+                index = 0
+                for p in model.parameters():
+                    if p.requires_grad:
+                        n_param = p.numel()
+                        p.grad.copy_(grad_proj[index:index+n_param].view_as(p))
+                        index += n_param
+            
+            overhead_time += time.time() - start_time
+
+
+        optimizer.step()
         accumulated_iter += 1
 
         cur_batch_time = time.time() - end
@@ -114,6 +162,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 wb_dict['lr'] = cur_lr
             wb_dict['loss'] = loss
             wb_dict['epoch'] = cur_epoch
+            wb_dict['overhead_time_agem'] = overhead_time
             wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
             # if tb_log is not None:
@@ -149,11 +198,40 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
         if 'REPLAY' in cfg:
             clear_indices = original_dataset.get_clear_indices()
             adverse_indices = original_dataset.get_adverse_indices()
-            if cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1:
+            if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
                 # Reduce and fix samples in dataset buffer to save time
                 clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
 
+            if  cfg.REPLAY.method == 'AGEM':
+                # Reduce and fix samples in dataset buffer to save time
+                clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                                        # include max interfered clear weather examples 
+                train_set = copy.deepcopy(original_dataset)
+                train_set.update_infos(adverse_indices)
+                train_set, train_loader, train_sampler = build_dataloader(
+                    dataset_cfg=cfg.DATA_CONFIG,
+                    class_names=cfg.CLASS_NAMES,
+                    batch_size=args.batch_size,
+                    dist=dist_train, workers=4,
+                    training=True,
+                    seed=666 if args.fix_random_seed else None, 
+                    dataset = train_set
+                )
 
+                old_train_set = copy.deepcopy(original_dataset)
+                old_train_set.update_infos(clear_indices)
+                old_train_set, old_train_loader, old_train_sampler = build_dataloader(
+                    dataset_cfg=cfg.DATA_CONFIG,
+                    class_names=cfg.CLASS_NAMES,
+                    batch_size=args.batch_size,
+                    dist=dist_train, workers=4,
+                    training=True,
+                    seed=666 if args.fix_random_seed else None, 
+                    dataset = old_train_set
+                )
+
+
+        
         for cur_epoch in tbar:
             
             end = time.time()
@@ -267,6 +345,9 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
             if train_sampler is not None:
                 train_sampler.set_epoch(cur_epoch)
+            
+            if 'REPLAY' in cfg and cfg.REPLAY.method == 'AGEM' and old_train_sampler is not None:
+                old_train_sampler.set_epoch(cur_epoch)
 
             # train one epoch
             if lr_warmup_scheduler is not None and cur_epoch < optim_cfg.WARMUP_EPOCH:
@@ -283,7 +364,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 rank=rank, tbar=tbar, tb_log=tb_log,
                 leave_pbar=(cur_epoch + 1 == total_epochs),
                 total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter, ewc_params=ewc_params
+                dataloader_iter=dataloader_iter, ewc_params=ewc_params, old_dataloader = old_train_loader
             )
 
             cur_epoch_time = time.time() - end
