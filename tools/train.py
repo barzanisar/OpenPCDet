@@ -208,11 +208,14 @@ def main():
         
         # include 5% randomly selected clear weather examples 
         adverse_indices = train_set.get_adverse_indices()
-        clear_indices = train_set.get_clear_indices()
-        #all samples = 6996 = 3365 adverse + 3631 clear
-        clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
-        all_indices = adverse_indices + clear_indices_selected
-        train_set.update_infos(all_indices)
+        if cfg.REPLAY.method == 'AGEM':
+            train_set.update_infos(adverse_indices)
+        else:
+            clear_indices = train_set.get_clear_indices()
+            #all samples = 6996 = 3365 adverse + 3631 clear
+            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+            all_indices = adverse_indices + clear_indices_selected
+            train_set.update_infos(all_indices)
         #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
 
 

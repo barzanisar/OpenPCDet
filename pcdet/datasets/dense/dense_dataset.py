@@ -146,6 +146,10 @@ class DenseDataset(DatasetTemplate):
     def update_infos(self, indices):
         dense_infos = [self.dense_infos[idx] for idx in indices]
         self.dense_infos = dense_infos
+    
+    def update_infos_given_infos(self, indices, infos):
+        dense_infos = [infos[idx] for idx in indices]
+        self.dense_infos = dense_infos
         
 
     def get_adverse_indices(self):

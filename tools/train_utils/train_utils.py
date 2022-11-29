@@ -197,27 +197,16 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             overhead_time = common_utils.AverageMeter()
 
         if 'REPLAY' in cfg:
-            clear_indices = original_dataset.get_clear_indices()
+            orig_clear_indices = original_dataset.get_clear_indices()
             adverse_indices = original_dataset.get_adverse_indices()
             if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
                 # Reduce and fix samples in dataset buffer to save time
-                clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
+                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
 
-            if  cfg.REPLAY.method == 'AGEM':
+            elif  cfg.REPLAY.method == 'AGEM':
                 # Reduce and fix samples in dataset buffer to save time
-                clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
                                         # include max interfered clear weather examples 
-                train_set = copy.deepcopy(original_dataset)
-                train_set.update_infos(adverse_indices)
-                train_set, train_loader, train_sampler = build_dataloader(
-                    dataset_cfg=cfg.DATA_CONFIG,
-                    class_names=cfg.CLASS_NAMES,
-                    batch_size=args.batch_size,
-                    dist=dist_train, workers=4,
-                    training=True,
-                    seed=666 if args.fix_random_seed else None, 
-                    dataset = train_set
-                )
 
                 old_train_set = copy.deepcopy(original_dataset)
                 old_train_set.update_infos(clear_indices)
@@ -232,7 +221,6 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 )
 
 
-        
         for cur_epoch in tbar:
             
             end = time.time()
@@ -287,16 +275,14 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
 
                         elif cfg.REPLAY.method == 'random':
-                            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                            clear_indices_selected = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
 
                         elif cfg.REPLAY.method == 'AGEM' and cfg.REPLAY.method_variant == 'plus':
                             # Reduce and fix samples in dataset buffer to save time
-                            clear_indices = original_dataset.get_clear_indices()
-                            clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                            clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
                                                     # include max interfered clear weather examples 
 
-                            old_train_set = copy.deepcopy(original_dataset)
-                            old_train_set.update_infos(clear_indices)
+                            old_train_set.update_infos_given_infos(clear_indices, original_dataset.dense_infos)
                             old_train_set, old_train_loader, old_train_sampler = build_dataloader(
                                 dataset_cfg=cfg.DATA_CONFIG,
                                 class_names=cfg.CLASS_NAMES,
@@ -333,7 +319,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                             
                             # Calculate cos_theta = - interference score for each sample in original dataset
                             # here single batch is single sample
-                            for idx in clear_indices:
+                            for idx in orig_clear_indices:
                                 sample = original_dataset[idx]
                                 batch = original_dataset.collate_batch([sample])
 
@@ -358,22 +344,26 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                             #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
                             cos_theta_idx_selected = np.argsort(np.array(cos_theta_for_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
-                            clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
+                            clear_indices_selected = [orig_clear_indices[idx] for idx in cos_theta_idx_selected]
 
-            
-                        # include max interfered clear weather examples 
-                        train_set = copy.deepcopy(original_dataset)
-                        all_indices = adverse_indices + clear_indices_selected
-                        train_set.update_infos(all_indices)
-                        train_set, train_loader, train_sampler = build_dataloader(
-                            dataset_cfg=cfg.DATA_CONFIG,
-                            class_names=cfg.CLASS_NAMES,
-                            batch_size=args.batch_size,
-                            dist=dist_train, workers=4,
-                            training=True,
-                            seed=666 if args.fix_random_seed else None, 
-                            dataset = train_set
-                        )
+                        
+                        if cfg.REPLAY.method != 'AGEM':
+                            # include max interfered clear weather examples 
+                            train_set = copy.deepcopy(original_dataset)
+                            all_indices = adverse_indices + clear_indices_selected
+                            train_set.update_infos(all_indices)
+                            train_set, train_loader, train_sampler = build_dataloader(
+                                dataset_cfg=cfg.DATA_CONFIG,
+                                class_names=cfg.CLASS_NAMES,
+                                batch_size=args.batch_size,
+                                dist=dist_train, workers=4,
+                                training=True,
+                                seed=666 if args.fix_random_seed else None, 
+                                dataset = train_set
+                            )
+                            total_it_each_epoch = len(train_loader)
+                            dataloader_iter = iter(train_loader)
+
 
             cur_overhead_time = time.time() - end
 
