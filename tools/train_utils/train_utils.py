@@ -295,23 +295,29 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                         elif cfg.REPLAY.method == 'EMIR':
                             models_current_grad = {}
-                            for name, param in model.named_parameters():
-                                models_current_grad[name] = torch.zeros_like(param.grad)
-                            
-                            # Calculate average gradient over all adverse data using current model
-                            for idx in adverse_indices:
-                                sample = original_dataset[idx]
-                                batch = original_dataset.collate_batch([sample])
 
-                                loss, _, _ = model_func(model, batch)
-
-                                optimizer.zero_grad()
-                                loss.backward()
+                            if cfg.REPLAY.method_variant == 'plus':
                                 for name, param in model.named_parameters():
-                                    models_current_grad[name] += param.grad.data
+                                    models_current_grad[name] = torch.zeros_like(param.grad)
+                                
+                                # Calculate average gradient over all adverse data using current model
+                                for idx in adverse_indices:
+                                    sample = original_dataset[idx]
+                                    batch = original_dataset.collate_batch([sample])
 
-                            for name, param in model.named_parameters():
-                                models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
+                                    loss, _, _ = model_func(model, batch)
+
+                                    optimizer.zero_grad()
+                                    loss.backward()
+                                    for name, param in model.named_parameters():
+                                        models_current_grad[name] += param.grad.data
+
+                                for name, param in model.named_parameters():
+                                    models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
+                            else:
+                                for name, param in model.named_parameters():
+                                    models_current_grad[name] = param.grad.data.clone()
+
 
                             cos_theta_for_all_clear_samples = []
 
