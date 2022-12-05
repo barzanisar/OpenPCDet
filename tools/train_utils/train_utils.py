@@ -37,7 +37,10 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         
         if old_dataloader is not None:
             overhead_start = time.time()
-            overhead_time = 0
+            if cur_it == 0:
+                overhead_time = 0
+            else:
+                overhead_time = cfg['overhead_time_agem']
             try:
                 old_batch = next(old_dataloader_iter)
             except StopIteration:
@@ -163,7 +166,10 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             wb_dict['loss'] = loss
             wb_dict['epoch'] = cur_epoch
             if old_dataloader is not None:
+                cfg['overhead_time_agem'] = overhead_time
+                #print(f'overhead: {overhead_time}')
                 wb_dict['overhead_time_agem'] = overhead_time
+
             wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
             # if tb_log is not None:
