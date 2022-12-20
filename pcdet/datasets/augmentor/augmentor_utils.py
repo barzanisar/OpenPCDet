@@ -10,7 +10,7 @@ def random_flip_along_x(gt_boxes, points):
     Args:
         gt_boxes: (N, 7 + C), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
         points: (M, 3 + C)
-    Returns:
+    Returns: gives mirror image of boxes and scene points on lidar x axis 
     """
     enable = np.random.choice([False, True], replace=False, p=[0.5, 0.5])
     if enable:

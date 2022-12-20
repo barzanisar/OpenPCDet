@@ -13,6 +13,10 @@ class PointHeadBox(PointHeadTemplate):
     def __init__(self, num_class, input_channels, model_cfg, predict_boxes_when_training=False, **kwargs):
         super().__init__(model_cfg=model_cfg, num_class=num_class)
         self.predict_boxes_when_training = predict_boxes_when_training
+        #cin = 128, 2 hidden layers = [[linear = 256 (bias=False), batchnorm1d, relu], 
+        #                       [linear=256 (bias=False), batchnorm1, relu],
+        #                        [linear=3 (bias=true)]] 
+        #cout = 3 = num_class
         self.cls_layers = self.make_fc_layers(
             fc_cfg=self.model_cfg.CLS_FC,
             input_channels=input_channels,
@@ -23,6 +27,11 @@ class PointHeadBox(PointHeadTemplate):
         self.box_coder = getattr(box_coder_utils, target_cfg.BOX_CODER)(
             **target_cfg.BOX_CODER_CONFIG
         )
+        
+        #cin = 128, 2 hidden layers = [[linear = 256 (bias=False), batchnorm1d, relu], 
+        #                       [linear=256 (bias=False), batchnorm1, relu],
+        #                        [linear=3 (bias=true)]] 
+        #cout = 8 = box code size
         self.box_layers = self.make_fc_layers(
             fc_cfg=self.model_cfg.REG_FC,
             input_channels=input_channels,
@@ -33,7 +42,7 @@ class PointHeadBox(PointHeadTemplate):
         """
         Args:
             input_dict:
-                point_features: (N1 + N2 + N3 + ..., C)
+                point_features: (N1 + N2 + N3 + ..., C) N1=number of points in pc 1, N2= number of points in pc2, ...
                 batch_size:
                 point_coords: (N1 + N2 + N3 + ..., 4) [bs_idx, x, y, z]
                 gt_boxes (optional): (B, M, 8)
@@ -86,12 +95,12 @@ class PointHeadBox(PointHeadTemplate):
         if self.model_cfg.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
             point_features = batch_dict['point_features_before_fusion']
         else:
-            point_features = batch_dict['point_features']
-        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class)
-        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size)
+            point_features = batch_dict['point_features'] # (total_points in batch = N, 128) 
+        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class) Predict class scores (car, pedestrian, cyclist) for every point
+        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size) Predict box (x,y,z,dx,dy,dz,r,class_index? or box confidence?) for every point
 
-        point_cls_preds_max, _ = point_cls_preds.max(dim=-1)
-        batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max)
+        point_cls_preds_max, _ = point_cls_preds.max(dim=-1) #(N, 3) -> max score for each point (N)
+        batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) #turn scores in probabilities i.e. objectness confidence for each point
 
         ret_dict = {'point_cls_preds': point_cls_preds,
                     'point_box_preds': point_box_preds}

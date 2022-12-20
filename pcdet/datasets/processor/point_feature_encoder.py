@@ -41,6 +41,7 @@ class PointFeatureEncoder(object):
         return data_dict
 
     def absolute_coordinates_encoding(self, points=None):
+        # src feature list: x,y,z,intensity,channel -> used feature list: x,y,z,intensity
         if points is None:
             num_output_features = len(self.used_feature_list)
             return num_output_features

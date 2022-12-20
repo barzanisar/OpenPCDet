@@ -88,7 +88,7 @@
                 "${workspaceFolder}/tools/train.py", 
                 "--launcher", "pytorch", 
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60_ewc.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_all_FOV3000_60_replay_MIR.yaml",
                 "--ckpt_save_interval", "5",
                 "--pretrained_model",
                 "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
@@ -103,7 +103,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_adverse_FOV3000_60_ewc.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_all_FOV3000_60_replay_AGEM_plus.yaml",
                 "--ckpt_save_interval", "1",
                 "--pretrained_model",
                 "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"

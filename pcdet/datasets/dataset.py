@@ -139,6 +139,7 @@ class DatasetTemplate(torch_data.Dataset):
             assert 'gt_boxes' in data_dict, 'gt_boxes should be provided for training'
             gt_boxes_mask = np.array([n in self.class_names for n in data_dict['gt_names']], dtype=np.bool_)
 
+            # add gt samling and random rotation, scaling flipping, remove gt boxes of class we dont care about
             data_dict = self.data_augmentor.forward(
                 data_dict={
                     **data_dict,
@@ -147,10 +148,13 @@ class DatasetTemplate(torch_data.Dataset):
             )
 
         if data_dict.get('gt_boxes', None) is not None:
+            # select only those gt boxes which are in self.class_names (redundant: we have already done this in augmentor)
             selected = common_utils.keep_arrays_by_name(data_dict['gt_names'], self.class_names)
             data_dict['gt_boxes'] = data_dict['gt_boxes'][selected]
             data_dict['gt_names'] = data_dict['gt_names'][selected]
             gt_classes = np.array([self.class_names.index(n) + 1 for n in data_dict['gt_names']], dtype=np.int32)
+
+            #append class id as 8th entry in gt boxes
             gt_boxes = np.concatenate((data_dict['gt_boxes'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
             data_dict['gt_boxes'] = gt_boxes
 
@@ -158,8 +162,10 @@ class DatasetTemplate(torch_data.Dataset):
                 data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][selected]
 
         if data_dict.get('points', None) is not None:
+            # Keep features that we want to use: points (N, 5)=xyzic -> points (N,4)=xyzi
             data_dict = self.point_feature_encoder.forward(data_dict)
 
+        # remove points and gt boxes outside pc range, sample 16384 pts and shuffle pts if training
         data_dict = self.data_processor.forward(
             data_dict=data_dict
         )

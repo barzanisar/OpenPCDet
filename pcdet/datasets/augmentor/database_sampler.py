@@ -87,6 +87,7 @@ class DataBaseSampler(object):
         return sa_key
 
     def filter_by_difficulty(self, db_infos, removed_difficulty):
+        # remove db infos with difficulty = removed_difficulty
         new_db_infos = {}
         for key, dinfos in db_infos.items():
             pre_len = len(dinfos)
@@ -99,6 +100,7 @@ class DataBaseSampler(object):
         return new_db_infos
 
     def filter_by_min_points(self, db_infos, min_gt_points_list):
+        # remove db infos which have less than 5 pts
         for name_num in min_gt_points_list:
             name, min_num = name_num.split(':')
             min_num = int(min_num)
@@ -143,20 +145,20 @@ class DataBaseSampler(object):
             road_planes: [a, b, c, d]
             calib:
 
-        Returns:
+        Returns: sampled gt boxes with center z moved up or down so that box lies on road plane
         """
         a, b, c, d = road_planes
         center_cam = calib.lidar_to_rect(gt_boxes[:, 0:3])
         cur_height_cam = (-d - a * center_cam[:, 0] - c * center_cam[:, 2]) / b
-        center_cam[:, 1] = cur_height_cam
-        cur_lidar_height = calib.rect_to_lidar(center_cam)[:, 2]
+        center_cam[:, 1] = cur_height_cam  #height of road plane in camera frame
+        cur_lidar_height = calib.rect_to_lidar(center_cam)[:, 2] #height of road plane in lidar frame
         mv_height = gt_boxes[:, 2] - gt_boxes[:, 5] / 2 - cur_lidar_height
         gt_boxes[:, 2] -= mv_height  # lidar view
         return gt_boxes, mv_height
 
     def add_sampled_boxes_to_scene(self, data_dict, sampled_gt_boxes, total_valid_sampled_dict):
         gt_boxes_mask = data_dict['gt_boxes_mask']
-        gt_boxes = data_dict['gt_boxes'][gt_boxes_mask]
+        gt_boxes = data_dict['gt_boxes'][gt_boxes_mask] #remove gtboxes from classes we dont care about e.g. van etc
         gt_names = data_dict['gt_names'][gt_boxes_mask]
         points = data_dict['points']
         if self.sampler_cfg.get('USE_ROAD_PLANE', False):
@@ -182,7 +184,7 @@ class DataBaseSampler(object):
                 obj_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
                     [-1, self.sampler_cfg.NUM_POINT_FEATURES])
 
-            obj_points[:, :3] += info['box3d_lidar'][:3]
+            obj_points[:, :3] += info['box3d_lidar'][:3] #object points store were dx,dy,dz from box center
 
             if self.sampler_cfg.get('USE_ROAD_PLANE', False):
                 # mv height
@@ -192,10 +194,10 @@ class DataBaseSampler(object):
 
         obj_points = np.concatenate(obj_points_list, axis=0)
         sampled_gt_names = np.array([x['name'] for x in total_valid_sampled_dict])
-
+        # enlarge sampled bbox and remove points in pc that we close to the sasmpled bbox from neighbouring objects
         large_sampled_gt_boxes = box_utils.enlarge_box3d(
             sampled_gt_boxes[:, 0:7], extra_width=self.sampler_cfg.REMOVE_EXTRA_WIDTH
-        )
+        ) 
         points = box_utils.remove_points_in_boxes3d(points, large_sampled_gt_boxes)
         points = np.concatenate([obj_points, points], axis=0)
         gt_names = np.concatenate([gt_names, sampled_gt_names], axis=0)
@@ -230,11 +232,11 @@ class DataBaseSampler(object):
                 if self.sampler_cfg.get('DATABASE_WITH_FAKELIDAR', False):
                     sampled_boxes = box_utils.boxes3d_kitti_fakelidar_to_lidar(sampled_boxes)
 
-                iou1 = iou3d_nms_utils.boxes_bev_iou_cpu(sampled_boxes[:, 0:7], existed_boxes[:, 0:7])
+                iou1 = iou3d_nms_utils.boxes_bev_iou_cpu(sampled_boxes[:, 0:7], existed_boxes[:, 0:7]) # 0 means boxes dont overlap, 1 means they overlap
                 iou2 = iou3d_nms_utils.boxes_bev_iou_cpu(sampled_boxes[:, 0:7], sampled_boxes[:, 0:7])
                 iou2[range(sampled_boxes.shape[0]), range(sampled_boxes.shape[0])] = 0
                 iou1 = iou1 if iou1.shape[1] > 0 else iou2
-                valid_mask = ((iou1.max(axis=1) + iou2.max(axis=1)) == 0).nonzero()[0]
+                valid_mask = ((iou1.max(axis=1) + iou2.max(axis=1)) == 0).nonzero()[0] # remove those boxes that collide with existing bboxes and sampled bboxes
                 valid_sampled_dict = [sampled_dict[x] for x in valid_mask]
                 valid_sampled_boxes = sampled_boxes[valid_mask]
 
@@ -245,5 +247,5 @@ class DataBaseSampler(object):
         if total_valid_sampled_dict.__len__() > 0:
             data_dict = self.add_sampled_boxes_to_scene(data_dict, sampled_gt_boxes, total_valid_sampled_dict)
 
-        data_dict.pop('gt_boxes_mask')
+        data_dict.pop('gt_boxes_mask') # we dont need this anymore since data dict only contains car, pedestrian, cyclist boxes. Others were removed in add_sampledboxes func
         return data_dict
