@@ -59,11 +59,12 @@ class PointNet2MSG(nn.Module):
             batch_dict:
                 batch_size: int
                 vfe_features: (num_voxels, C)
-                points: (num_points, 4 + C), [batch_idx, x, y, z, ...]
+                points: (num_points, 4 + C), [batch_idx, x, y, z, i...]
         Returns:
             batch_dict:
                 encoded_spconv_tensor: sparse tensor
-                point_features: (N, C)
+                point_features: (N, C=128)
+                point_coords: (N, 4) [batch idx, x,y,z]
         """
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']

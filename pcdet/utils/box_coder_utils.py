@@ -147,29 +147,30 @@ class PointResidualCoder(object):
         self.code_size = code_size
         self.use_mean_size = use_mean_size
         if self.use_mean_size:
-            self.mean_size = torch.from_numpy(np.array(kwargs['mean_size'])).cuda().float()
+            self.mean_size = torch.from_numpy(np.array(kwargs['mean_size'])).cuda().float() #(3,3) row1: mean lens for car, row2: mean lens for pedestrian, row3: mean dims for cyclist
             assert self.mean_size.min() > 0
 
     def encode_torch(self, gt_boxes, points, gt_classes=None):
         """
         Args:
-            gt_boxes: (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
-            points: (N, 3) [x, y, z]
-            gt_classes: (N) [1, num_classes]
+            gt_boxes for each foreground point: (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
+            foreground points: (N, 3) [x, y, z]
+            gt_classes for each foreground point: (N) [1, num_classes], 1:Car, 2: Pedestrian, 3:Cyclist
         Returns:
             box_coding: (N, 8 + C)
         """
         gt_boxes[:, 3:6] = torch.clamp_min(gt_boxes[:, 3:6], min=1e-5)
 
         xg, yg, zg, dxg, dyg, dzg, rg, *cgs = torch.split(gt_boxes, 1, dim=-1)
-        xa, ya, za = torch.split(points, 1, dim=-1)
+        xa, ya, za = torch.split(points, 1, dim=-1) # foreground point xyz i.e. every fg point acts as the center of bbox anchor so xa,ya,za is also anchor center xyz
 
         if self.use_mean_size:
             assert gt_classes.max() <= self.mean_size.shape[0]
             point_anchor_size = self.mean_size[gt_classes - 1]
-            dxa, dya, dza = torch.split(point_anchor_size, 1, dim=-1)
+            dxa, dya, dza = torch.split(point_anchor_size, 1, dim=-1) #mean dims: len, width, height for anchor depending on which gt box the fg point lies in
             diagonal = torch.sqrt(dxa ** 2 + dya ** 2)
-            xt = (xg - xa) / diagonal
+            # localization residuals between gt boxes and anchors 
+            xt = (xg - xa) / diagonal # (num fg points, 1) see pointpillars or SECOND paper localization loss
             yt = (yg - ya) / diagonal
             zt = (zg - za) / dza
             dxt = torch.log(dxg / dxa)
@@ -184,16 +185,19 @@ class PointResidualCoder(object):
             dzt = torch.log(dzg)
 
         cts = [g for g in cgs]
-        return torch.cat([xt, yt, zt, dxt, dyt, dzt, torch.cos(rg), torch.sin(rg), *cts], dim=-1)
+        # return for every fg point (which acts as the anchor center), the box residual between the gt box that fg point belongs to and the anchor box centered at the fg pt  
+        return torch.cat([xt, yt, zt, dxt, dyt, dzt, torch.cos(rg), torch.sin(rg), *cts], dim=-1) # (num fg points, 8)
 
     def decode_torch(self, box_encodings, points, pred_classes=None):
         """
         Args:
-            box_encodings: (N, 8 + C) [x, y, z, dx, dy, dz, cos, sin, ...]
+            box_encodings i.e. predicted box residuals for each pt (imagining anchor centered at each pt)
+            box_encodings: (N, 8 + C) [x_residual_pred, y_residual_pred, z_residual_pred, dx_residual_pred, dy_residual_pred, dz_residual_pred, cos(r_pred), sin(r_pred), ...]
             points: [x, y, z]
-            pred_classes: (N) [1, num_classes]
+            pred_classes: (N) [1, num_classes] # 1: car, 2: ped: 3: cyclist, predicted classes for each pt
         Returns:
-
+            extracts predicted_box for each point from the predicted box residuals: i.e. extracts xg from xt_pred = (xg - x_point)/diagonal of mean size of predicted class anchor
+            pred_box for each pt: (N, 7) [x,y,z,dx,dy,dz,r]
         """
         xt, yt, zt, dxt, dyt, dzt, cost, sint, *cts = torch.split(box_encodings, 1, dim=-1)
         xa, ya, za = torch.split(points, 1, dim=-1)

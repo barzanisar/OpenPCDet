@@ -66,34 +66,36 @@ class ProposalTargetLayer(nn.Module):
         Args:
             batch_dict:
                 batch_size:
-                rois: (B, num_rois, 7 + C)
-                roi_scores: (B, num_rois)
-                gt_boxes: (B, N, 7 + C + 1)
-                roi_labels: (B, num_rois)
+                rois: (B, num_rois = 512, 7 + C): (2, 512, 7) [x,y,z,dx,dy,dz,r] 
+                roi_scores: (B, num_rois): (2, 512)
+                roi_labels: (B, num_rois): (2, 512) [1, ..., numclass]
+                gt_boxes: (B, N, 7 + C + 1): (2, num boxes, 8) [x,y,z,dx,dy,dz,r, label] 
         Returns:
 
         """
         batch_size = batch_dict['batch_size']
-        rois = batch_dict['rois']
-        roi_scores = batch_dict['roi_scores']
-        roi_labels = batch_dict['roi_labels']
-        gt_boxes = batch_dict['gt_boxes']
+        rois = batch_dict['rois'] # (2, 512, 7)
+        roi_scores = batch_dict['roi_scores'] # (2, 512)
+        roi_labels = batch_dict['roi_labels'] # (2, 512)
+        gt_boxes = batch_dict['gt_boxes'] # (2, num boxes, 8)
 
-        code_size = rois.shape[-1]
-        batch_rois = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, code_size)
-        batch_gt_of_rois = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, code_size + 1)
-        batch_roi_ious = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE)
-        batch_roi_scores = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE)
-        batch_roi_labels = rois.new_zeros((batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE), dtype=torch.long)
+        code_size = rois.shape[-1] # 7
+        batch_rois = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, code_size) # (2, 128, 7)
+        batch_gt_of_rois = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, code_size + 1)  # (2, 128, 8)
+        batch_roi_ious = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE) # (2, 128)
+        batch_roi_scores = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE) # (2, 128)
+        batch_roi_labels = rois.new_zeros((batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE), dtype=torch.long) # (2, 128)
 
         for index in range(batch_size):
+            # get this pc predicted boxes=rois, gt boxes, predicted roi labels, predicted roi scores
             cur_roi, cur_gt, cur_roi_labels, cur_roi_scores = \
                 rois[index], gt_boxes[index], roi_labels[index], roi_scores[index]
             k = cur_gt.__len__() - 1
+            # move k to the valid gt box which is not all zeros
             while k >= 0 and cur_gt[k].sum() == 0:
                 k -= 1
-            cur_gt = cur_gt[:k + 1]
-            cur_gt = cur_gt.new_zeros((1, cur_gt.shape[1])) if len(cur_gt) == 0 else cur_gt
+            cur_gt = cur_gt[:k + 1] # all valid (non-zero) gt boxes
+            cur_gt = cur_gt.new_zeros((1, cur_gt.shape[1])) if len(cur_gt) == 0 else cur_gt # handle case when we have no valid gt boxes
 
             if self.roi_sampler_cfg.get('SAMPLE_ROI_BY_EACH_CLASS', False):
                 max_overlaps, gt_assignment = self.get_max_iou_with_same_class(

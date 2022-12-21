@@ -137,6 +137,7 @@ class PointRCNNHead(RoIHeadTemplate):
         Returns:
 
         """
+        # batch_dict is updated in this function and returned as target_dict so batch_dict == target_dict
         targets_dict = self.proposal_layer(
             batch_dict, nms_config=self.model_cfg.NMS_CONFIG['TRAIN' if self.training else 'TEST']
         )

@@ -31,7 +31,7 @@ class PointHeadBox(PointHeadTemplate):
         #cin = 128, 2 hidden layers = [[linear = 256 (bias=False), batchnorm1d, relu], 
         #                       [linear=256 (bias=False), batchnorm1, relu],
         #                        [linear=3 (bias=true)]] 
-        #cout = 8 = box code size
+        #cout = 8 = box code size = residual size [xt, yt, zt, dxt, dyt, dzt, cos(r), sin(r)]
         self.box_layers = self.make_fc_layers(
             fc_cfg=self.model_cfg.REG_FC,
             input_channels=input_channels,
@@ -47,7 +47,9 @@ class PointHeadBox(PointHeadTemplate):
                 point_coords: (N1 + N2 + N3 + ..., 4) [bs_idx, x, y, z]
                 gt_boxes (optional): (B, M, 8)
         Returns:
-            point_cls_labels: (N1 + N2 + N3 + ...), long type, 0:background, -1:ignored
+            point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
+            point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
+
             point_part_labels: (N1 + N2 + N3 + ..., 3)
         """
         point_coords = input_dict['point_coords']
@@ -59,12 +61,16 @@ class PointHeadBox(PointHeadTemplate):
         extend_gt_boxes = box_utils.enlarge_box3d(
             gt_boxes.view(-1, gt_boxes.shape[-1]), extra_width=self.model_cfg.TARGET_CONFIG.GT_EXTRA_WIDTH
         ).view(batch_size, -1, gt_boxes.shape[-1])
+
+        # point_cls_labels: For each pt: Use gt boxes to assign gt class labels to all points i.e. 0 for background, -1 for pts just around the gt boxes, 1:car, 2: pedestrian etc
+        # point_box_labels: For each foreground point: compute groundtruth box residuals between anchors centered at each foregorund point and the gt box
+        # we use gt boxes to assign labels to each point and assume an anchor (at the center of fg pts) of mean size == to the mean size of the gt class that fg pt lies in
         targets_dict = self.assign_stack_targets(
             points=point_coords, gt_boxes=gt_boxes, extend_gt_boxes=extend_gt_boxes,
             set_ignore_flag=True, use_ball_constraint=False,
             ret_part_labels=False, ret_box_labels=True
         )
-
+        
         return targets_dict
 
     def get_loss(self, tb_dict=None):
@@ -89,15 +95,24 @@ class PointHeadBox(PointHeadTemplate):
                 gt_boxes (optional): (B, M, 8)
         Returns:
             batch_dict:
-                point_cls_scores: (N1 + N2 + N3 + ..., 1)
+                point_cls_scores: (N1 + N2 + N3 + ..., 1): predicted objectness confidence/probability of each pt
+                batch_cls_preds: (N1 + N2 + N3 + ..., num_class=3): predicted class scores for each point
+                batch_box_preds: (N1 + N2 + N3 + ..., 7): predicted boxes for each point (already extracted from their predicted residuals)
+                batch_index: (N1 + N2 + N3 + ...): batch id for each point
                 point_part_offset: (N1 + N2 + N3 + ..., 3)
+            forward_ret_dict:
+                point_cls_preds: (N1 + N2 + N3 + ..., num_class=3) predicted class scores for each point (same as batch_cls_preds)
+                point_box_preds: (N1 + N2 + N3 + ..., box_code_size=8) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
+                point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
+                point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
+
         """
         if self.model_cfg.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
             point_features = batch_dict['point_features_before_fusion']
         else:
             point_features = batch_dict['point_features'] # (total_points in batch = N, 128) 
         point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class) Predict class scores (car, pedestrian, cyclist) for every point
-        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size) Predict box (x,y,z,dx,dy,dz,r,class_index? or box confidence?) for every point
+        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
 
         point_cls_preds_max, _ = point_cls_preds.max(dim=-1) #(N, 3) -> max score for each point (N)
         batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) #turn scores in probabilities i.e. objectness confidence for each point

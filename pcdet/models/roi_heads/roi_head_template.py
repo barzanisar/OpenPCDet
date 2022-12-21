@@ -45,20 +45,29 @@ class RoIHeadTemplate(nn.Module):
     @torch.no_grad()
     def proposal_layer(self, batch_dict, nms_config):
         """
+        Shortlist predicted boxes from 16384 boxes i.e. (each point has a predicted box) to 512 boxes
+        First select 9000 highest scoring boxes and then do nms on them.
+        # NMS: 
+        # 1. select next highest-scoring box, 
+        # 2. eliminate lower-scoring boxes with IoU > threshold=0.8, 
+        # 3. If any boxes remain go to step 1.
+        
+        Nms will give around 4000 boxes
+        Select 512 boxes top scoring boxes from these 
         Args:
             batch_dict:
                 batch_size:
-                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1)
-                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C)
+                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1): (N=16384, 3)
+                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C): (N=16384, 7)
                 cls_preds_normalized: indicate whether batch_cls_preds is normalized
                 batch_index: optional (N1+N2+...)
             nms_config:
 
         Returns:
             batch_dict:
-                rois: (B, num_rois, 7+C)
-                roi_scores: (B, num_rois)
-                roi_labels: (B, num_rois)
+                rois: (B=2, num_rois=512, 7+C) predicted 512 boxes/points
+                roi_scores: (B, num_rois) each of the 512 shortlisted point's predicted class score i.e. max score in batch_cls_preds
+                roi_labels: (B, num_rois) each of the 512 shortlisted points/boxes's predicted class label [1, .., numclasses,..] 1:car, 2:pedestrian, 3:cyclist
 
         """
         if batch_dict.get('rois', None) is not None:
@@ -66,10 +75,10 @@ class RoIHeadTemplate(nn.Module):
             
         batch_size = batch_dict['batch_size']
         batch_box_preds = batch_dict['batch_box_preds']
-        batch_cls_preds = batch_dict['batch_cls_preds']
-        rois = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE, batch_box_preds.shape[-1]))
-        roi_scores = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE))
-        roi_labels = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE), dtype=torch.long)
+        batch_cls_preds = batch_dict['batch_cls_preds'] # (N, 3)
+        rois = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE, batch_box_preds.shape[-1])) #(2,512,7) each pc will have 512 rois i.e. predicted boxes
+        roi_scores = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE)) #(2, 512)
+        roi_labels = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE), dtype=torch.long) #(2, 512)
 
         for index in range(batch_size):
             if batch_dict.get('batch_index', None) is not None:
@@ -78,21 +87,24 @@ class RoIHeadTemplate(nn.Module):
             else:
                 assert batch_dict['batch_cls_preds'].shape.__len__() == 3
                 batch_mask = index
-            box_preds = batch_box_preds[batch_mask]
-            cls_preds = batch_cls_preds[batch_mask]
+            box_preds = batch_box_preds[batch_mask] # box preds for one pc (16382, 7)
+            cls_preds = batch_cls_preds[batch_mask] # class scores preds for one pc (16382, 3)
 
-            cur_roi_scores, cur_roi_labels = torch.max(cls_preds, dim=1)
+            cur_roi_scores, cur_roi_labels = torch.max(cls_preds, dim=1) # max score and label for each point 0: car, 1: ped, 2: cyclist
 
             if nms_config.MULTI_CLASSES_NMS:
                 raise NotImplementedError
             else:
+                # shortlist predicted boxes from 16384 to 512: 
+                # First select 9000 highest scoring boxes and then do nms on them. Nms will give around 4000 boxes
+                # Select 512 boxes top scoring boxes from these
                 selected, selected_scores = class_agnostic_nms(
                     box_scores=cur_roi_scores, box_preds=box_preds, nms_config=nms_config
                 )
 
-            rois[index, :len(selected), :] = box_preds[selected]
-            roi_scores[index, :len(selected)] = cur_roi_scores[selected]
-            roi_labels[index, :len(selected)] = cur_roi_labels[selected]
+            rois[index, :len(selected), :] = box_preds[selected] # (512, 7) box predictions for each shortlisted point
+            roi_scores[index, :len(selected)] = cur_roi_scores[selected] # max class score for each shortlisted point
+            roi_labels[index, :len(selected)] = cur_roi_labels[selected] # class label for each shortlisted point
 
         batch_dict['rois'] = rois
         batch_dict['roi_scores'] = roi_scores

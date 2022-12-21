@@ -84,17 +84,22 @@ def boxes_iou3d_gpu(boxes_a, boxes_b):
 def nms_gpu(boxes, scores, thresh, pre_maxsize=None, **kwargs):
     """
     :param boxes: (N, 7) [x, y, z, dx, dy, dz, heading]
-    :param scores: (N)
+    :param scores: (N): predicted confidence on the class of the box (highest class score predicted for the box)
     :param thresh:
     :return:
     """
     assert boxes.shape[1] == 7
-    order = scores.sort(0, descending=True)[1]
+    order = scores.sort(0, descending=True)[1] # indices of scores sorted in descending order [index of highest score, ..., index of lowest score]
     if pre_maxsize is not None:
         order = order[:pre_maxsize]
 
-    boxes = boxes[order].contiguous()
+    boxes = boxes[order].contiguous() # sort the boxes in descending order of their score
     keep = torch.LongTensor(boxes.size(0))
+
+    # NMS: 
+    # 1. select next highest-scoring box, 
+    # 2. eliminate lower-scoring boxes with IoU > threshold=0.8, 
+    # 3. If any boxes remain go to step 1.
     num_out = iou3d_nms_cuda.nms_gpu(boxes, keep, thresh)
     return order[keep[:num_out].cuda()].contiguous(), None
 
