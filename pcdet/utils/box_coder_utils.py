@@ -157,7 +157,7 @@ class PointResidualCoder(object):
             foreground points: (N, 3) [x, y, z]
             gt_classes for each foreground point: (N) [1, num_classes], 1:Car, 2: Pedestrian, 3:Cyclist
         Returns:
-            box_coding: (N, 8 + C)
+            box_coding: (N, 8 + C): "groundtruth residual" between foreground point anchors and gt boxes
         """
         gt_boxes[:, 3:6] = torch.clamp_min(gt_boxes[:, 3:6], min=1e-5)
 

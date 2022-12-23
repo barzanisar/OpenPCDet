@@ -57,8 +57,8 @@ class RoIHeadTemplate(nn.Module):
         Args:
             batch_dict:
                 batch_size:
-                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1): (N=16384, 3)
-                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C): (N=16384, 7)
+                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1): For Pointrcnn (N=16384, 3)
+                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C): For Pointrcnn  (N=16384, 7)
                 cls_preds_normalized: indicate whether batch_cls_preds is normalized
                 batch_index: optional (N1+N2+...)
             nms_config:
@@ -115,30 +115,49 @@ class RoIHeadTemplate(nn.Module):
 
     def assign_targets(self, batch_dict):
         batch_size = batch_dict['batch_size']
+
+        # Proposal target layer fucntion:
+        # sample_rois_for_rcnn:
+        # 1. Match 512 predicted boxes with the 41 gt boxes by computing iou3D matrix of size (512, 41) and taking max over each row
+        # 2. Subsample/shortlist 512 predicted boxes to 128 boxes depending on their matched iou3D score
+        # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8)
+        
+        # regression valid mask: 1 for predicted boxes that have high iou3D with their matched gt boxes 
+        # i.e. reg_valid_mask = if predicted boxes with iou3d > 0.55, then 1 else 0
+        # i.e. possible foreground boxes
+
+        # rcnn_cls_labels: (2, 128)
+            # rcnn_cls_labels: is 1 if predicted boxes iou3d > 0.6 = CLS_FG_THRESH, i.e. for possible foreground boxes
+            #                      0 if predicted boxes iou3d < 0.45 = CLS_BG_THRESH, i.e. for possible background boxes
+            #                     -1 if 0.45 < predicted boxes iou3d < 0.6 (ignore these), i.e. for hard objects
         with torch.no_grad():
             targets_dict = self.proposal_target_layer.forward(batch_dict)
 
-        rois = targets_dict['rois']  # (B, N, 7 + C)
-        gt_of_rois = targets_dict['gt_of_rois']  # (B, N, 7 + C + 1)
+        # In the following lines: targets_dict['gt_of_rois'][:,:,0:3] is made to contain (gt_center_xyz - pred_center_xyz) in predicted box frame
+        #  targets_dict['gt_of_rois'][:,:,6] contains heading error i.e. gt box heading - predicted box heading  and this is made to lie in (-90, 90 deg) range
+        rois = targets_dict['rois']  # (B, N, 7 + C) e.g. (2, 128, 7)
+        gt_of_rois = targets_dict['gt_of_rois']  # (B, N, 7 + C + 1) e.g. (2, 128, 8)
         targets_dict['gt_of_rois_src'] = gt_of_rois.clone().detach()
 
         # canonical transformation
         roi_center = rois[:, :, 0:3]
-        roi_ry = rois[:, :, 6] % (2 * np.pi)
-        gt_of_rois[:, :, 0:3] = gt_of_rois[:, :, 0:3] - roi_center
-        gt_of_rois[:, :, 6] = gt_of_rois[:, :, 6] - roi_ry
+        roi_ry = rois[:, :, 6] % (2 * np.pi) # transform predicted box heading from (-pi, pi) to (0, 2pi)
+        gt_of_rois[:, :, 0:3] = gt_of_rois[:, :, 0:3] - roi_center # gt_of_rois[:,:,0:3] now stores a vector from predicted box center to gt_center, rep in lidar frame
+        gt_of_rois[:, :, 6] = gt_of_rois[:, :, 6] - roi_ry # gt_of_rois[:,:,6] stores gt_box heading - predicted box heading
 
-        # transfer LiDAR coords to local coords
+        # transfer LiDAR coords to local coords i.e. (gt_center - predicted box center)_in_lidar_frame to (gt_center - predicted box center)_in_predicted_box_frame
         gt_of_rois = common_utils.rotate_points_along_z(
             points=gt_of_rois.view(-1, 1, gt_of_rois.shape[-1]), angle=-roi_ry.view(-1)
         ).view(batch_size, -1, gt_of_rois.shape[-1])
 
         # flip orientation if rois have opposite orientation
-        heading_label = gt_of_rois[:, :, 6] % (2 * np.pi)  # 0 ~ 2pi
-        opposite_flag = (heading_label > np.pi * 0.5) & (heading_label < np.pi * 1.5)
-        heading_label[opposite_flag] = (heading_label[opposite_flag] + np.pi) % (2 * np.pi)  # (0 ~ pi/2, 3pi/2 ~ 2pi)
+        heading_label = gt_of_rois[:, :, 6] % (2 * np.pi)  # transform to 0 ~ 2pi. This is the heading error i.e. gt-predicted heading
+        opposite_flag = (heading_label > np.pi * 0.5) & (heading_label < np.pi * 1.5) # if  90 deg < heading error < 270 deg
+        heading_label[opposite_flag] = (heading_label[opposite_flag] + np.pi) % (2 * np.pi)  # (0 ~ pi/2, 3pi/2 ~ 2pi) heading_error[opposite_flag] is from 91 to 269 deg so we transform this to lie from 271 deg, ..., 359 deg, 0 deg,... to 89 deg. Just flip ground truth box x and y i.e. rotate by 180 deg (which represents the same gt box)
+        # all heading errors (including opposite flagged) are now between 0 and 90 deg and 270 and 359 deg.
         flag = heading_label > np.pi
-        heading_label[flag] = heading_label[flag] - np.pi * 2  # (-pi/2, pi/2)
+        heading_label[flag] = heading_label[flag] - np.pi * 2  # transforms heading errors to lie in (-pi/2, pi/2) e.g. 270 deg - 360 deg = -90 deg, 359 - 360 = -1 deg
+        # all heading errors between gt and predicted box are now between (-pi/2, pi/2) 
         heading_label = torch.clamp(heading_label, min=-np.pi / 2, max=np.pi / 2)
 
         gt_of_rois[:, :, 6] = heading_label

@@ -13,7 +13,7 @@ class PointRCNNHead(RoIHeadTemplate):
         self.model_cfg = model_cfg
         use_bn = self.model_cfg.USE_BN
         self.SA_modules = nn.ModuleList()
-        channel_in = input_channels
+        channel_in = input_channels #128
 
         self.num_prefix_channels = 3 + 2  # xyz + point_scores + point_depth
         xyz_mlps = [self.num_prefix_channels] + self.model_cfg.XYZ_UP_LAYER
@@ -46,7 +46,11 @@ class PointRCNNHead(RoIHeadTemplate):
                 )
             )
             channel_in = mlps[-1]
-
+        
+        # SA1: sample K = 128 points, group points around each of these 128 points with radius r=0.2 and sample n=16 points with this radius
+        # Apply MLP [Cin= 128 + 3 = 131, 128, 128, Cout = 128] (3 layers)
+        # SA2: sample K=32 points from the 128 points sampled in SA1, r = 0.4, n=16, MLP: [Cin = Cout of SA1 + 3 xyz = 131,  128, 128, 256]
+        # SA3: sample K=-1 points from the 32 points sampled in SA2, r = 100, n=16, MLP: [Cin = Cout of SA1 + 3 xyz = 259,  256, 256, 512]
         self.cls_layers = self.make_fc_layers(
             input_channels=channel_in, output_channels=self.num_class, fc_list=self.model_cfg.CLS_FC
         )
@@ -87,19 +91,18 @@ class PointRCNNHead(RoIHeadTemplate):
         Args:
             batch_dict:
                 batch_size:
-                rois: (B, num_rois, 7 + C)
+                rois: (B, num_rois, 7 + C): (2, 128, 7)
                 point_coords: (num_points, 4)  [bs_idx, x, y, z]
-                point_features: (num_points, C)
-                point_cls_scores: (N1 + N2 + N3 + ..., 1)
-                point_part_offset: (N1 + N2 + N3 + ..., 3)
+                point_features: (num_points, C): (16384 x 2, 128)
         Returns:
-
+            pooled_features: (2x128=num rois, 512, 133=[3 = (points (in roi) xyz - roi_center) in roi frame, 1 point cls score, 1 depth, 128 features from pointnet++])
+            For empty rois, pooled featrues are filled with zeros
         """
         batch_size = batch_dict['batch_size']
         batch_idx = batch_dict['point_coords'][:, 0]
         point_coords = batch_dict['point_coords'][:, 1:4]
         point_features = batch_dict['point_features']
-        rois = batch_dict['rois']  # (B, num_rois, 7 + C)
+        rois = batch_dict['rois']  # (B, num_rois=128, 7 + C)
         batch_cnt = point_coords.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
             batch_cnt[bs_idx] = (batch_idx == bs_idx).sum()
@@ -109,20 +112,22 @@ class PointRCNNHead(RoIHeadTemplate):
         point_scores = batch_dict['point_cls_scores'].detach()
         point_depths = point_coords.norm(dim=1) / self.model_cfg.ROI_POINT_POOL.DEPTH_NORMALIZER - 0.5
         point_features_list = [point_scores[:, None], point_depths[:, None], point_features]
-        point_features_all = torch.cat(point_features_list, dim=1)
-        batch_points = point_coords.view(batch_size, -1, 3)
-        batch_point_features = point_features_all.view(batch_size, -1, point_features_all.shape[-1])
+        point_features_all = torch.cat(point_features_list, dim=1) #(16384x2, 130) 
+        batch_points = point_coords.view(batch_size, -1, 3) #(2, 16384, 3)
+        batch_point_features = point_features_all.view(batch_size, -1, point_features_all.shape[-1]) #(2, 16384, 130)
 
         with torch.no_grad():
             pooled_features, pooled_empty_flag = self.roipoint_pool3d_layer(
                 batch_points, batch_point_features, rois
-            )  # pooled_features: (B, num_rois, num_sampled_points, 3 + C), pooled_empty_flag: (B, num_rois)
+            )  # pooled_features: (B, num_rois=128, num_sampled_points in each roi=512, 133 = 3 + (C=130)), pooled_empty_flag: (B=2, num_rois=128)
 
             # canonical transformation
             roi_center = rois[:, :, 0:3]
-            pooled_features[:, :, :, 0:3] -= roi_center.unsqueeze(dim=2)
+            pooled_features[:, :, :, 0:3] -= roi_center.unsqueeze(dim=2) # pooled features[:, :, :, 0:3] contains vector from roi center to points in roi i.e. (points xyz - roi_center) in lidar frame
 
-            pooled_features = pooled_features.view(-1, pooled_features.shape[-2], pooled_features.shape[-1])
+            pooled_features = pooled_features.view(-1, pooled_features.shape[-2], pooled_features.shape[-1]) # (2x128 num rois, 512 points, 133 feature dim)
+            
+            # Transform pooled features[:, :, :, 0:3] so that it contains (points xyz - roi_center) in roi frame
             pooled_features[:, :, 0:3] = common_utils.rotate_points_along_z(
                 pooled_features[:, :, 0:3], -rois.view(-1, rois.shape[-1])[:, 6]
             )
@@ -135,35 +140,65 @@ class PointRCNNHead(RoIHeadTemplate):
             batch_dict:
 
         Returns:
+            rcnn_cls: (2 pcs x 128 rois = 256 rois, 1) : objectness scores for 256 rois 
+            rcnn_reg: (256, 7) : predicted box offsets (from predicted rois or gt boxes?) for 256 rois
 
         """
         # batch_dict is updated in this function and returned as target_dict so batch_dict == target_dict
+        # Proposal layer: Shortlist predicted boxes from 16384 boxes i.e. (each point has a predicted box) to 512 boxes
+        # 16384 -> select top 9000 scoring boxes -> do NMS which gives 4000 boxes -> select top 512 scoring boxes
         targets_dict = self.proposal_layer(
             batch_dict, nms_config=self.model_cfg.NMS_CONFIG['TRAIN' if self.training else 'TEST']
         )
         if self.training:
+            # Proposal target layer fucntion:
+            # sample_rois_for_rcnn:
+            # 1. Match 512 predicted boxes with the 41 gt boxes by computing iou3D matrix of size (512, 41) and taking max over each row
+            # 2. Subsample/shortlist 512 predicted boxes to 128 boxes depending on their matched iou3D score
+            # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8)
+            
+            # regression valid mask: 1 for predicted boxes that have high iou3D with their matched gt boxes 
+            # i.e. reg_valid_mask = if predicted boxes with iou3d > 0.55, then 1 else 0
+            # i.e. possible foreground boxes
+
+            # rcnn_cls_labels: (2, 128)
+                # rcnn_cls_labels: is 1 if predicted boxes iou3d > 0.6 = CLS_FG_THRESH, i.e. for possible foreground boxes
+                #                      0 if predicted boxes iou3d < 0.45 = CLS_BG_THRESH, i.e. for possible background boxes
+                #                     -1 if 0.45 < predicted boxes iou3d < 0.6 (ignore these), i.e. for hard objects
+            
+            # target_dict['gt_of_rois'][:,:,0:3] is made to contain (gt_center_xyz - pred_center_xyz) in predicted box frame
+            # targets_dict['gt_of_rois'][:,:,6] contains heading error i.e. gt box heading - predicted box heading  and this is made to lie in (-90, 90 deg) range
             targets_dict = self.assign_targets(batch_dict)
             batch_dict['rois'] = targets_dict['rois']
             batch_dict['roi_labels'] = targets_dict['roi_labels']
 
-        pooled_features = self.roipool3d_gpu(batch_dict)  # (total_rois, num_sampled_points, 3 + C)
+        pooled_features = self.roipool3d_gpu(batch_dict)  # (total_rois, num_sampled_points, 3 + C) (2x128 rois, 512 points per roi, 133 feature dim)
 
-        xyz_input = pooled_features[..., 0:self.num_prefix_channels].transpose(1, 2).unsqueeze(dim=3).contiguous()
-        xyz_features = self.xyz_up_layer(xyz_input)
-        point_features = pooled_features[..., self.num_prefix_channels:].transpose(1, 2).unsqueeze(dim=3)
-        merged_features = torch.cat((xyz_features, point_features), dim=1)
-        merged_features = self.merge_down_layer(merged_features)
+        xyz_input = pooled_features[..., 0:self.num_prefix_channels].transpose(1, 2).unsqueeze(dim=3).contiguous() # (256, 5, 512, 1): 5 features are xyz vector (from roi center to point in roi) in roi frame, point cls score, depth
+        xyz_features = self.xyz_up_layer(xyz_input) # input: (B=256, C=5, 512=H, 1=W) -> Conv2d(5,128, kernel size = (1,1)) + Relu -> Cpnv2d(128,128, kernel size = (1,1)) + relu -> output:(B=256, C=128, 512=H, 1=W) 
+        point_features = pooled_features[..., self.num_prefix_channels:].transpose(1, 2).unsqueeze(dim=3) #pointnet++ roi pooled features (256=rois, 128=feature dim, 512=points, 1)
+        merged_features = torch.cat((xyz_features, point_features), dim=1) # (256 rois, 128 xyz_features + 128 point net features, 512, 1)
+        merged_features = self.merge_down_layer(merged_features) # input: (B=256, C=256, H=512, W=1) -> Conv2d(256, 128, kernel size = (1,1)) + relu -> output: (B=256, C=128, H=512, W=1)
 
-        l_xyz, l_features = [pooled_features[..., 0:3].contiguous()], [merged_features.squeeze(dim=3).contiguous()]
+        l_xyz, l_features = [pooled_features[..., 0:3].contiguous()], [merged_features.squeeze(dim=3).contiguous()]# lxyz: (256, 512, 3): these are delta xyz b/w points and roi center, l_features: (256, 128, 512): these are point net++ roi pooled features
 
         for i in range(len(self.SA_modules)):
             li_xyz, li_features = self.SA_modules[i](l_xyz[i], l_features[i])
             l_xyz.append(li_xyz)
             l_features.append(li_features)
 
-        shared_features = l_features[-1]  # (total_rois, num_features, 1)
-        rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, 1 or 2)
-        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, C)
+        # Do SetAbstraction within each roi 
+        # SA1: sample K = 128 points from each roi containing 512 points, group points around each of these 128 points with radius r=0.2 and sample n=16 points with this radius
+        # Apply MLP [Cin= 128 features dim + 3 xyz= 131, 128, 128, Cout = 128] (3 layers)
+        # SA2: sample K=32 points from the 128 points sampled in SA1, r = 0.4, n=16, MLP: [Cin = Cout of SA1 + 3 xyz = 131,  128, 128, 256]
+        # SA3: sample K=-1 points from the 32 points sampled in SA2, r = 100, n=16, MLP: [Cin = Cout of SA1 + 3 xyz = 259,  256, 256, 512]
+        #
+        # l_xyz = [input: (256, 512, 3), after SA1: (256, 128, 3), after SA2: (256, 32, 3), after SA3: None]
+        # l_features = [input: (256 rois, 128 feature dim, 512 points), after SA1: (256, 128, 128), after SA2: (256 , 256 , 32), after SA3: (256, 512, 1)]
+
+        shared_features = l_features[-1]  # (total_rois=256, num_features=512, 1 point) i.e. we get one 512 dim feature for each of the 256 rois via Set Abstraction
+        rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 1) : objectness scores for 256 rois 
+        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets from predicted rois or gt boxes? for 256 rois
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

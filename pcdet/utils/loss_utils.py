@@ -16,6 +16,25 @@ class SigmoidFocalClassificationLoss(nn.Module):
         Args:
             gamma: Weighting parameter to balance loss for hard and easy examples.
             alpha: Weighting parameter to balance loss for positive and negative examples.
+
+            p_t = predicted prob for groundtruth class
+            normal cross entropy loss = -log(p_t)
+            focal loss = -(1-p_t)^gamma * log(p_t) -> if p_t close to 0, i.e. our model is predicting low prob for true class, we penalize more i.e. higher loss
+            gamma controls how intensively we want to penalize misclassification. 
+            High gamma means we want to penalize hard/misclassified examples more i.e high loss if p_t is low i.e. < 0.5 and significantly lower the loss for easy /well classifiied examples whose p_t is close to 1
+            Gamma of 2 is th standard choice.
+            
+            What is alpha?
+            Another variant of focal loss also penalizes rare class more than majoriy class 
+            (which is helpful in class imbalanced training i.e. where background pts are >>>> foreground pts)
+            alpha_t = 1/(num pts or examples for true class)
+            e.g. for gt background pt, alpha_t = 1/ 10000
+            for gt car pt, alpha_t = 1/3000
+            for gt pedestrian pt, alpha_t = 1/800 etc
+            alpha_t can also be tuned
+
+            class balanced cross entropy loss = - alpha_t * log(p_t)
+            class balanced focal loss= -alpha_t * (1-p_t)^gamma * log(p_t)
         """
         super(SigmoidFocalClassificationLoss, self).__init__()
         self.alpha = alpha

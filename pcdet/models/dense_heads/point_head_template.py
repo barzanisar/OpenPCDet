@@ -133,18 +133,18 @@ class PointHeadTemplate(nn.Module):
         return targets_dict
 
     def get_cls_layer_loss(self, tb_dict=None):
-        point_cls_labels = self.forward_ret_dict['point_cls_labels'].view(-1)
-        point_cls_preds = self.forward_ret_dict['point_cls_preds'].view(-1, self.num_class)
+        point_cls_labels = self.forward_ret_dict['point_cls_labels'].view(-1) # (16384x2) 0: background, -1: around gtbbox ignored, car:1, ped:2, cyclist: 3
+        point_cls_preds = self.forward_ret_dict['point_cls_preds'].view(-1, self.num_class) #(16384x2, 3) predicted class scores for each point
 
-        positives = (point_cls_labels > 0)
-        negative_cls_weights = (point_cls_labels == 0) * 1.0
-        cls_weights = (negative_cls_weights + 1.0 * positives).float()
-        pos_normalizer = positives.sum(dim=0).float()
-        cls_weights /= torch.clamp(pos_normalizer, min=1.0)
+        positives = (point_cls_labels > 0) # (num points: 16382 x 2): true for gt object pts
+        negative_cls_weights = (point_cls_labels == 0) * 1.0 # (16382 x 2): 1 for gt background pts, 0 otherwise
+        cls_weights = (negative_cls_weights + 1.0 * positives).float() #  (16382 x 2):1 for object and background pt, 0 for ignored pts i.e. around gt box
+        pos_normalizer = positives.sum(dim=0).float() # total num gt object pts
+        cls_weights /= torch.clamp(pos_normalizer, min=1.0) # cls_weights for background wont be used in the loss
 
-        one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1)
-        one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)
-        one_hot_targets = one_hot_targets[..., 1:]
+        one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1) # (16384 x 2, 3+1=4)
+        one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0) #Create one hot vector of size (16384x2, 4) ->(point_cls_labels * (point_cls_labels >= 0).long()) gives (16384x2) vector which is 0: background and ignored points, 1: Car, 2: Ped, 3: Cyc
+        one_hot_targets = one_hot_targets[..., 1:] # only take one hot vectors for car, ped, cyc (16384 x 2, 3), ignore background
         cls_loss_src = self.cls_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights)
         point_loss_cls = cls_loss_src.sum()
 
