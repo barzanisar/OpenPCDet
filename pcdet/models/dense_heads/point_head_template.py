@@ -138,15 +138,15 @@ class PointHeadTemplate(nn.Module):
 
         positives = (point_cls_labels > 0) # (num points: 16382 x 2): true for gt object pts
         negative_cls_weights = (point_cls_labels == 0) * 1.0 # (16382 x 2): 1 for gt background pts, 0 otherwise
-        cls_weights = (negative_cls_weights + 1.0 * positives).float() #  (16382 x 2):1 for object and background pt, 0 for ignored pts i.e. around gt box
+        cls_weights = (negative_cls_weights + 1.0 * positives).float() #  (16382 x 2):1 for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
         pos_normalizer = positives.sum(dim=0).float() # total num gt object pts
-        cls_weights /= torch.clamp(pos_normalizer, min=1.0) # cls_weights for background wont be used in the loss
+        cls_weights /= torch.clamp(pos_normalizer, min=1.0) 
 
         one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1) # (16384 x 2, 3+1=4)
         one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0) #Create one hot vector of size (16384x2, 4) ->(point_cls_labels * (point_cls_labels >= 0).long()) gives (16384x2) vector which is 0: background and ignored points, 1: Car, 2: Ped, 3: Cyc
-        one_hot_targets = one_hot_targets[..., 1:] # only take one hot vectors for car, ped, cyc (16384 x 2, 3), ignore background
-        cls_loss_src = self.cls_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights)
-        point_loss_cls = cls_loss_src.sum()
+        one_hot_targets = one_hot_targets[..., 1:] # only take one hot vectors for car, ped, cyc (N=16384 x 2, 3), ignore background column
+        cls_loss_src = self.cls_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights) #(N=16384 x 2, 3)
+        point_loss_cls = cls_loss_src.sum() # (1): sum all elements
 
         loss_weights_dict = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS
         point_loss_cls = point_loss_cls * loss_weights_dict['point_cls_weight']
@@ -174,17 +174,22 @@ class PointHeadTemplate(nn.Module):
         return point_loss_part, tb_dict
 
     def get_box_layer_loss(self, tb_dict=None):
-        pos_mask = self.forward_ret_dict['point_cls_labels'] > 0
+        # point_cls_preds: (N1 + N2 + N3 + ..., num_class=3) predicted class scores for each point (same as batch_cls_preds)
+        # point_box_preds: (N1 + N2 + N3 + ..., box_code_size=8) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
+        # point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
+        # point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
+
+        pos_mask = self.forward_ret_dict['point_cls_labels'] > 0 # (num points: 16382 x 2): true for gt object pts
         point_box_labels = self.forward_ret_dict['point_box_labels']
         point_box_preds = self.forward_ret_dict['point_box_preds']
 
-        reg_weights = pos_mask.float()
-        pos_normalizer = pos_mask.sum().float()
-        reg_weights /= torch.clamp(pos_normalizer, min=1.0)
+        reg_weights = pos_mask.float() # (16384x2): 1 for gt object pt, 0 else
+        pos_normalizer = pos_mask.sum().float() #num gt object pts
+        reg_weights /= torch.clamp(pos_normalizer, min=1.0) # (16384x2): (1/num gt obj pts) for gt object pt, 0 else
 
         point_loss_box_src = self.reg_loss_func(
             point_box_preds[None, ...], point_box_labels[None, ...], weights=reg_weights[None, ...]
-        )
+        )# (1, 16384x2, 8)
         point_loss_box = point_loss_box_src.sum()
 
         loss_weights_dict = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS

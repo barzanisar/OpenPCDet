@@ -140,8 +140,8 @@ class PointRCNNHead(RoIHeadTemplate):
             batch_dict:
 
         Returns:
-            rcnn_cls: (2 pcs x 128 rois = 256 rois, 1) : objectness scores for 256 rois 
-            rcnn_reg: (256, 7) : predicted box offsets (from predicted rois or gt boxes?) for 256 rois
+            rcnn_cls: (2 pcs x 128 rois = 256 rois, 1) : predicted objectness scores for 256 rois 
+            rcnn_reg: (256, 7) : predicted box offsets (from predicted rois to gt boxes?) for 256 rois
 
         """
         # batch_dict is updated in this function and returned as target_dict so batch_dict == target_dict
@@ -198,7 +198,7 @@ class PointRCNNHead(RoIHeadTemplate):
 
         shared_features = l_features[-1]  # (total_rois=256, num_features=512, 1 point) i.e. we get one 512 dim feature for each of the 256 rois via Set Abstraction
         rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 1) : objectness scores for 256 rois 
-        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets from predicted rois or gt boxes? for 256 rois
+        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets from predicted rois to gt boxes? for 256 rois
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

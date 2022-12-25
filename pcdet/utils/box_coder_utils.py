@@ -5,16 +5,16 @@ import torch
 class ResidualCoder(object):
     def __init__(self, code_size=7, encode_angle_by_sincos=False, **kwargs):
         super().__init__()
-        self.code_size = code_size
-        self.encode_angle_by_sincos = encode_angle_by_sincos
+        self.code_size = code_size #7
+        self.encode_angle_by_sincos = encode_angle_by_sincos # false
         if self.encode_angle_by_sincos:
             self.code_size += 1
 
     def encode_torch(self, boxes, anchors):
         """
         Args:
-            boxes: (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
-            anchors: (N, 7 + C) [x, y, z, dx, dy, dz, heading or *[cos, sin], ...]
+            boxes: (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...] # gt_of_rois: (2 x 128, 7) already contains gt_center - predicted box center in predicted box frame as well as heading error i.e. gt box heading - predicted box heading in (-90, 90) range
+            anchors: (N, 7 + C) [x, y, z, dx, dy, dz, heading or *[cos, sin], ...] # predicted rois: (2 x 128, 7)
 
         Returns:
 

@@ -47,40 +47,41 @@ class SigmoidFocalClassificationLoss(nn.Module):
             https://www.tensorflow.org/api_docs/python/tf/nn/sigmoid_cross_entropy_with_logits
 
         Args:
-            input: (B, #anchors, #classes) float tensor.
-                Predicted logits for each class
-            target: (B, #anchors, #classes) float tensor.
-                One-hot encoded classification targets
+            x = input: (B, #anchors, #classes) float tensor.
+                Predicted logits for each class: Pointrcnn: point_loss_cls: (16384x2, 3)
+            z = target: (B, #anchors, #classes) float tensor.
+                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background: 0,0,0
+
 
         Returns:
             loss: (B, #anchors, #classes) float tensor.
                 Sigmoid cross entropy loss without reduction
         """
         loss = torch.clamp(input, min=0) - input * target + \
-               torch.log1p(torch.exp(-torch.abs(input)))
+               torch.log1p(torch.exp(-torch.abs(input))) # log1p(x) is same as log(1+x)
         return loss
 
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
         """
         Args:
             input: (B, #anchors, #classes) float tensor.
-                Predicted logits for each class
+                Predicted logits for each class: Pointrcnn: point_loss_cls: (16384x2, 3)
             target: (B, #anchors, #classes) float tensor.
-                One-hot encoded classification targets
+                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background: 0,0,0
             weights: (B, #anchors) float tensor.
-                Anchor-wise weights.
+                Anchor-wise weights. Pointrcnn: point_loss_cls: (16384x2), point-wise weight set to 1/(num gt object points) for each point so that later when we do point_loss_cls.sum()-> this will take mean of all object point losses
 
         Returns:
             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
         """
-        pred_sigmoid = torch.sigmoid(input)
-        alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
+        pred_sigmoid = torch.sigmoid(input) # scales input values between 0 and 1
+        alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha) # same size as target (16384x2, 3): for car pt: 0.25, 0.75, 0.75, for ped: 0.75, 0.25, 0.75, for cyc:  0.75, 0.75, 0.25, for background: 0.75, 0.75, 0.75
         pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
         focal_weight = alpha_weight * torch.pow(pt, self.gamma)
 
-        bce_loss = self.sigmoid_cross_entropy_with_logits(input, target)
+        bce_loss = self.sigmoid_cross_entropy_with_logits(input, target) # (16384 x2, 3) element-wise binary cross entropy loss i.e. on each element of input x and target z
 
-        loss = focal_weight * bce_loss
+        loss = focal_weight * bce_loss  # (16384 x2, 3) element wise loss
 
         if weights.shape.__len__() == 2 or \
                 (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
@@ -107,7 +108,7 @@ class WeightedSmoothL1Loss(nn.Module):
                 L1 to L2 change point.
                 For beta values < 1e-5, L1 loss is computed.
             code_weights: (#codes) float list if not None.
-                Code-wise weights.
+                Code-wise weights.(8) [1,...,1]
         """
         super(WeightedSmoothL1Loss, self).__init__()
         self.beta = beta
@@ -129,30 +130,42 @@ class WeightedSmoothL1Loss(nn.Module):
         """
         Args:
             input: (B, #anchors, #codes) float tensor.
-                Ecoded predicted locations of objects.
+                Encoded predicted locations of objects: 
+                For point head box: point_box_preds: (1, 16384x2, box_code_size=8) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
+                For pointrcnn head or roi head: rcnn_reg: (1, 2 x 128, 7) Shortlisted predicted box residuals
+
             target: (B, #anchors, #codes) float tensor.
                 Regression targets.
+                For point head box: point_box_labels: (1, 16384x2, code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
+                For pointrcnn head or roi head: reg_targets: (1, 2x128, 7) Shortlisted gt residuals (i.e. matched gt box - predicted roi)
+
             weights: (B, #anchors) float tensor if not None.
+                For point head: (1, 16384x2): (1/num gt obj pts) for gt object pt, 0 else
+                For  pointrcnn head or roi head: None
+
 
         Returns:
             loss: (B, #anchors) float tensor.
                 Weighted smooth l1 loss without reduction.
-        """
-        target = torch.where(torch.isnan(target), input, target)  # ignore nan targets
+                for point head box: (1, 16384X2, 8)
+                for pointrcnn head or roi head: (1, 128 x 2, 7)
 
-        diff = input - target
+        """
+        target = torch.where(torch.isnan(target), input, target)  # ignore nan targets: Return "input" element if target element is nan, else target element
+
+        diff = input - target # (1, 16384X2, 8) or  (1, 128 x 2, 7)
         # code-wise weighting
         if self.code_weights is not None:
-            diff = diff * self.code_weights.view(1, 1, -1)
+            diff = diff * self.code_weights.view(1, 1, -1) #(1, 16384X2, 8) * (1, 1, 8) vector of ones, basically nothing changes about diff
 
-        loss = self.smooth_l1_loss(diff, self.beta)
+        loss = self.smooth_l1_loss(diff, self.beta)  #(1, 16384X2, 8) or (1, 128 x 2, 7)
 
         # anchor-wise weighting
         if weights is not None:
             assert weights.shape[0] == loss.shape[0] and weights.shape[1] == loss.shape[1]
-            loss = loss * weights.unsqueeze(-1)
+            loss = loss * weights.unsqueeze(-1) #(1, 16384X2, 8) * (1, 16384x2, 1): Since weights = (1/num gt obj pts) for only gt obj pts and 0 elsewhere, here we zero the losses for all non-obj pts so loss = loss_on_gt_obj_pt*(1/num_gt_obj_pts) and [1x8 zeros] for rest of the pts
 
-        return loss
+        return loss #(1, 16384X2, 8) or (1, 128 x 2, 7)
 
 
 class WeightedL1Loss(nn.Module):
