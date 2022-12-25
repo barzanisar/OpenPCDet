@@ -181,7 +181,7 @@ class RoIHeadTemplate(nn.Module):
         gt_boxes3d_ct = forward_ret_dict['gt_of_rois'][..., 0:code_size] #(2 , 128, 7)
         gt_of_rois_src = forward_ret_dict['gt_of_rois_src'][..., 0:code_size].view(-1, code_size) #(2 x 128, 7)
         rcnn_reg = forward_ret_dict['rcnn_reg']  # (rcnn_batch_size, C) #(2 x 128, 7)
-        roi_boxes3d = forward_ret_dict['rois'] #(2, 128, 7) predicted boxes
+        roi_boxes3d = forward_ret_dict['rois'] #(2, 128, 7) predicted boxes i.e. predicted rois after first stage 
         rcnn_batch_size = gt_boxes3d_ct.view(-1, code_size).shape[0] # 256 = 2x128
 
         fg_mask = (reg_valid_mask > 0) # (256) true if predicted boxes with iou3d > 0.55
@@ -208,28 +208,35 @@ class RoIHeadTemplate(nn.Module):
 
             if loss_cfgs.CORNER_LOSS_REGULARIZATION and fg_sum > 0:
                 # TODO: NEED to BE CHECK
-                fg_rcnn_reg = rcnn_reg.view(rcnn_batch_size, -1)[fg_mask] # (64x2, 7) predicted box offsets for fg objects
-                fg_roi_boxes3d = roi_boxes3d.view(-1, code_size)[fg_mask] # (64x2, 7) predictded boxes for fg objects
+                fg_rcnn_reg = rcnn_reg.view(rcnn_batch_size, -1)[fg_mask] # (64x2, 7) predicted box offsets for fg objects after stage 2 i.e. from rcnn
+                fg_roi_boxes3d = roi_boxes3d.view(-1, code_size)[fg_mask] # (64x2, 7) predictded boxes for fg objects after stage 1 i.e. predicted rois
 
                 fg_roi_boxes3d = fg_roi_boxes3d.view(1, -1, code_size) # (1, 128, 7)
-                batch_anchors = fg_roi_boxes3d.clone().detach()
+                batch_anchors = fg_roi_boxes3d.clone().detach() # (1, 128, 7)
                 roi_ry = fg_roi_boxes3d[:, :, 6].view(-1) #(128)
                 roi_xyz = fg_roi_boxes3d[:, :, 0:3].view(-1, 3) #(128, 3)
-                batch_anchors[:, :, 0:3] = 0
+                batch_anchors[:, :, 0:3] = 0 
+                # fg_rcnn_reg contains predictions for the offset = actual box - predicted roi stage 1
+                # Setting batch_anchors[:, :, 0:3] = 0 means after decoding, rcnn_boxes3d[:,:, 0:3] will still contain the offset i.e. gt_center - predicted roi center in predicted roi frame
+                # b/c fg_rcnn_reg[:,:,0:3] (predicted offset) = rcnn_boxes3d[:,:, 0:3] (xg, yg, zg we want to find) - batch_anchors[:,:,0:3] (predicted roi)
+                # get predicted rcnn boxes (xg) from the rcnn predicted box offsets (xt) and predicted roi stage 1 as anchors (xa)
                 rcnn_boxes3d = self.box_coder.decode_torch(
                     fg_rcnn_reg.view(batch_anchors.shape[0], -1, code_size), batch_anchors
-                ).view(-1, code_size)
+                ).view(-1, code_size) # both inputs (1, 128, 7) and output (128, 7)
 
+                # To change rcnn_boxes3d[:, :, 0:3] from (gt_box_center - pred_roi_center) in pred_roi_frame to (...) in lidar frame  
                 rcnn_boxes3d = common_utils.rotate_points_along_z(
                     rcnn_boxes3d.unsqueeze(dim=1), roi_ry
-                ).squeeze(dim=1)
-                rcnn_boxes3d[:, 0:3] += roi_xyz
+                ).squeeze(dim=1) # now rcnn_boxes3d = (gt_box_center - pred_roi_center) in lidar frame
+                rcnn_boxes3d[:, 0:3] += roi_xyz # now rcnn_boxes3d[: 0:3] = gt_box_center in lidar frame
 
+                # rcnn_boxes3d: (64x2, 7) predicted rcnn boxes for fg objects
+                # gt_of_rois_src[fg_mask]: (64x2, 7) gt boxes matched with predicted rois for fg objects
                 loss_corner = loss_utils.get_corner_loss_lidar(
                     rcnn_boxes3d[:, 0:7],
                     gt_of_rois_src[fg_mask][:, 0:7]
-                )
-                loss_corner = loss_corner.mean()
+                ) # (128)
+                loss_corner = loss_corner.mean() #(1) averaged over all boxes
                 loss_corner = loss_corner * loss_cfgs.LOSS_WEIGHTS['rcnn_corner_weight']
 
                 rcnn_loss_reg += loss_corner
@@ -237,7 +244,7 @@ class RoIHeadTemplate(nn.Module):
         else:
             raise NotImplementedError
 
-        return rcnn_loss_reg, tb_dict
+        return rcnn_loss_reg, tb_dict #rcnn_loss_reg = rcnn_reg_loss + rcnn_corner_loss
 
     def get_box_cls_layer_loss(self, forward_ret_dict):
         
@@ -277,7 +284,7 @@ class RoIHeadTemplate(nn.Module):
         rcnn_loss_reg, reg_tb_dict = self.get_box_reg_layer_loss(self.forward_ret_dict)
         rcnn_loss += rcnn_loss_reg
         tb_dict.update(reg_tb_dict)
-        tb_dict['rcnn_loss'] = rcnn_loss.item()
+        tb_dict['rcnn_loss'] = rcnn_loss.item() # rcnn_loss_cls + reg + corner
         return rcnn_loss, tb_dict
 
     def generate_predicted_boxes(self, batch_size, rois, cls_preds, box_preds):

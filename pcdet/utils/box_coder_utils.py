@@ -17,6 +17,7 @@ class ResidualCoder(object):
             anchors: (N, 7 + C) [x, y, z, dx, dy, dz, heading or *[cos, sin], ...] # predicted rois: (2 x 128, 7)
 
         Returns:
+            rcnn regression targets: (2 x 128, 7) [xt, yt, zt, dxt, dyt, dzt, rt]
 
         """
         anchors[:, 3:6] = torch.clamp_min(anchors[:, 3:6], min=1e-5)
@@ -46,9 +47,13 @@ class ResidualCoder(object):
         """
         Args:
             box_encodings: (B, N, 7 + C) or (N, 7 + C) [x, y, z, dx, dy, dz, heading or *[cos, sin], ...]
+            fg_rcnn_reg: (1, 64x2, 7) predicted box offsets for fg objects after stage 2 i.e. from rcnn
+
             anchors: (B, N, 7 + C) or (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
+            fg_roi_boxes3d: (1, 64x2, 7) predictded boxes for fg objects after stage 1 i.e. predicted rois
 
         Returns:
+            foreground rcnn predicted boxes: (1, 64x2, 7)  [xg, yg, zg, dxg, dyg, dzg, rg]
 
         """
         xa, ya, za, dxa, dya, dza, ra, *cas = torch.split(anchors, 1, dim=-1)

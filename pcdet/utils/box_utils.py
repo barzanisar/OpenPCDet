@@ -46,8 +46,13 @@ def boxes_to_corners_3d(boxes3d):
         [1, 1, 1], [1, -1, 1], [-1, -1, 1], [-1, 1, 1],
     )) / 2
 
-    corners3d = boxes3d[:, None, 3:6].repeat(1, 8, 1) * template[None, :, :]
+    # corners3d = VECTORs FROM center to 8 corners in box frame 
+    corners3d = boxes3d[:, None, 3:6].repeat(1, 8, 1) * template[None, :, :] # shape: (128, 8, 3): box len=(+/-)dx/2, width=(+/-)dy/2, height = (+/-) dx/2, for  8 corners, (+/-) is decided by template
+
+    # transform these vectors in lidar frame
     corners3d = common_utils.rotate_points_along_z(corners3d.view(-1, 8, 3), boxes3d[:, 6]).view(-1, 8, 3)
+
+    # Add center so now corners3d has vectors from lidar frame to box corners in lidar frame
     corners3d += boxes3d[:, None, 0:3]
 
     return corners3d.numpy() if is_numpy else corners3d

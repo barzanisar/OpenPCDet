@@ -241,27 +241,27 @@ class WeightedCrossEntropyLoss(nn.Module):
 def get_corner_loss_lidar(pred_bbox3d: torch.Tensor, gt_bbox3d: torch.Tensor):
     """
     Args:
-        pred_bbox3d: (N, 7) float Tensor.
-        gt_bbox3d: (N, 7) float Tensor.
+        pred_bbox3d: (N, 7) float Tensor. Pointrcnn: rcnn pred boxes: (64x2, 7)
+        gt_bbox3d: (N, 7) float Tensor. Pointrcnn: matched gt boxes: (64x2, 7)
 
     Returns:
         corner_loss: (N) float Tensor.
     """
     assert pred_bbox3d.shape[0] == gt_bbox3d.shape[0]
 
-    pred_box_corners = box_utils.boxes_to_corners_3d(pred_bbox3d)
-    gt_box_corners = box_utils.boxes_to_corners_3d(gt_bbox3d)
+    pred_box_corners = box_utils.boxes_to_corners_3d(pred_bbox3d) # (128, 8, 3) box corners in lidar frame
+    gt_box_corners = box_utils.boxes_to_corners_3d(gt_bbox3d) # (128, 8, 3) box corners in lidar frame
 
     gt_bbox3d_flip = gt_bbox3d.clone()
-    gt_bbox3d_flip[:, 6] += np.pi
+    gt_bbox3d_flip[:, 6] += np.pi # 180 degree flip gives same box but corners flip
     gt_box_corners_flip = box_utils.boxes_to_corners_3d(gt_bbox3d_flip)
-    # (N, 8)
+    
     corner_dist = torch.min(torch.norm(pred_box_corners - gt_box_corners, dim=2),
-                            torch.norm(pred_box_corners - gt_box_corners_flip, dim=2))
-    # (N, 8)
-    corner_loss = WeightedSmoothL1Loss.smooth_l1_loss(corner_dist, beta=1.0)
+                            torch.norm(pred_box_corners - gt_box_corners_flip, dim=2)) # (N=128, 8)
+    
+    corner_loss = WeightedSmoothL1Loss.smooth_l1_loss(corner_dist, beta=1.0) # (N=128, 8)
 
-    return corner_loss.mean(dim=1)
+    return corner_loss.mean(dim=1) # (128) average corner loss per box (averaged over all corners of the box)
 
 
 def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device("cpu")):

@@ -43,7 +43,7 @@ def model_fn_decorator():
         #gt_boxes = batch size, N, 8 (xyz,dx,dy,dz,r,class_index)
         ret_dict, tb_dict, disp_dict = model(batch_dict)
 
-        loss = ret_dict['loss'].mean()
+        loss = ret_dict['loss'].mean() # this mean doesnt do anything since 'loss' is a single value
         if hasattr(model, 'update_global_step'):
             model.update_global_step()
         else:

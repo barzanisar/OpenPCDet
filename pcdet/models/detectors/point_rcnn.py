@@ -26,5 +26,5 @@ class PointRCNN(Detector3DTemplate):
         loss_point, tb_dict = self.point_head.get_loss() # get point_loss_cls: shape: (1), point_loss_box: shape: (1), num gt obj pts
         loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
 
-        loss = loss_point + loss_rcnn
+        loss = loss_point + loss_rcnn # loss_point = point_loss_cls + point_loss_box, loss_rcnn = rcnn_loss_cls + rcnn_loss_reg + rcnn_loss_corner
         return loss, tb_dict, disp_dict
