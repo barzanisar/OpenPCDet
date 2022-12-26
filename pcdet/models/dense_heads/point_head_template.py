@@ -210,7 +210,7 @@ class PointHeadTemplate(nn.Module):
             point_box_preds: (N, 7) predicted box for each pt [x,y,z,dx,dy,dz,r] extracted from the predicted box residuals
 
         """
-        _, pred_classes = point_cls_preds.max(dim=-1) # 0: car, 1: ped, 2: cyclist
+        _, pred_classes = point_cls_preds.max(dim=-1) # (16384 x 2) 0: car, 1: ped, 2: cyclist
         point_box_preds = self.box_coder.decode_torch(point_box_preds, points, pred_classes + 1)
 
         return point_cls_preds, point_box_preds

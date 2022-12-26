@@ -110,12 +110,12 @@ class PointHeadBox(PointHeadTemplate):
         if self.model_cfg.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
             point_features = batch_dict['point_features_before_fusion']
         else:
-            point_features = batch_dict['point_features'] # (total_points in batch = N, 128) 
-        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class) Predict class scores (car, pedestrian, cyclist) for every point
-        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
+            point_features = batch_dict['point_features'] # (total_points in batch = N =16384x2, 128) 
+        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class=3) Predict class scores (car, pedestrian, cyclist) for every point
+        point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size=8) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
 
         point_cls_preds_max, _ = point_cls_preds.max(dim=-1) #(N, 3) -> max score for each point (N)
-        batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) #turn scores in probabilities i.e. objectness confidence for each point
+        batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) # (N) turn max scores in probabilities i.e. objectness confidence for each point
 
         ret_dict = {'point_cls_preds': point_cls_preds,
                     'point_box_preds': point_box_preds}
@@ -125,6 +125,10 @@ class PointHeadBox(PointHeadTemplate):
             ret_dict['point_box_labels'] = targets_dict['point_box_labels']
 
         if not self.training or self.predict_boxes_when_training:
+            # Extract predicted boxes from predicted box residuals
+            # generate_predicted_boxes returns:
+            # point_cls_preds: (N, num_class=3) same as input
+            # point_box_preds: (N, 7) predicted box for each pt [x,y,z,dx,dy,dz,r] extracted from the predicted box residuals
             point_cls_preds, point_box_preds = self.generate_predicted_boxes(
                 points=batch_dict['point_coords'][:, 1:4],
                 point_cls_preds=point_cls_preds, point_box_preds=point_box_preds

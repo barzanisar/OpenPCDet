@@ -20,15 +20,6 @@
             "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset.yaml"]
         },
         {
-            "name": "Python: create kitti infos",
-            "type": "python",
-            "request": "launch",
-            "module": "pcdet.datasets.kitti.kitti_dataset",
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
-            "args": ["--func", "create_kitti_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/kitti_dataset.yaml"]
-        },
-        {
             "name": "test-upsample",
             "type": "python",
             "request": "launch",
@@ -299,19 +290,31 @@
                 "--pickle_file", "/home/barza/OpenPCDet/output/dense_models/pointrcnn/train_clear_60/eval/eval_all_default/default/epoch_80/val_clear_15/result.pkl"
             ]
         },
-        {
-            "name": "test",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
-                "--eval_all", "--eval_tag", "test_clear_FOV3000_25", "--set", "DATA_CONFIG.INFO_PATH.test", 
-                "dense_infos_test_snow_FOV3000_25.pkl"
-            ]
-        }
-    ]
+    //     {
+    //         "name": "test",
+    //         "type": "python",
+    //         "request": "launch",
+    //         "program": "${workspaceFolder}/tools/test.py",
+    //         "console": "integratedTerminal",
+    //         "cwd": "${workspaceFolder}/tools",
+    //         "args": [
+    //             "--cfg_file",
+    //             "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",
+    //             "--eval_all", "--eval_tag", "test_clear_FOV3000_25", "--set", "DATA_CONFIG.INFO_PATH.test", 
+    //             "dense_infos_test_clear_FOV3000_25.pkl"
+    //         ]
+    //     },
+    {
+        "name": "test",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/tools/test.py",
+        "console": "integratedTerminal",
+        "cwd": "${workspaceFolder}/tools",
+        "args": [
+            "--cfg_file",
+            "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",  "--eval_all"
+        ]
+    }
+]
 }

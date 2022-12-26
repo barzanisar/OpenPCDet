@@ -90,7 +90,7 @@ class PointNet2MSG(nn.Module):
             )  # (B, C, N)
 
         point_features = l_features[0].permute(0, 2, 1).contiguous()  # (B, N, C)
-        batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1])
+        batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1]) # (16384x2, 128)
         batch_dict['point_coords'] = torch.cat((batch_idx[:, None].float(), l_xyz[0].view(-1, 3)), dim=1) #batch idx, xyz
         return batch_dict
 

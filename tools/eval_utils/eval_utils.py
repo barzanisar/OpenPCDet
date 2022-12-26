@@ -54,7 +54,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     for i, batch_dict in enumerate(dataloader):
         load_data_to_gpu(batch_dict)
         with torch.no_grad():
-            pred_dicts, ret_dict = model(batch_dict)
+            pred_dicts, ret_dict = model(batch_dict) #batch_dict['points']:(16384x2, 5) [b_id, xyzi] #batch_dict['gt_boxes']: (2, num boxes, 8) [x, y, z, dx dy dz, r, class_id] class_id can be 1,2,3
         disp_dict = {}
 
         statistics_info(cfg, ret_dict, metric, disp_dict)

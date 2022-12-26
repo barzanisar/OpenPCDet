@@ -145,8 +145,8 @@ class PointRCNNHead(RoIHeadTemplate):
 
         """
         # batch_dict is updated in this function and returned as target_dict so batch_dict == target_dict
-        # Proposal layer: Shortlist predicted boxes from 16384 boxes i.e. (each point has a predicted box) to 512 boxes
-        # 16384 -> select top 9000 scoring boxes -> do NMS which gives 4000 boxes -> select top 512 scoring boxes
+        # Proposal layer: Shortlist predicted boxes from 16384 boxes i.e. (each point has a predicted box) to 512 boxes or 100 boxes for testing
+        # 16384 -> select top 9000 scoring boxes -> do NMS which gives 4000 boxes -> select top 512 scoring boxes or top 100 scoring boxes for testing
         targets_dict = self.proposal_layer(
             batch_dict, nms_config=self.model_cfg.NMS_CONFIG['TRAIN' if self.training else 'TEST']
         )
@@ -172,7 +172,7 @@ class PointRCNNHead(RoIHeadTemplate):
             batch_dict['rois'] = targets_dict['rois']
             batch_dict['roi_labels'] = targets_dict['roi_labels']
 
-        pooled_features = self.roipool3d_gpu(batch_dict)  # (total_rois, num_sampled_points, 3 + C) (2x128 rois, 512 points per roi, 133 feature dim)
+        pooled_features = self.roipool3d_gpu(batch_dict)  # (total_rois, num_sampled_points, 3 + C) (2x128 rois, 512 points per roi, 133 feature dim), for testing total rois = 2x100
 
         xyz_input = pooled_features[..., 0:self.num_prefix_channels].transpose(1, 2).unsqueeze(dim=3).contiguous() # (256, 5, 512, 1): 5 features are xyz vector (from roi center to point in roi) in roi frame, point cls score, depth
         xyz_features = self.xyz_up_layer(xyz_input) # input: (B=256, C=5, 512=H, 1=W) -> Conv2d(5,128, kernel size = (1,1)) + Relu -> Cpnv2d(128,128, kernel size = (1,1)) + relu -> output:(B=256, C=128, 512=H, 1=W) 
@@ -198,7 +198,7 @@ class PointRCNNHead(RoIHeadTemplate):
 
         shared_features = l_features[-1]  # (total_rois=256, num_features=512, 1 point) i.e. we get one 512 dim feature for each of the 256 rois via Set Abstraction
         rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 1) : objectness scores for 256 rois 
-        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets from predicted rois to gt boxes? for 256 rois
+        rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets (from predicted rois to gt boxes?) for 256 rois
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

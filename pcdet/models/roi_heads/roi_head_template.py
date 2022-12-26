@@ -49,7 +49,7 @@ class RoIHeadTemplate(nn.Module):
         First select 9000 highest scoring boxes and then do nms on them.
         # NMS: 
         # 1. select next highest-scoring box, 
-        # 2. eliminate lower-scoring boxes with IoU > threshold=0.8, 
+        # 2. eliminate lower-scoring boxes with IoU > threshold=0.8 (NMS_THRESH), 
         # 3. If any boxes remain go to step 1.
         
         Nms will give around 4000 boxes
@@ -291,17 +291,17 @@ class RoIHeadTemplate(nn.Module):
         """
         Args:
             batch_size:
-            rois: (B, N, 7)
-            cls_preds: (BN, num_class)
-            box_preds: (BN, code_size)
+            rois: (B, N, 7): (2, 100, 7) From 1st stage box predictions
+            cls_preds: (BN, num_class): (200, 1) From rcnn output: objectness score of rois
+            box_preds: (BN, code_size): (200, 7) From rcnn output: box predicted offsets (from predicted rois to gt boxes) for 200 rois
 
         Returns:
 
         """
         code_size = self.box_coder.code_size
         # batch_cls_preds: (B, N, num_class or 1)
-        batch_cls_preds = cls_preds.view(batch_size, -1, cls_preds.shape[-1])
-        batch_box_preds = box_preds.view(batch_size, -1, code_size)
+        batch_cls_preds = cls_preds.view(batch_size, -1, cls_preds.shape[-1]) # (2, 100, 1)
+        batch_box_preds = box_preds.view(batch_size, -1, code_size) # (2, 100, 7)
 
         roi_ry = rois[:, :, 6].view(-1)
         roi_xyz = rois[:, :, 0:3].view(-1, 3)

@@ -148,7 +148,7 @@ class DatasetTemplate(torch_data.Dataset):
             )
 
         if data_dict.get('gt_boxes', None) is not None:
-            # select only those gt boxes which are in self.class_names (redundant: we have already done this in augmentor)
+            # select only those gt boxes which are in self.class_names (For training: we have already done this in augmentor, but for testing this is useful)
             selected = common_utils.keep_arrays_by_name(data_dict['gt_names'], self.class_names)
             data_dict['gt_boxes'] = data_dict['gt_boxes'][selected]
             data_dict['gt_names'] = data_dict['gt_names'][selected]
