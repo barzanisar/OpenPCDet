@@ -4,18 +4,26 @@ from ...ops.iou3d_nms import iou3d_nms_utils
 
 
 def class_agnostic_nms(box_scores, box_preds, nms_config, score_thresh=None):
-    # box_scores: (N=16384) max predicted class score for each point for example if for a point the scores are 
+    # box_scores: (N=16384 or N=100 for testing) max predicted class score for each point or box for example if for a point the scores are 
     # [car: 0.6, ped: 0.7, cycl: 0.3] then the box_score is 0.7 for that point
+    # For testing box_scores are final rcnn predicted probabilities for objectness
     # box_preds: (N, 7) predicted box
+
+    # 1. Select boxes with scores > score_thresh= 0.1
+    # 2. Select topk scoring boxes (k = NMS_PRE_MAXSIZE)
+    # 3. Perform NMS on these k boxes -> gives M boxes (where M < k)
+    # 4. Select top "k=NMS_POST_MAXSIZE" scoring boxes out of M boxes
     src_box_scores = box_scores
     if score_thresh is not None:
-        scores_mask = (box_scores >= score_thresh)
+        # discard all rcnn box predictions whose objectness prob < 0.1
+        scores_mask = (box_scores >= score_thresh) 
         box_scores = box_scores[scores_mask]
         box_preds = box_preds[scores_mask]
 
     selected = []
     if box_scores.shape[0] > 0:
         # Select top 9000 points/boxes from 16384 points with highest box_scores
+        # For testing select all boxes and sort them [highest box score, ..., lowest box score]
         box_scores_nms, indices = torch.topk(box_scores, k=min(nms_config.NMS_PRE_MAXSIZE, box_scores.shape[0]))
         boxes_for_nms = box_preds[indices]
         # Perform NMS on 9000 points/boxes

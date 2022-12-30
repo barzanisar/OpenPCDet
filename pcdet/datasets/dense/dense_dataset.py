@@ -460,9 +460,9 @@ class DenseDataset(DatasetTemplate):
             batch_dict:
                 frame_id:
             pred_dicts: list of pred_dicts
-                pred_boxes: (N, 7), Tensor
-                pred_scores: (N), Tensor
-                pred_labels: (N), Tensor
+                pred_boxes: (N, 7), Tensor final (after NMS) rcnn predicted boxes
+                pred_scores: (N), Tensor final rcnn predicted objectness score
+                pred_labels: (N), Tensor final roi labels (from 1st stage) [1:car, 2:ped, 3: cyc]
             class_names:
             output_path:
 
@@ -480,28 +480,29 @@ class DenseDataset(DatasetTemplate):
             return ret_dict
 
         def generate_single_sample_dict(batch_index, box_dictionary):
-            pred_scores = box_dictionary['pred_scores'].cpu().numpy()
-            pred_boxes = box_dictionary['pred_boxes'].cpu().numpy()
-            pred_labels = box_dictionary['pred_labels'].cpu().numpy()
+            # for one pc 
+            pred_scores = box_dictionary['pred_scores'].cpu().numpy() #rcnn pred box objectness scores
+            pred_boxes = box_dictionary['pred_boxes'].cpu().numpy()  #rcnn pred boxes in lidar frame
+            pred_labels = box_dictionary['pred_labels'].cpu().numpy()  #roi pred box labels [1:car, 2:ped, 3: cyc]
             pred_dict = get_template_prediction(pred_scores.shape[0])
             if pred_scores.shape[0] == 0:
                 return pred_dict
 
             calib = batch_dict['calib'][batch_index]
             image_shape = batch_dict['image_shape'][batch_index].cpu().numpy()
-            pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib)
+            pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib) #???
             pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
                 pred_boxes_camera, calib, image_shape=image_shape
             )
 
-            pred_dict['name'] = np.array(class_names)[pred_labels - 1]
-            pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6]
+            pred_dict['name'] = np.array(class_names)[pred_labels - 1] #roi pred box labels
+            pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6] #???
             pred_dict['bbox'] = pred_boxes_img
             pred_dict['dimensions'] = pred_boxes_camera[:, 3:6]
             pred_dict['location'] = pred_boxes_camera[:, 0:3]
             pred_dict['rotation_y'] = pred_boxes_camera[:, 6]
-            pred_dict['score'] = pred_scores
-            pred_dict['boxes_lidar'] = pred_boxes
+            pred_dict['score'] = pred_scores #rcnn pred box objectness scores
+            pred_dict['boxes_lidar'] = pred_boxes #rcnn pred boxes in lidar frame
 
             return pred_dict
 

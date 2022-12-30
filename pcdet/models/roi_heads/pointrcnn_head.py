@@ -140,8 +140,13 @@ class PointRCNNHead(RoIHeadTemplate):
             batch_dict:
 
         Returns:
+            For training:
             rcnn_cls: (2 pcs x 128 rois = 256 rois, 1) : predicted objectness scores for 256 rois 
             rcnn_reg: (256, 7) : predicted box offsets (from predicted rois to gt boxes?) for 256 rois
+
+            For testing:
+            batch_cls_preds: (2, 100, 1) From rcnn output: objectness score of rois
+            batch_box_preds: (2, 100, 7) final box prediction extracted from rcnn predicted box offset and predicted roi from 1st stage as anchors
 
         """
         # batch_dict is updated in this function and returned as target_dict so batch_dict == target_dict

@@ -177,6 +177,8 @@ class Detector3DTemplate(nn.Module):
 
     def post_processing(self, batch_dict):
         """
+        Perform NMS on RCNN box predictions to remove overlapping predicted boxes (100 boxes in one pc shortlisted to e.g. 4 boxes)
+
         Args:
             batch_dict:
                 batch_size:
@@ -190,7 +192,23 @@ class Detector3DTemplate(nn.Module):
                 roi_labels: (B, num_rois)  1 .. num_classes
                 batch_pred_labels: (B, num_boxes, 1)
         Returns:
+            recall_dict:
+                gt: (M) total num of gt boxes in this batch i.e. 2 pcs
+                roi_0.3: (k) num of gt boxes that overlap/matched with predicted rois (from 1st stage i.e. (100 boxes, 7)) with iou3d > 0.3 (where k <=M)
+                roi_0.5: (m) num of gt boxes that overlap with predicted rois (from 1st stage) with iou3d > 0.5 (where m <=M)
+                roi_0.7: (n) num of gt boxes that overlap with predicted rois (from 1st stage) with iou3d > 0.7 (where n <=M) (hardest! so very few boxes)
+                k >= m >= n, i.e. k includes m and n, m includes n
 
+                rcnn_0.3: (a) num of gt boxes that overlap with final predicted rcnn boxes (i.e. (100 boxes, 7) before nms) with iou3d > 0.3 (where a <=M)
+                rcnn_0.5: (b) num of gt boxes that overlap with final predicted rcnn boxes with iou3d > 0.5 (where b <=M)
+                rcnn_0.7: (c) num of gt boxes that overlap with final predicted rcnn boxes before nms) with iou3d > 0.7 (where c <=M) (hardest! so very few boxes)
+                a >= b >= c, i.e. a includes b and c, b includes c
+                We expect rcnn numbers to be higher than roi numbers bcz rcnn output is 2nd stage more refined output
+
+            pred_dict: final output after NMS (a list of size 2 = batch size)
+                pred_labels: # example shape: (4), predicted 1st stage roi_labels for nms shortlisted boxes [1: car, 2: ped, 3: cyc]
+                pred_scores: # example shape: (4), RCNN predicted box objectness probabilities for nms shortlisted boxes
+                pred_boxes:  # example shape: (4), RCNN predicted boxes for nms shortlisted boxes
         """
         post_process_cfg = self.model_cfg.POST_PROCESSING
         batch_size = batch_dict['batch_size']
@@ -204,17 +222,17 @@ class Detector3DTemplate(nn.Module):
                 assert batch_dict['batch_box_preds'].shape.__len__() == 3
                 batch_mask = index
 
-            box_preds = batch_dict['batch_box_preds'][batch_mask]
+            box_preds = batch_dict['batch_box_preds'][batch_mask] #(100, 7) from rcnn output: final box predictions
             src_box_preds = box_preds
 
             if not isinstance(batch_dict['batch_cls_preds'], list):
-                cls_preds = batch_dict['batch_cls_preds'][batch_mask]
+                cls_preds = batch_dict['batch_cls_preds'][batch_mask] #(100, 1) from rcnn output: box objectness scores
 
                 src_cls_preds = cls_preds
                 assert cls_preds.shape[1] in [1, self.num_class]
 
                 if not batch_dict['cls_preds_normalized']:
-                    cls_preds = torch.sigmoid(cls_preds)
+                    cls_preds = torch.sigmoid(cls_preds) # turn rcnn box objectness scores to probabilities
             else:
                 cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
                 src_cls_preds = cls_preds
@@ -248,31 +266,32 @@ class Detector3DTemplate(nn.Module):
                 final_labels = torch.cat(pred_labels, dim=0)
                 final_boxes = torch.cat(pred_boxes, dim=0)
             else:
-                cls_preds, label_preds = torch.max(cls_preds, dim=-1)
+                cls_preds, label_preds = torch.max(cls_preds, dim=-1) # (100) same as cls_preds, (100) all zeros
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
-                    label_preds = batch_dict[label_key][index]
+                    label_preds = batch_dict[label_key][index] # roi_labels: (100) predicted class labels from 1st stage [1: car, 2: ped, 3: cyc]
                 else:
                     label_preds = label_preds + 1
+                
+                # Perform NMS on RCNN box predictions to remove overlapping predicted boxes (100 boxes shortlisted to 4 boxes)
                 selected, selected_scores = model_nms_utils.class_agnostic_nms(
                     box_scores=cls_preds, box_preds=box_preds,
                     nms_config=post_process_cfg.NMS_CONFIG,
                     score_thresh=post_process_cfg.SCORE_THRESH
-                )
+                ) # shortlisted rcnn predicted box indices and cls_preds
 
                 if post_process_cfg.OUTPUT_RAW_SCORE:
                     max_cls_preds, _ = torch.max(src_cls_preds, dim=-1)
                     selected_scores = max_cls_preds[selected]
 
-                final_scores = selected_scores
-                final_labels = label_preds[selected]
-                final_boxes = box_preds[selected]
-
+                final_scores = selected_scores # example shape: (4), RCNN predicted box objectness prob for nms shortlisted boxes
+                final_labels = label_preds[selected]  # example shape: (4), predicted 1st stage roi_labels for nms shortlisted boxes [1: car, 2: ped, 3: cyc]
+                final_boxes = box_preds[selected]  # example shape: (4), RCNN predicted boxes for nms shortlisted boxes
             recall_dict = self.generate_recall_record(
                 box_preds=final_boxes if 'rois' not in batch_dict else src_box_preds,
                 recall_dict=recall_dict, batch_index=index, data_dict=batch_dict,
                 thresh_list=post_process_cfg.RECALL_THRESH_LIST
-            )
+            ) # 'gt': total num of gt boxes
 
             record_dict = {
                 'pred_boxes': final_boxes,
@@ -285,11 +304,12 @@ class Detector3DTemplate(nn.Module):
 
     @staticmethod
     def generate_recall_record(box_preds, recall_dict, batch_index, data_dict=None, thresh_list=None):
+        # box_preds: #(100, 7) from rcnn output: final box predictions
         if 'gt_boxes' not in data_dict:
             return recall_dict
 
-        rois = data_dict['rois'][batch_index] if 'rois' in data_dict else None
-        gt_boxes = data_dict['gt_boxes'][batch_index]
+        rois = data_dict['rois'][batch_index] if 'rois' in data_dict else None # predicted rois from 1st stage: (100, 7)
+        gt_boxes = data_dict['gt_boxes'][batch_index] #(M, 8)
 
         if recall_dict.__len__() == 0:
             recall_dict = {'gt': 0}
@@ -297,6 +317,7 @@ class Detector3DTemplate(nn.Module):
                 recall_dict['roi_%s' % (str(cur_thresh))] = 0
                 recall_dict['rcnn_%s' % (str(cur_thresh))] = 0
 
+        # Select non zero gt boxes
         cur_gt = gt_boxes
         k = cur_gt.__len__() - 1
         while k >= 0 and cur_gt[k].sum() == 0:
@@ -305,24 +326,24 @@ class Detector3DTemplate(nn.Module):
 
         if cur_gt.shape[0] > 0:
             if box_preds.shape[0] > 0:
-                iou3d_rcnn = iou3d_nms_utils.boxes_iou3d_gpu(box_preds[:, 0:7], cur_gt[:, 0:7])
+                iou3d_rcnn = iou3d_nms_utils.boxes_iou3d_gpu(box_preds[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100=rcnn predicted boxes, M=gt boxes)
             else:
                 iou3d_rcnn = torch.zeros((0, cur_gt.shape[0]))
 
             if rois is not None:
-                iou3d_roi = iou3d_nms_utils.boxes_iou3d_gpu(rois[:, 0:7], cur_gt[:, 0:7])
+                iou3d_roi = iou3d_nms_utils.boxes_iou3d_gpu(rois[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100= predicted 1st stage rois, M=gt boxes)
 
             for cur_thresh in thresh_list:
                 if iou3d_rcnn.shape[0] == 0:
                     recall_dict['rcnn_%s' % str(cur_thresh)] += 0
                 else:
-                    rcnn_recalled = (iou3d_rcnn.max(dim=0)[0] > cur_thresh).sum().item()
+                    rcnn_recalled = (iou3d_rcnn.max(dim=0)[0] > cur_thresh).sum().item() #number of gt boxes that matched/overlapped with rcnn predicted boxes with iou3D > 0.3, 0.5, 0.7
                     recall_dict['rcnn_%s' % str(cur_thresh)] += rcnn_recalled
                 if rois is not None:
-                    roi_recalled = (iou3d_roi.max(dim=0)[0] > cur_thresh).sum().item()
-                    recall_dict['roi_%s' % str(cur_thresh)] += roi_recalled
+                    roi_recalled = (iou3d_roi.max(dim=0)[0] > cur_thresh).sum().item() #number of gt boxes that matched/overlapped with 1st stage roi predicted boxes with iou3D > 0.3, 0.5, 0.7
+                    recall_dict['roi_%s' % str(cur_thresh)] += roi_recalled 
 
-            recall_dict['gt'] += cur_gt.shape[0]
+            recall_dict['gt'] += cur_gt.shape[0] # total num of gt boxes in this pc
         else:
             gt_iou = box_preds.new_zeros(box_preds.shape[0])
         return recall_dict

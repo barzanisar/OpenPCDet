@@ -26,6 +26,14 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     if save_to_file:
         final_output_dir.mkdir(parents=True, exist_ok=True)
 
+    # metric contains:
+    # gt_num: total num all relevant gt boxes in the whole dataset 
+    # recall_roi_0.3: num of all gt boxes which overlapped with the roi (1st stage) predicted boxes with iou3d > 0.3
+    # recall_rcnn_0.3: num of all gt boxes which overlapped with the rcnn (final stage) predicted boxes with iou3d > 0.3
+    # recall_roi_0.5:
+    # recall_rnn_0.5:
+    # recall_roi_0.7: (hardest so fewest boxes)
+    # recall_rnn_0.7: (hardest so fewest boxes)
     metric = {
         'gt_num': 0,
     }
@@ -35,7 +43,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
 
     dataset = dataloader.dataset
     class_names = dataset.class_names
-    det_annos = []
+    det_annos = [] # len: number of frames in dataset. Contains pred dicts for the whole dataset (see generate_single_sample_dict: how one pc's pred  dect is stored)
 
     logger.info('*************** EPOCH %s EVALUATION *****************' % epoch_id)
     if dist_test:
@@ -57,6 +65,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
             pred_dicts, ret_dict = model(batch_dict) #batch_dict['points']:(16384x2, 5) [b_id, xyzi] #batch_dict['gt_boxes']: (2, num boxes, 8) [x, y, z, dx dy dz, r, class_id] class_id can be 1,2,3
         disp_dict = {}
 
+        # Add ret_dict i.e. recall_dict for this batch to metric dict 
         statistics_info(cfg, ret_dict, metric, disp_dict)
         annos = dataset.generate_prediction_dicts(
             batch_dict, pred_dicts, class_names,

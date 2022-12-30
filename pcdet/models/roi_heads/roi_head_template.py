@@ -296,9 +296,11 @@ class RoIHeadTemplate(nn.Module):
             box_preds: (BN, code_size): (200, 7) From rcnn output: box predicted offsets (from predicted rois to gt boxes) for 200 rois
 
         Returns:
+            batch_cls_preds: (2, 100, 1) From rcnn output: objectness score of rois. Same as cls preds
+            batch_box_preds: (2, 100, 7) final box prediction extracted from rcnn predicted box offset and predicted roi from 1st stage as anchors
 
         """
-        code_size = self.box_coder.code_size
+        code_size = self.box_coder.code_size #7
         # batch_cls_preds: (B, N, num_class or 1)
         batch_cls_preds = cls_preds.view(batch_size, -1, cls_preds.shape[-1]) # (2, 100, 1)
         batch_box_preds = box_preds.view(batch_size, -1, code_size) # (2, 100, 7)
@@ -308,11 +310,16 @@ class RoIHeadTemplate(nn.Module):
         local_rois = rois.clone().detach()
         local_rois[:, :, 0:3] = 0
 
+        # box_preds contains predictions for the offset = actual box - predicted roi stage 1
+        # Setting local_rois[:, :, 0:3] = 0 means after decoding, batch_box_preds[:,:, 0:3] will still contain the offset i.e. gt_center - predicted roi center in predicted roi frame
+        # b/c box_preds[:,:,0:3] (predicted offset) = batch_box_preds[:,:, 0:3] (xg, yg, zg we want to find) - local_rois[:,:,0:3] (predicted roi)
+        # get predicted rcnn boxes (xg) from the rcnn predicted box offsets (xt) and predicted roi stage 1 as anchors (xa)
         batch_box_preds = self.box_coder.decode_torch(batch_box_preds, local_rois).view(-1, code_size)
 
+        # To change batch_box_preds[:, :, 0:3] from (gt_box_center - pred_roi_center) in pred_roi_frame to (...) in lidar frame
         batch_box_preds = common_utils.rotate_points_along_z(
             batch_box_preds.unsqueeze(dim=1), roi_ry
-        ).squeeze(dim=1)
-        batch_box_preds[:, 0:3] += roi_xyz
+        ).squeeze(dim=1) # now batch_box_preds = (gt_box_center - pred_roi_center) in lidar frame
+        batch_box_preds[:, 0:3] += roi_xyz # now batch_box_preds[: 0:3] = gt_box_center in lidar frame
         batch_box_preds = batch_box_preds.view(batch_size, -1, code_size)
         return batch_cls_preds, batch_box_preds
