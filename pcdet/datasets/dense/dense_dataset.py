@@ -138,6 +138,7 @@ class DenseDataset(DatasetTemplate):
                 dense_infos.extend(infos)
 
         self.dense_infos.extend(dense_infos[:])
+        #self.dense_infos.extend(dense_infos[:200])
 
         if self.logger is not None:
             self.logger.info('Total skipped info %s' % num_skipped_infos)
@@ -482,7 +483,7 @@ class DenseDataset(DatasetTemplate):
         def generate_single_sample_dict(batch_index, box_dictionary):
             # for one pc 
             pred_scores = box_dictionary['pred_scores'].cpu().numpy() #rcnn pred box objectness scores
-            pred_boxes = box_dictionary['pred_boxes'].cpu().numpy()  #rcnn pred boxes in lidar frame
+            pred_boxes = box_dictionary['pred_boxes'].cpu().numpy()  #rcnn pred boxes in lidar frame. 'heading' Ranges from -pi/2 to pi/2 i.e. [-90, 90]
             pred_labels = box_dictionary['pred_labels'].cpu().numpy()  #roi pred box labels [1:car, 2:ped, 3: cyc]
             pred_dict = get_template_prediction(pred_scores.shape[0])
             if pred_scores.shape[0] == 0:
@@ -490,17 +491,17 @@ class DenseDataset(DatasetTemplate):
 
             calib = batch_dict['calib'][batch_index]
             image_shape = batch_dict['image_shape'][batch_index].cpu().numpy()
-            pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib) #???
+            pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib) # (N, 7): [xyz center in cam 0 rectified frame, len=dx, height=dz, width=dy, rot_y]
             pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
                 pred_boxes_camera, calib, image_shape=image_shape
-            )
+            ) #box_2d_preds: (N, 4) [x1=left, y1=top, x2=right, y2=bottom] pixel coords
 
             pred_dict['name'] = np.array(class_names)[pred_labels - 1] #roi pred box labels
-            pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6] #???
+            pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6] # see my notes in kitti paper. Range in  [-pi, pi] i.e. [-180, 180] 
             pred_dict['bbox'] = pred_boxes_img
-            pred_dict['dimensions'] = pred_boxes_camera[:, 3:6]
-            pred_dict['location'] = pred_boxes_camera[:, 0:3]
-            pred_dict['rotation_y'] = pred_boxes_camera[:, 6]
+            pred_dict['dimensions'] = pred_boxes_camera[:, 3:6] # same as pred_boxes but order is dx, dz, dy
+            pred_dict['location'] = pred_boxes_camera[:, 0:3] # center xyz of 3d bbox in camera frame
+            pred_dict['rotation_y'] = pred_boxes_camera[:, 6] # angle from x axis of ego cam to x axis of 3d bbox. Range: [-pi, pi] i.e. [-180, 180 deg]
             pred_dict['score'] = pred_scores #rcnn pred box objectness scores
             pred_dict['boxes_lidar'] = pred_boxes #rcnn pred boxes in lidar frame
 
@@ -532,6 +533,7 @@ class DenseDataset(DatasetTemplate):
         return annos
 
     def evaluation(self, det_annos, class_names, **kwargs):
+        # det_annos is the model predictions e.g. 'name' is according to roi_label
         if 'annos' not in self.dense_infos[0].keys():
             return None, {}
 
