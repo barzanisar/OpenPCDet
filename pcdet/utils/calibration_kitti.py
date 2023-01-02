@@ -27,8 +27,8 @@ class Calibration(object):
         else:
             calib = calib_file
 
-        self.P2 = calib['P2']  # 3 x 4
-        self.R0 = calib['R0']  # 3 x 3
+        self.P2 = calib['P2']  # 3 x 4 this projects (x,y,z,1) coord in cam 0 rectified frame to left (cam 2) image coordinates (u,v,1)
+        self.R0 = calib['R0']  # 3 x 3 this rotates cam 0 to cam 0 rectified
         self.V2C = calib['Tr_velo2cam']  # 3 x 4
 
         # Camera intrinsics and extrinsics
@@ -65,7 +65,7 @@ class Calibration(object):
     def lidar_to_rect(self, pts_lidar):
         """
         :param pts_lidar: (N, 3)
-        :return pts_rect: (N, 3)
+        :return pts_rect: (N, 3) = R0_rect * T_velo2cam * pts_lidar
         """
         pts_lidar_hom = self.cart_to_hom(pts_lidar)
         pts_rect = np.dot(pts_lidar_hom, np.dot(self.V2C.T, self.R0.T))

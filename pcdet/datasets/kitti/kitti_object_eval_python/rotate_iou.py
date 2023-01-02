@@ -302,13 +302,13 @@ def rotate_iou_gpu_eval(boxes, query_boxes, criterion=-1, device_id=0):
         https://github.com/hongzhenwang/RRPN-revise/tree/master/pcdet/rotation).
     
     Args:
-        boxes (float tensor: [N, 5]): rbboxes. format: centers, dims, 
-            angles(clockwise when positive)
-        query_boxes (float tensor: [K, 5]): [description]
+        boxes (N, 5): rbboxes. format: centers, dims, 
+            angles(clockwise when positive) = gt_boxes [x center, z center, l = len of box along box frame x axis, w = width of box along box frame y axis, rot_y=clockwise rotation between box x axis and cam x axis]
+        query_boxes (K, 5): [description] = pred boxes
         device_id (int, optional): Defaults to 0. [description]
     
     Returns:
-        [type]: [description]
+        iou: (N, K) if criterion == -1 then return iou of bev box areas otherwise if criterion is 2 then return only intersection area
     """
     box_dtype = boxes.dtype
     boxes = boxes.astype(np.float32)

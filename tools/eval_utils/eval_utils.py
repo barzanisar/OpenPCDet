@@ -67,6 +67,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
 
         # Add ret_dict i.e. recall_dict for this batch to metric dict 
         statistics_info(cfg, ret_dict, metric, disp_dict)
+        # Convert 3d boxes in lidar frame to 3d boxes in camera frame and store as kitti annos format
         annos = dataset.generate_prediction_dicts(
             batch_dict, pred_dicts, class_names,
             output_path=final_output_dir if save_to_file else None

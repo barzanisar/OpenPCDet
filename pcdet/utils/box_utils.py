@@ -165,21 +165,22 @@ def enlarge_box3d(boxes3d, extra_width=(0, 0, 0)):
 
 def boxes3d_lidar_to_kitti_camera(boxes3d_lidar, calib):
     """
-    :param boxes3d_lidar: (N, 7) [x, y, z, dx, dy, dz, heading], (x, y, z) is the box center
+    :param boxes3d_lidar: (N, 7) [x, y, z, dx, dy, dz, heading], (x, y, z) is the box center, heading = rz is the angle between ego lidar x axis and object center's x axis
     :param calib:
     :return:
         boxes3d_camera: (N, 7) [x, y, z, l, h, w, r] in rect camera coords
     """
     boxes3d_lidar_copy = copy.deepcopy(boxes3d_lidar)
     xyz_lidar = boxes3d_lidar_copy[:, 0:3]
-    l, w, h = boxes3d_lidar_copy[:, 3:4], boxes3d_lidar_copy[:, 4:5], boxes3d_lidar_copy[:, 5:6]
+    l, w, h = boxes3d_lidar_copy[:, 3:4], boxes3d_lidar_copy[:, 4:5], boxes3d_lidar_copy[:, 5:6]# len = dx, width = dy, height = dz
     r = boxes3d_lidar_copy[:, 6:7]
 
-    xyz_lidar[:, 2] -= h.reshape(-1) / 2
-    xyz_cam = calib.lidar_to_rect(xyz_lidar)
+    xyz_lidar[:, 2] -= h.reshape(-1) / 2 # why shift z center to bottom of the box?
+    xyz_cam = calib.lidar_to_rect(xyz_lidar) # lidar to rectified cam 0 frame now we have [x_center, y bottom of the box, z_center]
     # xyz_cam[:, 1] += h.reshape(-1) / 2
-    r = -r - np.pi / 2
-    return np.concatenate([xyz_cam, l, h, w, r], axis=-1)
+    r = -r - np.pi / 2 # rotation_y of box wrt ego cam = - heading of box wrt ego lidar - 90 deg 
+    # rotation_y is the rotation around ego cam y axis between the bbox x axis and ego cam x axis
+    return np.concatenate([xyz_cam, l, h, w, r], axis=-1) # Note: the order of lens is len= dx, height = dz, width = dy
 
 
 def boxes3d_to_corners3d_kitti_camera(boxes3d, bottom_center=True):
