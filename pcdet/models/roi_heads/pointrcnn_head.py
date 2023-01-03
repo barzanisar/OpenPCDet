@@ -142,7 +142,7 @@ class PointRCNNHead(RoIHeadTemplate):
         Returns:
             For training:
             rcnn_cls: (2 pcs x 128 rois = 256 rois, 1) : predicted objectness scores for 256 rois 
-            rcnn_reg: (256, 7) : predicted box offsets (from predicted rois to gt boxes?) for 256 rois
+            rcnn_reg: (256, 7) : predicted box offsets (from predicted rois to gt boxes) for 256 rois
 
             For testing:
             batch_cls_preds: (2, 100, 1) From rcnn output: objectness score of rois
@@ -160,9 +160,17 @@ class PointRCNNHead(RoIHeadTemplate):
             # sample_rois_for_rcnn:
             # 1. Match 512 predicted boxes with the 41 gt boxes by computing iou3D matrix of size (512, 41) and taking max over each row
             # 2. Subsample/shortlist 512 predicted boxes to 128 boxes depending on their matched iou3D score
+                    # Threshold 512 boxes based on their matched iou3D score to create three categories to sample from:
+                    # 1. fg boxes = boxes (out of 512 boxes) with matched iou3D > 0.55
+                    # 2. hard bg boxes = boxes with matched iou3D < 0.55 and > 0.1
+                    # 3. easy bg boxes = boxes with matched iou3D <  0.1
+                    # Randomly sample 64 boxes from these possible fg boxes
+                    # Randomly sample 0.8 * 64 boxes from hard_bg boxes
+                    # Randomly sample 0.2 * 64 boxes from easy_bg
             # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8)
             
-            # regression valid mask: 1 for predicted boxes that have high iou3D with their matched gt boxes 
+            # regression valid mask: (2, 128) 
+            # 1 for predicted boxes (rois) that have high iou3D with their matched gt boxes 
             # i.e. reg_valid_mask = if predicted boxes with iou3d > 0.55, then 1 else 0
             # i.e. possible foreground boxes
 
@@ -177,15 +185,17 @@ class PointRCNNHead(RoIHeadTemplate):
             batch_dict['rois'] = targets_dict['rois']
             batch_dict['roi_labels'] = targets_dict['roi_labels']
 
+        # pooled_features: (2x128=num rois, 512 points per roi, 133 feature dim=[3 = (points (in roi) xyz - roi_center) in roi frame, 1 point cls score, 1 depth, 128 features from pointnet++])
+        # For empty rois, pooled featrues are filled with zeros
         pooled_features = self.roipool3d_gpu(batch_dict)  # (total_rois, num_sampled_points, 3 + C) (2x128 rois, 512 points per roi, 133 feature dim), for testing total rois = 2x100
 
-        xyz_input = pooled_features[..., 0:self.num_prefix_channels].transpose(1, 2).unsqueeze(dim=3).contiguous() # (256, 5, 512, 1): 5 features are xyz vector (from roi center to point in roi) in roi frame, point cls score, depth
+        xyz_input = pooled_features[..., 0:self.num_prefix_channels].transpose(1, 2).unsqueeze(dim=3).contiguous() # (256 rois, 5, 512, 1): 5 features are xyz vector (from roi center to point in roi) in roi frame, point cls score, depth
         xyz_features = self.xyz_up_layer(xyz_input) # input: (B=256, C=5, 512=H, 1=W) -> Conv2d(5,128, kernel size = (1,1)) + Relu -> Cpnv2d(128,128, kernel size = (1,1)) + relu -> output:(B=256, C=128, 512=H, 1=W) 
         point_features = pooled_features[..., self.num_prefix_channels:].transpose(1, 2).unsqueeze(dim=3) #pointnet++ roi pooled features (256=rois, 128=feature dim, 512=points, 1)
         merged_features = torch.cat((xyz_features, point_features), dim=1) # (256 rois, 128 xyz_features + 128 point net features, 512, 1)
         merged_features = self.merge_down_layer(merged_features) # input: (B=256, C=256, H=512, W=1) -> Conv2d(256, 128, kernel size = (1,1)) + relu -> output: (B=256, C=128, H=512, W=1)
 
-        l_xyz, l_features = [pooled_features[..., 0:3].contiguous()], [merged_features.squeeze(dim=3).contiguous()]# lxyz: (256, 512, 3): these are delta xyz b/w points and roi center, l_features: (256, 128, 512): these are point net++ roi pooled features
+        l_xyz, l_features = [pooled_features[..., 0:3].contiguous()], [merged_features.squeeze(dim=3).contiguous()]# lxyz: (256, 512, 3): these are delta xyz b/w points and roi center in roi frame, l_features: (256, 128, 512): these are merged xyz_up + point net++ roi pooled features
 
         for i in range(len(self.SA_modules)):
             li_xyz, li_features = self.SA_modules[i](l_xyz[i], l_features[i])

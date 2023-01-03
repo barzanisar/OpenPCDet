@@ -147,6 +147,7 @@ class PreviousResidualRoIDecoder(object):
 
 
 class PointResidualCoder(object):
+    # Used for Pointrcnn point_head_box
     def __init__(self, code_size=8, use_mean_size=True, **kwargs):
         super().__init__()
         self.code_size = code_size

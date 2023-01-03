@@ -50,7 +50,7 @@ class SigmoidFocalClassificationLoss(nn.Module):
             x = input: (B, #anchors, #classes) float tensor.
                 Predicted logits for each class: Pointrcnn: point_loss_cls: (16384x2, 3)
             z = target: (B, #anchors, #classes) float tensor.
-                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background: 0,0,0
+                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background and ignored: 0,0,0
 
 
         Returns:
@@ -67,16 +67,17 @@ class SigmoidFocalClassificationLoss(nn.Module):
             input: (B, #anchors, #classes) float tensor.
                 Predicted logits for each class: Pointrcnn: point_loss_cls: (16384x2, 3)
             target: (B, #anchors, #classes) float tensor.
-                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background: 0,0,0
+                One-hot encoded classification targets Pointrcnn: point_loss_cls: (16384x2, 3) e.g. for car gt pt -> 1, 0, 0, For ped: 0,1,0, etc. For background and ignored pts: 0,0,0
             weights: (B, #anchors) float tensor.
-                Anchor-wise weights. Pointrcnn: point_loss_cls: (16384x2), point-wise weight set to 1/(num gt object points) for each point so that later when we do point_loss_cls.sum()-> this will take mean of all object point losses
+                Anchor-wise weights. Pointrcnn: point_loss_cls: (16384x2), point-wise weight set to 1/(num gt object points) for each obj and background point so that later when we do point_loss_cls.sum()-> this will take mean of all object point losses
+                #  (16382 x 2):1/(num gt obj pts) for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
 
         Returns:
             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
         """
         pred_sigmoid = torch.sigmoid(input) # scales input values between 0 and 1
         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha) # same size as target (16384x2, 3): for car pt: 0.25, 0.75, 0.75, for ped: 0.75, 0.25, 0.75, for cyc:  0.75, 0.75, 0.25, for background: 0.75, 0.75, 0.75
-        pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
+        pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid # actually this is 1-pt
         focal_weight = alpha_weight * torch.pow(pt, self.gamma)
 
         bce_loss = self.sigmoid_cross_entropy_with_logits(input, target) # (16384 x2, 3) element-wise binary cross entropy loss i.e. on each element of input x and target z

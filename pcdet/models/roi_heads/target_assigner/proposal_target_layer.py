@@ -15,9 +15,9 @@ class ProposalTargetLayer(nn.Module):
         Args:
             batch_dict:
                 batch_size: 2
-                rois: (B, num_rois, 7 + C): (2, 512, 7)
-                roi_scores: (B, num_rois): (2, 512)
-                roi_labels: (B, num_rois): (2, 512)
+                rois: (B, num_rois, 7 + C): (2, 512, 7) predicted boxes from 1st stage
+                roi_scores: (B, num_rois): (2, 512) predicted max class score from 1st stage (point head box)
+                roi_labels: (B, num_rois): (2, 512) predicted class label from 1st stage
                 gt_boxes: (B, N, 7 + C + 1): (2, 41, 8)
         Returns:
             target_dict:
@@ -41,7 +41,7 @@ class ProposalTargetLayer(nn.Module):
         batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels = self.sample_rois_for_rcnn(
             batch_dict=batch_dict
         )
-        # regression valid mask: 1 for predicted boxes that have high iou3D with their matched gt boxes 
+        # regression valid mask: #(2, 128) 1 for predicted boxes that have high iou3D with their matched gt boxes 
         # i.e. reg_valid_mask = if predicted boxes with iou3d > 0.55, then 1 else 0
         # i.e. possible foreground boxes
         reg_valid_mask = (batch_roi_ious > self.roi_sampler_cfg.REG_FG_THRESH).long() #(2, 128) 

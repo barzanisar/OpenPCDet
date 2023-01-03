@@ -30,7 +30,7 @@ class PointHeadBox(PointHeadTemplate):
         
         #cin = 128, 2 hidden layers = [[linear = 256 (bias=False), batchnorm1d, relu], 
         #                       [linear=256 (bias=False), batchnorm1, relu],
-        #                        [linear=3 (bias=true)]] 
+        #                        [linear=8 (bias=true)]] 
         #cout = 8 = box code size = residual size [xt, yt, zt, dxt, dyt, dzt, cos(r), sin(r)]
         self.box_layers = self.make_fc_layers(
             fc_cfg=self.model_cfg.REG_FC,
@@ -75,8 +75,8 @@ class PointHeadBox(PointHeadTemplate):
 
     def get_loss(self, tb_dict=None):
         tb_dict = {} if tb_dict is None else tb_dict
-        point_loss_cls, tb_dict_1 = self.get_cls_layer_loss()
-        point_loss_box, tb_dict_2 = self.get_box_layer_loss()
+        point_loss_cls, tb_dict_1 = self.get_cls_layer_loss() # 1 number
+        point_loss_box, tb_dict_2 = self.get_box_layer_loss() # 1 number
 
         point_loss = point_loss_cls + point_loss_box
         tb_dict.update(tb_dict_1)
@@ -89,13 +89,14 @@ class PointHeadBox(PointHeadTemplate):
             batch_dict:
                 batch_size:
                 point_features: (N1 + N2 + N3 + ..., C) or (B, N, C)
-                point_features_before_fusion: (N1 + N2 + N3 + ..., C)
                 point_coords: (N1 + N2 + N3 + ..., 4) [bs_idx, x, y, z]
+
                 point_labels (optional): (N1 + N2 + N3 + ...)
+                point_features_before_fusion (optional): (N1 + N2 + N3 + ..., C)
                 gt_boxes (optional): (B, M, 8)
         Returns:
             batch_dict:
-                point_cls_scores: (N1 + N2 + N3 + ..., 1): predicted objectness confidence/probability of each pt
+                point_cls_scores: (N1 + N2 + N3 + ..., 1): predicted objectness confidence/probability of each pt (max class score converted into prob)
                 batch_cls_preds: (N1 + N2 + N3 + ..., num_class=3): predicted class scores for each point
                 batch_box_preds: (N1 + N2 + N3 + ..., 7): predicted boxes for each point (already extracted from their predicted residuals)
                 batch_index: (N1 + N2 + N3 + ...): batch id for each point
@@ -124,7 +125,7 @@ class PointHeadBox(PointHeadTemplate):
             ret_dict['point_cls_labels'] = targets_dict['point_cls_labels']
             ret_dict['point_box_labels'] = targets_dict['point_box_labels']
 
-        if not self.training or self.predict_boxes_when_training:
+        if not self.training or self.predict_boxes_when_training: # for testing or for rcnn head training we need box predictions from 1st stage as anchors in rcnn stage
             # Extract predicted boxes from predicted box residuals
             # generate_predicted_boxes returns:
             # point_cls_preds: (N, num_class=3) same as input
