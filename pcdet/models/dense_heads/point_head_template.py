@@ -67,7 +67,7 @@ class PointHeadTemplate(nn.Module):
 
             Each foreground point is assumed to be the center of an anchor whose class belongs to the fg point gt class.
             point_box_labels is 1x8 zeros for all background pts and for foreground pts it contains the residual 
-            between the anchor centered at the fg pt and the gt box that fg pt lies within. For localization residual definition, see SECOND  or pointpillars
+            between the anchor centered at the fg pt and the gt box that fg pt lies within. For localization residual definition, see papers: SECOND or pointpillars
         """
         assert len(points.shape) == 2 and points.shape[1] == 4, 'points.shape=%s' % str(points.shape)
         assert len(gt_boxes.shape) == 3 and gt_boxes.shape[2] == 8, 'gt_boxes.shape=%s' % str(gt_boxes.shape)
@@ -79,9 +79,11 @@ class PointHeadTemplate(nn.Module):
         point_cls_labels = points.new_zeros(points.shape[0]).long() #(N)
         point_box_labels = gt_boxes.new_zeros((points.shape[0], 8)) if ret_box_labels else None #(N,8)
         point_part_labels = gt_boxes.new_zeros((points.shape[0], 3)) if ret_part_labels else None #(N,3)
-        for k in range(batch_size):
+        for k in range(batch_size): # for each pc in batch
             bs_mask = (bs_idx == k)
             points_single = points[bs_mask][:, 1:4] # Extract points of batch id k (N1, xyz)
+
+            # Assign point_cls_labels
             point_cls_labels_single = point_cls_labels.new_zeros(bs_mask.sum()) #(N1)
             box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
                 points_single.unsqueeze(dim=0), gt_boxes[k:k + 1, :, 0:7].contiguous()
@@ -106,6 +108,7 @@ class PointHeadTemplate(nn.Module):
             point_cls_labels_single[fg_flag] = 1 if self.num_class == 1 else gt_box_of_fg_points[:, -1].long()
             point_cls_labels[bs_mask] = point_cls_labels_single
 
+            # Assign point_box_labels
             if ret_box_labels and gt_box_of_fg_points.shape[0] > 0:
                 point_box_labels_single = point_box_labels.new_zeros((bs_mask.sum(), 8))
                 fg_point_box_labels = self.box_coder.encode_torch(
@@ -136,11 +139,11 @@ class PointHeadTemplate(nn.Module):
         point_cls_labels = self.forward_ret_dict['point_cls_labels'].view(-1) # (16384x2) 0: background, -1: around gtbbox ignored, car:1, ped:2, cyclist: 3
         point_cls_preds = self.forward_ret_dict['point_cls_preds'].view(-1, self.num_class) #(16384x2, 3) predicted class scores for each point
 
-        positives = (point_cls_labels > 0) # (num points: 16382 x 2): true for gt object pts
+        positives = (point_cls_labels > 0) # (num points: 16382 x 2): true for gt object pts, false for background and ignored pts
         negative_cls_weights = (point_cls_labels == 0) * 1.0 # (16382 x 2): 1 for gt background pts, 0 otherwise
         cls_weights = (negative_cls_weights + 1.0 * positives).float() #  (16382 x 2):1 for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
         pos_normalizer = positives.sum(dim=0).float() # total num gt object pts
-        cls_weights /= torch.clamp(pos_normalizer, min=1.0) 
+        cls_weights /= torch.clamp(pos_normalizer, min=1.0)  #  (16382 x 2):1/(num gt obj pts) for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
 
         one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1) # (16384 x 2, 3+1=4)
         one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0) #Create one hot vector of size (16384x2, 4) ->(point_cls_labels * (point_cls_labels >= 0).long()) gives (16384x2) vector which is 0: background and ignored points, 1: Car, 2: Ped, 3: Cyc
@@ -155,6 +158,13 @@ class PointHeadTemplate(nn.Module):
         tb_dict.update({
             'point_loss_cls': point_loss_cls.item(),
             'point_pos_num': pos_normalizer.item()
+        })
+
+        # Get point classification losses for car, ped, cyc separately
+        tb_dict.update({
+            'point_loss_cls_car': cls_loss_src[:,0].sum().item(),
+            'point_loss_cls_pedestrian': cls_loss_src[:,1].sum().item(),
+            'point_loss_cls_cyclist': cls_loss_src[:,2].sum().item()
         })
         return point_loss_cls, tb_dict
 
@@ -197,6 +207,19 @@ class PointHeadTemplate(nn.Module):
         if tb_dict is None:
             tb_dict = {}
         tb_dict.update({'point_loss_box': point_loss_box.item()})
+
+        # Get point-wise box regression losses for car, ped, cyc separately
+        gt_car_pts_mask =  self.forward_ret_dict['point_cls_labels'] == 1
+        gt_pedestrian_pts_mask = self.forward_ret_dict['point_cls_labels'] == 2
+        gt_cyclist_pts_mask = self.forward_ret_dict['point_cls_labels'] == 3
+        point_loss_box_car = point_loss_box_src[:, gt_car_pts_mask, :].sum()
+        point_loss_box_pedestrian = point_loss_box_src[:, gt_pedestrian_pts_mask, :].sum()
+        point_loss_box_cyclist = point_loss_box_src[:, gt_cyclist_pts_mask, :].sum()
+        tb_dict.update({
+            'point_loss_box_car': point_loss_box_car.item(),
+            'point_loss_box_pedestrian': point_loss_box_pedestrian.item(),
+            'point_loss_box_cyclist': point_loss_box_cyclist.item()
+        })
         return point_loss_box, tb_dict
 
     def generate_predicted_boxes(self, points, point_cls_preds, point_box_preds):
