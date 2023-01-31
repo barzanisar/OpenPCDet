@@ -160,12 +160,12 @@ class PointHeadTemplate(nn.Module):
             'point_pos_num': pos_normalizer.item()
         })
 
-        # Get point classification losses for car, ped, cyc separately
-        tb_dict.update({
-            'point_loss_cls_car': cls_loss_src[:,0].sum().item(),
-            'point_loss_cls_pedestrian': cls_loss_src[:,1].sum().item(),
-            'point_loss_cls_cyclist': cls_loss_src[:,2].sum().item()
-        })
+        # # Get point classification losses for car, ped, cyc separately
+        # tb_dict.update({
+        #     'point_loss_cls_car': cls_loss_src[:,0].sum().item(),
+        #     'point_loss_cls_pedestrian': cls_loss_src[:,1].sum().item(),
+        #     'point_loss_cls_cyclist': cls_loss_src[:,2].sum().item()
+        # })
         return point_loss_cls, tb_dict
 
     def get_part_layer_loss(self, tb_dict=None):
@@ -208,18 +208,18 @@ class PointHeadTemplate(nn.Module):
             tb_dict = {}
         tb_dict.update({'point_loss_box': point_loss_box.item()})
 
-        # Get point-wise box regression losses for car, ped, cyc separately
-        gt_car_pts_mask =  self.forward_ret_dict['point_cls_labels'] == 1
-        gt_pedestrian_pts_mask = self.forward_ret_dict['point_cls_labels'] == 2
-        gt_cyclist_pts_mask = self.forward_ret_dict['point_cls_labels'] == 3
-        point_loss_box_car = point_loss_box_src[:, gt_car_pts_mask, :].sum()
-        point_loss_box_pedestrian = point_loss_box_src[:, gt_pedestrian_pts_mask, :].sum()
-        point_loss_box_cyclist = point_loss_box_src[:, gt_cyclist_pts_mask, :].sum()
-        tb_dict.update({
-            'point_loss_box_car': point_loss_box_car.item(),
-            'point_loss_box_pedestrian': point_loss_box_pedestrian.item(),
-            'point_loss_box_cyclist': point_loss_box_cyclist.item()
-        })
+        # # Get point-wise box regression losses for car, ped, cyc separately
+        # gt_car_pts_mask =  self.forward_ret_dict['point_cls_labels'] == 1
+        # gt_pedestrian_pts_mask = self.forward_ret_dict['point_cls_labels'] == 2
+        # gt_cyclist_pts_mask = self.forward_ret_dict['point_cls_labels'] == 3
+        # point_loss_box_car = point_loss_box_src[:, gt_car_pts_mask, :].sum()
+        # point_loss_box_pedestrian = point_loss_box_src[:, gt_pedestrian_pts_mask, :].sum()
+        # point_loss_box_cyclist = point_loss_box_src[:, gt_cyclist_pts_mask, :].sum()
+        # tb_dict.update({
+        #     'point_loss_box_car': point_loss_box_car.item(),
+        #     'point_loss_box_pedestrian': point_loss_box_pedestrian.item(),
+        #     'point_loss_box_cyclist': point_loss_box_cyclist.item()
+        # })
         return point_loss_box, tb_dict
 
     def generate_predicted_boxes(self, points, point_cls_preds, point_box_preds):
