@@ -987,67 +987,64 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
             bev_min_overlap = min_overlaps[i, 1, j]
             d3_min_overlap = min_overlaps[i, 2, j]
 
-            result += print_str((f"{cls} AP_R11@{bbox_min_overlap}, {bev_min_overlap}, {d3_min_overlap}:")) # Car AP_R11@   0.7(min overlap for 2dbbox) 0.7(for bev) 0.7(for 3d bbox)
-            result += print_str((f"bbox AP:{mAPbbox[j, 0, i]:.4f}, "
-                                 f"{mAPbbox[j, 1, i]:.4f}, "
-                                 f"{mAPbbox[j, 2, i]:.4f}")) # Car bbox AP_R11@  easy moderate hard
-            result += print_str((f"bev  AP:{mAPbev[j, 0, i]:.4f}, "
-                                 f"{mAPbev[j, 1, i]:.4f}, "
-                                 f"{mAPbev[j, 2, i]:.4f}"))  # Car bev AP_R11@  easy moderate hard
-            result += print_str((f"3d   AP:{mAP3d[j, 0, i]:.4f}, "
-                                 f"{mAP3d[j, 1, i]:.4f}, "
-                                 f"{mAP3d[j, 2, i]:.4f}"))  # Car 3d AP_R11@  easy moderate hard
+            #--------------------- AP at 11 recall points --------------------
+            # result += print_str((f"{cls} AP_R11@{bbox_min_overlap}, {bev_min_overlap}, {d3_min_overlap}:")) # Car AP_R11@   0.7(min overlap for 2dbbox) 0.7(for bev) 0.7(for 3d bbox)
+            # result += print_str((f"bbox AP:{mAPbbox[j, 0, i]:.4f}, "
+            #                      f"{mAPbbox[j, 1, i]:.4f}, "
+            #                      f"{mAPbbox[j, 2, i]:.4f}")) # Car bbox AP_R11@  easy moderate hard
+            # result += print_str((f"bev  AP:{mAPbev[j, 0, i]:.4f}, "
+            #                      f"{mAPbev[j, 1, i]:.4f}, "
+            #                      f"{mAPbev[j, 2, i]:.4f}"))  # Car bev AP_R11@  easy moderate hard
+            # result += print_str((f"3d   AP:{mAP3d[j, 0, i]:.4f}, "
+            #                      f"{mAP3d[j, 1, i]:.4f}, "
+            #                      f"{mAP3d[j, 2, i]:.4f}"))  # Car 3d AP_R11@  easy moderate hard
+
+            # if compute_aos:
+            #     result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
+            #                          f"{mAPaos[j, 1, i]:.2f}, "
+            #                          f"{mAPaos[j, 2, i]:.2f}"))  # Car aos AP_R11@  easy moderate hard
+
+            #--------------------- AP at 40 recall points --------------------
+            # result += print_str( (f"{cls} AP_R40@{bbox_min_overlap}, {bev_min_overlap}, {d3_min_overlap}:")) # Car AP_R40@   0.7(min overlap for 2dbbox) 0.7(for bev) 0.7(for 3d bbox)
+            # result += print_str((f"bbox AP:{mAPbbox_R40[j, 0, i]:.4f}, "
+            #                      f"{mAPbbox_R40[j, 1, i]:.4f}, "
+            #                      f"{mAPbbox_R40[j, 2, i]:.4f}")) # Car bbox AP_R40@  easy moderate hard
+            # result += print_str((f"bev  AP:{mAPbev_R40[j, 0, i]:.4f}, "
+            #                      f"{mAPbev_R40[j, 1, i]:.4f}, "
+            #                      f"{mAPbev_R40[j, 2, i]:.4f}")) # Car bev AP_R40@  easy moderate hard
+            # result += print_str((f"3d   AP:{mAP3d_R40[j, 0, i]:.4f}, "
+            #                      f"{mAP3d_R40[j, 1, i]:.4f}, "
+            #                      f"{mAP3d_R40[j, 2, i]:.4f}")) # Car 3d AP_R40@  easy moderate hard
+
+            result += print_str( (f"{cls}_3d_AP_R40_iou_{d3_min_overlap}: "
+            f"Easy: {mAP3d_R40[j, 0, i]:.4f}, " 
+            f"Moderate: {mAP3d_R40[j, 1, i]:.4f}, "
+            f"Hard: {mAP3d_R40[j, 2, i]:.4f}"))
+
 
             if compute_aos:
-                result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
-                                     f"{mAPaos[j, 1, i]:.2f}, "
-                                     f"{mAPaos[j, 2, i]:.2f}"))  # Car aos AP_R11@  easy moderate hard
+                result += print_str( (f"{cls}_aos_AP_R40_iou_{bbox_min_overlap}: "
+                    f"Easy: {mAPaos_R40[j, 0, i]:.4f}, " 
+                    f"Moderate: {mAPaos_R40[j, 1, i]:.4f}, "
+                    f"Hard: {mAPaos_R40[j, 2, i]:.4f}"))
+                # result += print_str((f"aos  AP:{mAPaos_R40[j, 0, i]:.2f}, "
+                #                      f"{mAPaos_R40[j, 1, i]:.2f}, "
+                #                      f"{mAPaos_R40[j, 2, i]:.2f}")) # Car aos AP_R40@  easy moderate hard
+                ret_dict[f'{cls}_aos_AP_R40_iou_{bbox_min_overlap}/easy'] = mAPaos_R40[j, 0, i] #[class, diff, min overlap]
+                ret_dict[f'{cls}_aos_AP_R40_iou_{bbox_min_overlap}/moderate'] = mAPaos_R40[j, 1, i]
+                ret_dict[f'{cls}_aos_AP_R40_iou_{bbox_min_overlap}/hard'] = mAPaos_R40[j, 2, i]
 
-            # result += print_str(
-            #     (f"{class_to_name[curcls]} "
-            #      "AP_R40@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
-
-            result += print_str( (f"{cls} AP_R40@{bbox_min_overlap}, {bev_min_overlap}, {d3_min_overlap}:")) # Car AP_R40@   0.7(min overlap for 2dbbox) 0.7(for bev) 0.7(for 3d bbox)
-            result += print_str((f"bbox AP:{mAPbbox_R40[j, 0, i]:.4f}, "
-                                 f"{mAPbbox_R40[j, 1, i]:.4f}, "
-                                 f"{mAPbbox_R40[j, 2, i]:.4f}")) # Car bbox AP_R40@  easy moderate hard
-            result += print_str((f"bev  AP:{mAPbev_R40[j, 0, i]:.4f}, "
-                                 f"{mAPbev_R40[j, 1, i]:.4f}, "
-                                 f"{mAPbev_R40[j, 2, i]:.4f}")) # Car bev AP_R40@  easy moderate hard
-            result += print_str((f"3d   AP:{mAP3d_R40[j, 0, i]:.4f}, "
-                                 f"{mAP3d_R40[j, 1, i]:.4f}, "
-                                 f"{mAP3d_R40[j, 2, i]:.4f}")) # Car 3d AP_R40@  easy moderate hard
-            if compute_aos:
-                result += print_str((f"aos  AP:{mAPaos_R40[j, 0, i]:.2f}, "
-                                     f"{mAPaos_R40[j, 1, i]:.2f}, "
-                                     f"{mAPaos_R40[j, 2, i]:.2f}")) # Car aos AP_R40@  easy moderate hard
-                # if i == 0: # for 0.7 min overlap
-                ret_dict[f'{cls}_aos/easy_R40_iou_{bbox_min_overlap}'] = mAPaos_R40[j, 0, 0] #[class, diff, min overlap]
-                ret_dict[f'{cls}_aos/moderate_R40_iou_{bbox_min_overlap}'] = mAPaos_R40[j, 1, 0]
-                ret_dict[f'{cls}_aos/hard_R40_iou_{bbox_min_overlap}'] = mAPaos_R40[j, 2, 0]
-
-            # if i == 0: # for 0.7 min overlap
-                # ret_dict[f'{cls}_3d/easy'] = mAP3d[j, 0, 0]
-                # ret_dict[f'{cls}_3d/moderate'] = mAP3d[j, 1, 0]
-                # ret_dict[f'{cls}_3d/hard'] = mAP3d[j, 2, 0]
-                # ret_dict[f'{cls}_bev/easy'] = mAPbev[j, 0, 0]
-                # ret_dict[f'{cls}_bev/moderate'] = mAPbev[j, 1, 0]
-                # ret_dict[f'{cls}_bev/hard'] = mAPbev[j, 2, 0]
-                # ret_dict[f'{cls}_image/easy'] = mAPbbox[j, 0, 0]
-                # ret_dict[f'{cls}_image/moderate'] = mAPbbox[j, 1, 0]
-                # ret_dict[f'{cls}_image/hard'] = mAPbbox[j, 2, 0]
-
-            ret_dict[f'{cls}_3d/easy_R40_iou_{d3_min_overlap}'] = mAP3d_R40[j, 0, 0]
-            ret_dict[f'{cls}_3d/moderate_R40_iou_{d3_min_overlap}'] = mAP3d_R40[j, 1, 0]
-            ret_dict[f'{cls}_3d/hard_R40_iou_{d3_min_overlap}'] = mAP3d_R40[j, 2, 0]
+            ret_dict[f'{cls}_3d_AP_R40_iou_{d3_min_overlap}/easy'] = mAP3d_R40[j, 0, i]
+            ret_dict[f'{cls}_3d_AP_R40_iou_{d3_min_overlap}/moderate'] = mAP3d_R40[j, 1, i]
+            ret_dict[f'{cls}_3dAP_R40_iou_{d3_min_overlap}/hard'] = mAP3d_R40[j, 2, i]
             
-            ret_dict[f'{cls}_bev/easy_R40_iou_{bev_min_overlap}'] = mAPbev_R40[j, 0, 0]
-            ret_dict[f'{cls}_bev/moderate_R40_iou_{bev_min_overlap}'] = mAPbev_R40[j, 1, 0]
-            ret_dict[f'{cls}_bev/hard_R40_iou_{bev_min_overlap}'] = mAPbev_R40[j, 2, 0]
+            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/easy'] = mAPbev_R40[j, 0, i]
+            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/moderate'] = mAPbev_R40[j, 1, i]
+            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/hard'] = mAPbev_R40[j, 2, i]
             
-            ret_dict[f'{cls}_image/easy_R40_iou_{bbox_min_overlap}'] = mAPbbox_R40[j, 0, 0]
-            ret_dict[f'{cls}_image/moderate_R40_iou_{bbox_min_overlap}'] = mAPbbox_R40[j, 1, 0]
-            ret_dict[f'{cls}_image/hard_R40_iou_{bbox_min_overlap}'] = mAPbbox_R40[j, 2, 0]
+            # ret_dict[f'{cls}_image_R40_iou_{bbox_min_overlap}/easy'] = mAPbbox_R40[j, 0, i]
+            # ret_dict[f'{cls}_image_R40_iou_{bbox_min_overlap}/moderate'] = mAPbbox_R40[j, 1, i]
+            # ret_dict[f'{cls}_image_R40_iou_{bbox_min_overlap}/hard'] = mAPbbox_R40[j, 2, i]
 
     return result, ret_dict
 
