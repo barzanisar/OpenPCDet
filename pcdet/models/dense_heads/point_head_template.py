@@ -161,10 +161,17 @@ class PointHeadTemplate(nn.Module):
         })
 
         # Get point classification losses for car, ped, cyc separately
+        point_loss_cls_car = (cls_loss_src[:,0] * one_hot_targets[:,0]).sum() # Sum loss= -log(predicted probability of car) on all gt car points
+        point_loss_cls_ped = (cls_loss_src[:,1] * one_hot_targets[:,1]).sum() 
+        point_loss_cls_cyc = (cls_loss_src[:,2] * one_hot_targets[:,2]).sum() 
+
         tb_dict.update({
-            'point_loss_cls_car': cls_loss_src[:,0].sum().item(),
-            'point_loss_cls_pedestrian': cls_loss_src[:,1].sum().item(),
-            'point_loss_cls_cyclist': cls_loss_src[:,2].sum().item()
+            'point_loss_cls_car': point_loss_cls_car.item(),
+            'point_loss_cls_ped': point_loss_cls_ped.item(),
+            'point_loss_cls_cyc': point_loss_cls_cyc.item(),
+            'point_loss_num_car_pts': one_hot_targets[:,0].sum().item(), #num gt car pts
+            'point_loss_num_ped_pts': one_hot_targets[:,1].sum().item(),
+            'point_loss_num_cyc_pts': one_hot_targets[:,2].sum().item(),
         })
         return point_loss_cls, tb_dict
 
@@ -212,13 +219,13 @@ class PointHeadTemplate(nn.Module):
         gt_car_pts_mask =  self.forward_ret_dict['point_cls_labels'] == 1
         gt_pedestrian_pts_mask = self.forward_ret_dict['point_cls_labels'] == 2
         gt_cyclist_pts_mask = self.forward_ret_dict['point_cls_labels'] == 3
-        point_loss_box_car = point_loss_box_src[:, gt_car_pts_mask, :].sum()
+        point_loss_box_car = point_loss_box_src[:, gt_car_pts_mask, :].sum() # choose all gt car points and sum box regression loss on them
         point_loss_box_pedestrian = point_loss_box_src[:, gt_pedestrian_pts_mask, :].sum()
         point_loss_box_cyclist = point_loss_box_src[:, gt_cyclist_pts_mask, :].sum()
         tb_dict.update({
             'point_loss_box_car': point_loss_box_car.item(),
-            'point_loss_box_pedestrian': point_loss_box_pedestrian.item(),
-            'point_loss_box_cyclist': point_loss_box_cyclist.item()
+            'point_loss_box_ped': point_loss_box_pedestrian.item(),
+            'point_loss_box_cyc': point_loss_box_cyclist.item()
         })
         return point_loss_box, tb_dict
 

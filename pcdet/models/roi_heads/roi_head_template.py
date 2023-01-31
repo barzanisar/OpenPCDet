@@ -68,7 +68,7 @@ class RoIHeadTemplate(nn.Module):
                 rois: (B=2, num_rois=512, 7+C) predicted 512 boxes/points
                 roi_scores: (B, num_rois) each of the 512 shortlisted point's predicted class score i.e. max score in batch_cls_preds
                 roi_labels: (B, num_rois) each of the 512 shortlisted points/boxes's predicted class label [1, .., numclasses,..] 1:car, 2:pedestrian, 3:cyclist
-
+                roi_cls_scores: (B, num_rois, 3) each of the 512 shortlisted point's predicted class scores (2, 512, 3)
         """
         if batch_dict.get('rois', None) is not None:
             return batch_dict
@@ -79,6 +79,7 @@ class RoIHeadTemplate(nn.Module):
         rois = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE, batch_box_preds.shape[-1])) #(2,512,7) each pc will have 512 rois i.e. predicted boxes
         roi_scores = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE)) #(2, 512)
         roi_labels = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE), dtype=torch.long) #(2, 512)
+        roi_cls_scores = batch_box_preds.new_zeros((batch_size, nms_config.NMS_POST_MAXSIZE, batch_cls_preds.shape[-1])) #(2, 512, 3) stores class scores from 1st stage
 
         for index in range(batch_size):
             if batch_dict.get('batch_index', None) is not None:
@@ -105,9 +106,11 @@ class RoIHeadTemplate(nn.Module):
             rois[index, :len(selected), :] = box_preds[selected] # (512, 7) box predictions for each shortlisted point
             roi_scores[index, :len(selected)] = cur_roi_scores[selected] # max class score for each shortlisted point
             roi_labels[index, :len(selected)] = cur_roi_labels[selected] # class label for each shortlisted point
+            roi_cls_scores[index, :len(selected), :]  = cls_preds[selected] # predicted class scores (1, 3) for each shortlisted point from 1st stage
 
         batch_dict['rois'] = rois
         batch_dict['roi_scores'] = roi_scores
+        batch_dict['roi_cls_scores'] = roi_cls_scores
         batch_dict['roi_labels'] = roi_labels + 1
         batch_dict['has_class_labels'] = True if batch_cls_preds.shape[-1] > 1 else False
         batch_dict.pop('batch_index', None)
@@ -120,7 +123,7 @@ class RoIHeadTemplate(nn.Module):
         # sample_rois_for_rcnn:
         # 1. Match 512 predicted boxes with the 41 gt boxes by computing iou3D matrix of size (512, 41) and taking max over each row
         # 2. Subsample/shortlist 512 predicted boxes to 128 boxes depending on their matched iou3D score
-        # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8)
+        # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8),roi_cls_scores: (2, 128, 3)
         
         # regression valid mask: 1 for predicted boxes that have high iou3D with their matched gt boxes 
         # i.e. reg_valid_mask = if predicted boxes with iou3d > 0.55, then 1 else 0
@@ -187,6 +190,12 @@ class RoIHeadTemplate(nn.Module):
         fg_mask = (reg_valid_mask > 0) # (256) true if predicted boxes with iou3d > 0.55
         fg_sum = fg_mask.long().sum().item()
 
+        gt_box_labels = forward_ret_dict['gt_of_rois'][..., -1]
+        fg_gt_box_labels = gt_box_labels.view(-1)[fg_mask] #(64x2)
+        fg_car_mask = fg_gt_box_labels == 1 #(64x2) # which of the fg rois are cars
+        fg_ped_mask = fg_gt_box_labels == 2 #(64x2)
+        fg_cyc_mask = fg_gt_box_labels == 3 #(64x2)
+
         tb_dict = {}
 
         if loss_cfgs.REG_LOSS == 'smooth-l1':
@@ -202,6 +211,19 @@ class RoIHeadTemplate(nn.Module):
                 rcnn_reg.view(rcnn_batch_size, -1).unsqueeze(dim=0),
                 reg_targets.unsqueeze(dim=0),
             )  # rcnn_loss_reg: (1, 256, 7), both inputs also have shape (1, 256, 7)
+
+            rcnn_loss_reg_car = rcnn_loss_reg.view(rcnn_batch_size, -1)[fg_mask][fg_car_mask].sum()
+            rcnn_loss_reg_ped = rcnn_loss_reg.view(rcnn_batch_size, -1)[fg_mask][fg_ped_mask].sum()
+            rcnn_loss_reg_cyc = rcnn_loss_reg.view(rcnn_batch_size, -1)[fg_mask][fg_cyc_mask].sum()
+
+            tb_dict['rcnn_loss_reg_car'] = rcnn_loss_reg_car.item()
+            tb_dict['rcnn_loss_reg_ped'] = rcnn_loss_reg_ped.item()
+            tb_dict['rcnn_loss_reg_cyc'] = rcnn_loss_reg_cyc.item()
+
+            tb_dict['rcnn_loss_num_car_boxes'] = fg_car_mask.sum().item()
+            tb_dict['rcnn_loss_num_ped_boxes'] = fg_ped_mask.sum().item()
+            tb_dict['rcnn_loss_num_cyc_boxes'] = fg_cyc_mask.sum().item()
+            
             rcnn_loss_reg = (rcnn_loss_reg.view(rcnn_batch_size, -1) * fg_mask.unsqueeze(dim=-1).float()).sum() / max(fg_sum, 1) # (1): choose rcnn_loss_reg for possible fg boxes, sum them and divide by num fg boxes
             rcnn_loss_reg = rcnn_loss_reg * loss_cfgs.LOSS_WEIGHTS['rcnn_reg_weight']
             tb_dict['rcnn_loss_reg'] = rcnn_loss_reg.item()
@@ -236,11 +258,20 @@ class RoIHeadTemplate(nn.Module):
                     rcnn_boxes3d[:, 0:7],
                     gt_of_rois_src[fg_mask][:, 0:7]
                 ) # (128)
+
+                loss_corner_car = loss_corner[fg_car_mask].sum().item() #if fg_car_mask.sum() > 0 else 0
+                loss_corner_ped = loss_corner[fg_ped_mask].sum().item() #if fg_ped_mask.sum() > 0 else 0
+                loss_corner_cyc = loss_corner[fg_cyc_mask].sum().item() #if fg_cyc_mask.sum() > 0 else 0
+
                 loss_corner = loss_corner.mean() #(1) averaged over all boxes
                 loss_corner = loss_corner * loss_cfgs.LOSS_WEIGHTS['rcnn_corner_weight']
 
                 rcnn_loss_reg += loss_corner
                 tb_dict['rcnn_loss_corner'] = loss_corner.item()
+
+                tb_dict['rcnn_loss_corner_car'] = loss_corner_car
+                tb_dict['rcnn_loss_corner_ped'] = loss_corner_ped
+                tb_dict['rcnn_loss_corner_cyc'] = loss_corner_cyc
         else:
             raise NotImplementedError
 
@@ -263,6 +294,14 @@ class RoIHeadTemplate(nn.Module):
             batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), rcnn_cls_labels.float(), reduction='none') #(256 rois)
             cls_valid_mask = (rcnn_cls_labels >= 0).float() #(256) 1 for possible foreground objects, 0 otherwise
             rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0) # (1): only choose losses for possible foreground boxes (ignore background boxes), sum these losses and divide by num possible fg boxes
+        
+            car_valid_mask = (rcnn_cls_labels >= 0) & (forward_ret_dict['gt_of_rois_src'].view(-1, 8)[:, -1] == 1) # predicted boxes which are fg (iou3d with matched (max overlapping) gt box > 0.6) and have been matched with car
+            ped_valid_mask = (rcnn_cls_labels >= 0) & (forward_ret_dict['gt_of_rois_src'].view(-1, 8)[:, -1] == 2) 
+            cyc_valid_mask = (rcnn_cls_labels >= 0) & (forward_ret_dict['gt_of_rois_src'].view(-1, 8)[:, -1] == 3) 
+            rcnn_loss_cls_car =  (batch_loss_cls * car_valid_mask.float()).sum() #/ torch.clamp(car_valid_mask.sum(), min=1.0)
+            rcnn_loss_cls_ped =  (batch_loss_cls * ped_valid_mask.float()).sum() #/ torch.clamp(ped_valid_mask.sum(), min=1.0)
+            rcnn_loss_cls_cyc =  (batch_loss_cls * cyc_valid_mask.float()).sum() #/ torch.clamp(cyc_valid_mask.sum(), min=1.0)
+
         elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
             batch_loss_cls = F.cross_entropy(rcnn_cls, rcnn_cls_labels, reduction='none', ignore_index=-1)
             cls_valid_mask = (rcnn_cls_labels >= 0).float()
@@ -271,7 +310,13 @@ class RoIHeadTemplate(nn.Module):
             raise NotImplementedError
 
         rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
-        tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
+        tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item(),
+                    'rcnn_loss_cls_car': rcnn_loss_cls_car.item(),
+                    'rcnn_loss_cls_ped': rcnn_loss_cls_ped.item(),
+                    'rcnn_loss_cls_cyc': rcnn_loss_cls_cyc.item(),
+                    'rcnn_loss_num_car_rois': car_valid_mask.sum().item(),
+                    'rcnn_loss_num_ped_rois': ped_valid_mask.sum().item(),
+                    'rcnn_loss_num_cyc_rois': cyc_valid_mask.sum().item()}
         return rcnn_loss_cls, tb_dict
 
     def get_loss(self, tb_dict=None):

@@ -17,12 +17,14 @@ class ProposalTargetLayer(nn.Module):
                 batch_size: 2
                 rois: (B, num_rois, 7 + C): (2, 512, 7) predicted boxes from 1st stage
                 roi_scores: (B, num_rois): (2, 512) predicted max class score from 1st stage (point head box)
+                roi_cls_scores: (B, num_rois): (2, 512, 3) predicted class scores from 1st stage (point head box)
                 roi_labels: (B, num_rois): (2, 512) predicted class label from 1st stage
                 gt_boxes: (B, N, 7 + C + 1): (2, 41, 8)
         Returns:
             target_dict:
                 rois: (B, M, 7 + C): batch_rois (2, 128, 7)
                 roi_scores: (B, M): batch_roi_scores (2, 128)
+                roi_cls_scores: (B, M): batch_roi_scores (2, 128, 3)
                 roi_labels: (B, M): batch_roi_labels (2, 128)
                 gt_of_rois: (B, M, 7 + C):  batch_gt_of_rois: (2, 128, 8)
                 gt_iou_of_rois: (B, M):  batch_roi_ious: (2, 128)
@@ -38,7 +40,7 @@ class ProposalTargetLayer(nn.Module):
         # 2. Subsample/shortlist 512 predicted boxes to 128 boxes depending on their matched iou3D score
         # batch_rois: (2, 128, 7), batch_roi_labels: (2, 128), batch_roi_scores: (2, 128), batch_roi_ious: (2, 128), batch_gt_of_rois: (2, 128, 8)
 
-        batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels = self.sample_rois_for_rcnn(
+        batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels, batch_roi_cls_scores = self.sample_rois_for_rcnn(
             batch_dict=batch_dict
         )
         # regression valid mask: #(2, 128) 1 for predicted boxes that have high iou3D with their matched gt boxes 
@@ -70,7 +72,7 @@ class ProposalTargetLayer(nn.Module):
             raise NotImplementedError
 
         targets_dict = {'rois': batch_rois, 'gt_of_rois': batch_gt_of_rois, 'gt_iou_of_rois': batch_roi_ious,
-                        'roi_scores': batch_roi_scores, 'roi_labels': batch_roi_labels,
+                        'roi_scores': batch_roi_scores, 'roi_labels': batch_roi_labels, 'roi_cls_scores': batch_roi_cls_scores,
                         'reg_valid_mask': reg_valid_mask,
                         'rcnn_cls_labels': batch_cls_labels}
 
@@ -105,6 +107,7 @@ class ProposalTargetLayer(nn.Module):
         roi_scores = batch_dict['roi_scores'] # (2, 512)
         roi_labels = batch_dict['roi_labels'] # (2, 512)
         gt_boxes = batch_dict['gt_boxes'] # (2, num boxes, 8)
+        roi_cls_scores =  batch_dict['roi_cls_scores'] # (2, 512, 3)
 
         code_size = rois.shape[-1] # 7
         batch_rois = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, code_size) # (2, 128, 7)
@@ -112,12 +115,13 @@ class ProposalTargetLayer(nn.Module):
         batch_roi_ious = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE) # (2, 128)
         batch_roi_scores = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE) # (2, 128)
         batch_roi_labels = rois.new_zeros((batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE), dtype=torch.long) # (2, 128)
+        batch_roi_cls_scores = rois.new_zeros(batch_size, self.roi_sampler_cfg.ROI_PER_IMAGE, 3) #(2, 128, 3)
 
         for index in range(batch_size):
             # get this pc predicted boxes=rois, gt boxes, predicted roi labels, predicted roi scores
             # cur_roi: (512, 7), cur_roi_labels: (512), cur_roi_scores: (512)
-            cur_roi, cur_gt, cur_roi_labels, cur_roi_scores = \
-                rois[index], gt_boxes[index], roi_labels[index], roi_scores[index]
+            cur_roi, cur_gt, cur_roi_labels, cur_roi_scores, cur_roi_cls_scores = \
+                rois[index], gt_boxes[index], roi_labels[index], roi_scores[index], roi_cls_scores[index]
             k = cur_gt.__len__() - 1
             # move k to the valid gt box which is not all zeros
             while k >= 0 and cur_gt[k].sum() == 0:
@@ -151,9 +155,10 @@ class ProposalTargetLayer(nn.Module):
             batch_roi_labels[index] = cur_roi_labels[sampled_inds]
             batch_roi_ious[index] = max_overlaps[sampled_inds]
             batch_roi_scores[index] = cur_roi_scores[sampled_inds]
+            batch_roi_cls_scores[index] = cur_roi_cls_scores[sampled_inds]
             batch_gt_of_rois[index] = cur_gt[gt_assignment[sampled_inds]]
 
-        return batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels
+        return batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels, batch_roi_cls_scores
 
     def subsample_rois(self, max_overlaps):
         # sample fg, easy_bg, hard_bg

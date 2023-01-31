@@ -213,7 +213,9 @@ class Detector3DTemplate(nn.Module):
         post_process_cfg = self.model_cfg.POST_PROCESSING
         batch_size = batch_dict['batch_size']
         recall_dict = {}
+        loss_dict = {'before_nms': {}, 'after_nms':{}}
         pred_dicts = []
+        conf_matrix = {}
         for index in range(batch_size):
             if batch_dict.get('batch_index', None) is not None:
                 assert batch_dict['batch_box_preds'].shape.__len__() == 2
@@ -287,11 +289,49 @@ class Detector3DTemplate(nn.Module):
                 final_scores = selected_scores # example shape: (4), RCNN predicted box objectness prob for nms shortlisted boxes
                 final_labels = label_preds[selected]  # example shape: (4), predicted 1st stage roi_labels for nms shortlisted boxes [1: car, 2: ped, 3: cyc]
                 final_boxes = box_preds[selected]  # example shape: (4), RCNN predicted boxes for nms shortlisted boxes
+                final_cls_scores = batch_dict['roi_cls_scores'][index][selected]  # example shape: (4, 3), predicted 1st stage roi_cls_scores for nms shortlisted boxes
+            
+            # Compute recall on rcnn pred boxes and 1st stage rois before NMS!
             recall_dict = self.generate_recall_record(
                 box_preds=final_boxes if 'rois' not in batch_dict else src_box_preds,
                 recall_dict=recall_dict, batch_index=index, data_dict=batch_dict,
                 thresh_list=post_process_cfg.RECALL_THRESH_LIST
             ) # 'gt': total num of gt boxes
+
+            #Before NMS regression and classification loss
+            loss_dict['before_nms'] = self.reg_cls_box_loss(
+                gt_boxes=batch_dict['gt_boxes'][index], 
+                pred_boxes=src_box_preds, 
+                pred_box_object_score= src_cls_preds, 
+                pred_box_cls_score=batch_dict['roi_cls_scores'][index], 
+                loss_dict=loss_dict['before_nms'])
+
+
+            #After NMS conf matrix for different objectness score thresholds
+            conf_matrix = self.compute_conf_matrix(
+                gt_boxes=batch_dict['gt_boxes'][index], 
+                pred_boxes=final_boxes, 
+                pred_box_object_prob= final_scores, 
+                pred_box_cls_labels=final_labels, 
+                conf_matrix=conf_matrix)
+
+            # #Before NMS conf matrix for different objectness score thresholds
+            # conf_matrix = self.compute_conf_matrix(
+            #     gt_boxes=batch_dict['gt_boxes'][index], 
+            #     pred_boxes=src_box_preds, 
+            #     pred_box_object_score= src_cls_preds, 
+            #     pred_box_cls_labels=batch_dict['roi_cls_scores'][index].max(dim=1)[1] + 1, #1:car, 2:ped, 3:cyc
+            #     conf_matrix=conf_matrix)
+
+            
+
+            # After NMS regression and classification loss
+            loss_dict['after_nms'] = self.reg_cls_box_loss(
+                gt_boxes=batch_dict['gt_boxes'][index], 
+                pred_boxes=final_boxes, 
+                pred_box_object_score=final_scores, 
+                pred_box_cls_score=final_cls_scores, 
+                loss_dict=loss_dict['after_nms'])
 
             record_dict = {
                 'pred_boxes': final_boxes,
@@ -300,8 +340,176 @@ class Detector3DTemplate(nn.Module):
             }
             pred_dicts.append(record_dict)
 
-        return pred_dicts, recall_dict
+        return pred_dicts, recall_dict, loss_dict, conf_matrix
 
+    def compute_conf_matrix(self, gt_boxes, pred_boxes, pred_box_object_prob, pred_box_cls_labels, conf_matrix):
+        classes = ['car', 'ped', 'cyc']
+        score_threshs = [0.1, 0.5, 0.8]
+
+        if conf_matrix.__len__() == 0:
+            for cls in classes:
+                for score in score_threshs:
+                    conf_matrix[f'{cls}_{score}'] = {'tp': 0, 'fp_due_to_wrong_cls': 0, 'fp_due_to_no_overlap_but_high_confidence': 0,
+                    'fn_due_to_low_score_or_wrong_cls': 0, 
+                    'fn_due_to_no_overlap': 0, 
+                    'fn_due_to_low_score_and_wrong_cls': 0,
+                    'fn_due_to_low_score': 0,
+                    'fn_due_to_wrong_cls': 0}
+        
+        # Select non zero gt boxes
+        cur_gt = gt_boxes
+        k = cur_gt.__len__() - 1
+        while k >= 0 and cur_gt[k].sum() == 0:
+            k -= 1
+        cur_gt = cur_gt[:k + 1]
+
+        iou_thresh = 0.25
+        if cur_gt.shape[0] > 0:
+            if pred_boxes.shape[0] > 0:
+                iou3d_rcnn = iou3d_nms_utils.boxes_iou3d_gpu(pred_boxes[:, 0:7], cur_gt[:, 0:7])
+                for score_thresh in score_threshs:
+                    gt_box_wise_matched_scores, gt_box_wise_idx_of_pred_box_max = iou3d_rcnn.max(dim=0) #(num gt boxes)
+                    gt_matched_mask = (gt_box_wise_matched_scores > iou_thresh)  #(num gt boxes), true if matched i.e. iou > 0.1
+                    pred_box_matched_idx = gt_box_wise_idx_of_pred_box_max[gt_matched_mask]  #(num matched gt boxes)
+                    
+                    gt_matched_cls_label = cur_gt[gt_matched_mask, -1]  #(num matched gt boxes)
+                    pred_box_matched_cls_label = pred_box_cls_labels[pred_box_matched_idx] #(num matched gt boxes) 1:car, 2:ped: 3:cyc
+                    pred_box_matched_probs = pred_box_object_prob[pred_box_matched_idx] #(num matched gt boxes)
+
+                    # TP: if objectness scores > score_thresh and labels match
+                    tp_mask = (pred_box_matched_probs >= score_thresh) & (gt_matched_cls_label == pred_box_matched_cls_label)#(num matched gt boxes)
+                    tp_labels = gt_matched_cls_label[tp_mask] #(num tps)
+                    
+                    # FN in matched gt boxes: 
+                    fn_mask_due_to_low_score_or_wrong_cls = (pred_box_matched_probs < score_thresh) | (gt_matched_cls_label != pred_box_matched_cls_label)
+                    fn_labels_due_to_low_score_or_wrong_cls = gt_matched_cls_label[fn_mask_due_to_low_score_or_wrong_cls]
+
+                    fn_mask_due_to_low_score_and_wrong_cls = (pred_box_matched_probs < score_thresh) & (gt_matched_cls_label != pred_box_matched_cls_label)
+                    fn_labels_due_to_low_score_and_wrong_cls = gt_matched_cls_label[fn_mask_due_to_low_score_and_wrong_cls]
+
+                    fn_mask_due_to_low_score = pred_box_matched_probs < score_thresh
+                    fn_labels_due_to_low_score = gt_matched_cls_label[fn_mask_due_to_low_score]
+
+                    wrong_cls_matching_mask = gt_matched_cls_label != pred_box_matched_cls_label
+                    fn_labels_due_to_wrong_cls = gt_matched_cls_label[wrong_cls_matching_mask]
+                    fp_labels_due_to_wrong_cls = pred_box_matched_cls_label[wrong_cls_matching_mask] # predicted labels for wrong class matching
+                    fp_mask_due_to_wrong_cls_but_high_score = pred_box_matched_probs[wrong_cls_matching_mask] > score_thresh  
+                    # FN in unmatched gt boxes:
+                    gt_unmatched_cls_label = cur_gt[gt_matched_mask==0, -1]  #(num unmatched gt boxes)
+
+                    # FP in unmatched pred boxes
+                    pred_box_unmatched_mask = gt_matched_mask.new_ones((pred_boxes.shape[0]))
+                    pred_box_unmatched_mask[pred_box_matched_idx] = 0
+                    pred_box_unmatched_pred_labels =  pred_box_cls_labels[pred_box_unmatched_mask]
+                    fp_unmatched_but_high_conf_mask = pred_box_object_prob[pred_box_unmatched_mask] > score_thresh
+
+                    for i, cls in enumerate(classes):
+                        class_id = i+1
+                        # Add car, ped, cyc tps: num gt boxes matched bcz max overlapping pred boxes has both score > thresh and correct class
+                        conf_matrix[f'{cls}_{score_thresh}']['tp'] += (tp_labels == class_id).sum().item() 
+                        
+                        # Add FNs due to either low score or wrong cls: num gt boxes unmatched bcz max overlapping pred boxes either has low score or wrong cls
+                        conf_matrix[f'{cls}_{score_thresh}']['fn_due_to_low_score_or_wrong_cls'] += (fn_labels_due_to_low_score_or_wrong_cls == class_id).sum().item() 
+                        conf_matrix[f'{cls}_{score_thresh}']['fn_due_to_low_score_and_wrong_cls'] += (fn_labels_due_to_low_score_and_wrong_cls == class_id).sum().item() 
+                        conf_matrix[f'{cls}_{score_thresh}']['fn_due_to_low_score'] += (fn_labels_due_to_low_score == class_id).sum().item() 
+                        conf_matrix[f'{cls}_{score_thresh}']['fn_due_to_wrong_cls'] += (fn_labels_due_to_wrong_cls == class_id).sum().item() 
+
+                        # Add FPs: num pred boxes overlapping/matching with gt box of wrong class
+                        conf_matrix[f'{cls}_{score_thresh}']['fp_due_to_wrong_cls'] += ((fp_labels_due_to_wrong_cls == class_id) & (fp_mask_due_to_wrong_cls_but_high_score)).sum().item() 
+
+                        # Add FNs due to no overlap: num gt boxes unmatched due to no overlap
+                        conf_matrix[f'{cls}_{score_thresh}']['fn_due_to_no_overlap'] += (gt_unmatched_cls_label == class_id).sum().item()
+                        
+                        # Add FPs: num pred boxes not overlapping with any gt box but with objectness score > thresh
+                        conf_matrix[f'{cls}_{score_thresh}']['fp_due_to_no_overlap_but_high_confidence'] += ((pred_box_unmatched_pred_labels == class_id) & (fp_unmatched_but_high_conf_mask)).sum().item()
+
+                        
+        return conf_matrix
+
+    def reg_cls_box_loss(self, gt_boxes, pred_boxes, pred_box_object_score, pred_box_cls_score, loss_dict):
+        classes = ['car', 'ped', 'cyc']
+        if loss_dict.__len__() == 0:
+            for cls in classes:
+                loss_dict[f'gt_wise_cls_loss_{cls}'] = 0
+                loss_dict[f'gt_wise_objectness_loss_{cls}'] = 0
+                loss_dict[f'gt_wise_box_position_loss_{cls}'] = 0
+                loss_dict[f'gt_wise_box_dim_loss_{cls}'] = 0
+
+                # loss_dict[f'pred_wise_cls_loss_{cls}'] = 0
+                # loss_dict[f'pred_wise_objectness_loss_{cls}'] = 0
+                # loss_dict[f'pred_wise_box_position_loss_{cls}'] = 0
+                # loss_dict[f'pred_wise_box_dim_loss_{cls}'] = 0
+
+        # Select non zero gt boxes
+        cur_gt = gt_boxes
+        k = cur_gt.__len__() - 1
+        while k >= 0 and cur_gt[k].sum() == 0:
+            k -= 1
+        cur_gt = cur_gt[:k + 1]
+
+        iou_thresh = 0.25
+        if cur_gt.shape[0] > 0:
+            if pred_boxes.shape[0] > 0:
+                iou3d_rcnn = iou3d_nms_utils.boxes_iou3d_gpu(pred_boxes[:, 0:7], cur_gt[:, 0:7])
+                for i, cls in enumerate(classes):
+                    class_id = i+1
+                    gt_box_wise_matched_scores, gt_box_wise_idx_of_pred_box_matched = iou3d_rcnn.max(dim=0) #(num gt boxes)
+                    gt_cls_matched_mask = ( (gt_box_wise_matched_scores > iou_thresh) & (cur_gt[:,-1] == class_id) )
+                    matched_gt_cls_boxes = cur_gt[gt_cls_matched_mask]
+                    gt_cls_boxes_matched_num = matched_gt_cls_boxes.shape[0]
+
+                    if gt_cls_boxes_matched_num > 0:
+                        idx_of_pred_box_matched = gt_box_wise_idx_of_pred_box_matched[gt_cls_matched_mask]
+                        matched_pred_cls_boxes =  pred_boxes[idx_of_pred_box_matched]
+                        pred_box_object_score_matched = pred_box_object_score[idx_of_pred_box_matched]
+                        pred_box_cls_score_matched = pred_box_cls_score[idx_of_pred_box_matched]
+
+
+                        mse_pos = torch.linalg.norm(matched_gt_cls_boxes[:, 0:3] - matched_pred_cls_boxes[:,0:3], dim = 1).sum()/gt_cls_boxes_matched_num
+                        mse_lens = torch.linalg.norm(matched_gt_cls_boxes[:, 3:6] - matched_pred_cls_boxes[:,3:6], dim = 1).sum()/gt_cls_boxes_matched_num
+
+                        exp_scores = torch.exp(pred_box_cls_score_matched)
+                        exp_scores_sum = exp_scores.sum(dim=1)
+                        softmax_prob = exp_scores / exp_scores_sum.view(-1,1)
+                        
+                        loss_cls_objectness = -torch.log(torch.sigmoid(pred_box_object_score_matched)).sum()/gt_cls_boxes_matched_num
+                        loss_cls_classif = -torch.log(softmax_prob[:,i]).sum()/gt_cls_boxes_matched_num
+
+                        loss_dict[f'gt_wise_cls_loss_{cls}'] += loss_cls_classif.item()
+                        loss_dict[f'gt_wise_objectness_loss_{cls}'] += loss_cls_objectness.item()
+                        loss_dict[f'gt_wise_box_position_loss_{cls}'] += mse_pos.item()
+                        loss_dict[f'gt_wise_box_dim_loss_{cls}'] += mse_lens.item()
+                
+                # for i, cls in enumerate(classes):
+                #     class_id = i+1
+                #     pred_box_wise_matched_scores, pred_box_wise_idx_of_gt_box_matched = iou3d_rcnn.max(dim=1)
+                #     pred_box_cls_matched_mask = ( (pred_box_wise_matched_scores > iou_thresh) & (cur_gt[pred_box_wise_idx_of_gt_box_matched,-1] == class_id) )
+                #     matched_pred_cls_boxes =  pred_boxes[pred_box_cls_matched_mask]
+                #     pred_cls_boxes_matched_num = matched_pred_cls_boxes.shape[0]
+
+                #     if pred_cls_boxes_matched_num > 0:
+                #         idx_of_gt_box_matched = pred_box_wise_idx_of_gt_box_matched[pred_box_cls_matched_mask]
+                #         matched_gt_cls_boxes = cur_gt[idx_of_gt_box_matched]
+                #         pred_box_object_score_matched = pred_box_object_score[pred_box_cls_matched_mask]
+                #         pred_box_cls_score_matched = pred_box_cls_score[pred_box_cls_matched_mask]
+
+
+                #         mse_pos = torch.linalg.norm(matched_gt_cls_boxes[:, 0:3] - matched_pred_cls_boxes[:,0:3], dim = 1).sum()/pred_cls_boxes_matched_num
+                #         mse_lens = torch.linalg.norm(matched_gt_cls_boxes[:, 3:6] - matched_pred_cls_boxes[:,3:6], dim = 1).sum()/pred_cls_boxes_matched_num
+
+                #         exp_scores = torch.exp(pred_box_cls_score_matched)
+                #         exp_scores_sum = exp_scores.sum(dim=1)
+                #         softmax_prob = exp_scores / exp_scores_sum.view(-1,1)
+
+                #         loss_cls_objectness = -torch.log(torch.sigmoid(pred_box_object_score_matched)).sum()/pred_cls_boxes_matched_num
+                #         loss_cls_classif = -torch.log(softmax_prob[:,i]).sum()/pred_cls_boxes_matched_num
+
+                #         loss_dict[f'pred_wise_cls_loss_{cls}'] += loss_cls_classif.item()
+                #         loss_dict[f'pred_wise_objectness_loss_{cls}'] += loss_cls_objectness.item()
+                #         loss_dict[f'pred_wise_box_position_loss_{cls}'] += mse_pos.item()
+                #         loss_dict[f'pred_wise_box_dim_loss_{cls}'] += mse_lens.item()
+        
+        return loss_dict
     @staticmethod
     def generate_recall_record(box_preds, recall_dict, batch_index, data_dict=None, thresh_list=None):
         # box_preds: #(100, 7) from rcnn output: final box predictions
@@ -312,10 +520,21 @@ class Detector3DTemplate(nn.Module):
         gt_boxes = data_dict['gt_boxes'][batch_index] #(M, 8)
 
         if recall_dict.__len__() == 0:
-            recall_dict = {'gt': 0}
+            recall_dict = {'gt': 0, 
+            'num_car_gt': 0,
+            'num_ped_gt': 0,
+            'num_cyc_gt': 0 }
             for cur_thresh in thresh_list:
                 recall_dict['roi_%s' % (str(cur_thresh))] = 0
                 recall_dict['rcnn_%s' % (str(cur_thresh))] = 0
+
+                # Class wise recall
+                recall_dict[f'roi_{cur_thresh}_car'] = 0
+                recall_dict[f'roi_{cur_thresh}_ped'] = 0
+                recall_dict[f'roi_{cur_thresh}_cyc'] = 0
+                recall_dict[f'rcnn_{cur_thresh}_car'] = 0
+                recall_dict[f'rcnn_{cur_thresh}_ped'] = 0
+                recall_dict[f'rcnn_{cur_thresh}_cyc'] = 0
 
         # Select non zero gt boxes
         cur_gt = gt_boxes
@@ -339,11 +558,33 @@ class Detector3DTemplate(nn.Module):
                 else:
                     rcnn_recalled = (iou3d_rcnn.max(dim=0)[0] > cur_thresh).sum().item() #number of gt boxes that matched/overlapped with rcnn predicted boxes with iou3D > 0.3, 0.5, 0.7
                     recall_dict['rcnn_%s' % str(cur_thresh)] += rcnn_recalled
+                    
+                    # Class wise rcnn recall
+                    rcnn_recalled_car = ( (iou3d_rcnn.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 1) ).sum().item() #number of gt boxes that matched and are also car
+                    rcnn_recalled_ped = ( (iou3d_rcnn.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 2) ).sum().item() #number of gt boxes that matched and are also car
+                    rcnn_recalled_cyc = ( (iou3d_rcnn.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 3) ).sum().item() #number of gt boxes that matched and are also car
+                    recall_dict[f'rcnn_{cur_thresh}_car'] += rcnn_recalled_car
+                    recall_dict[f'rcnn_{cur_thresh}_ped'] += rcnn_recalled_ped
+                    recall_dict[f'rcnn_{cur_thresh}_cyc'] += rcnn_recalled_cyc
+
                 if rois is not None:
                     roi_recalled = (iou3d_roi.max(dim=0)[0] > cur_thresh).sum().item() #number of gt boxes that matched/overlapped with 1st stage roi predicted boxes with iou3D > 0.3, 0.5, 0.7
                     recall_dict['roi_%s' % str(cur_thresh)] += roi_recalled 
 
+                    # Class wise roi recall
+                    roi_recalled_car = ( (iou3d_roi.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 1) ).sum().item()
+                    roi_recalled_ped = ( (iou3d_roi.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 2) ).sum().item()
+                    roi_recalled_cyc = ( (iou3d_roi.max(dim=0)[0] > cur_thresh) & (cur_gt[:,-1] == 3) ).sum().item()
+                    recall_dict[f'roi_{cur_thresh}_car'] += roi_recalled_car
+                    recall_dict[f'roi_{cur_thresh}_ped'] += roi_recalled_ped
+                    recall_dict[f'roi_{cur_thresh}_cyc'] += roi_recalled_cyc
+
+
+
             recall_dict['gt'] += cur_gt.shape[0] # total num of gt boxes in this pc
+            recall_dict['num_car_gt'] += (cur_gt[:,-1] == 1).sum().item() # total num of gt boxes in this pc
+            recall_dict['num_ped_gt'] += (cur_gt[:,-1] == 2).sum().item() # total num of gt boxes in this pc
+            recall_dict['num_cyc_gt'] += (cur_gt[:,-1] == 3).sum().item() # total num of gt boxes in this pc
         else:
             gt_iou = box_preds.new_zeros(box_preds.shape[0])
         return recall_dict

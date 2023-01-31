@@ -167,7 +167,7 @@ class PointRCNNHead(RoIHeadTemplate):
                     # Randomly sample 64 boxes from these possible fg boxes
                     # Randomly sample 0.8 * 64 boxes from hard_bg boxes
                     # Randomly sample 0.2 * 64 boxes from easy_bg
-            # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8)
+            # rois: (2, 128, 7), roi_labels: (2, 128), roi_scores: (2, 128), gt_iou_of_rois: (2, 128), gt_of_rois: (2, 128, 8), roi_cls_scores:(2, 128, 3)
             
             # regression valid mask: (2, 128) 
             # 1 for predicted boxes (rois) that have high iou3D with their matched gt boxes 
@@ -184,6 +184,7 @@ class PointRCNNHead(RoIHeadTemplate):
             targets_dict = self.assign_targets(batch_dict)
             batch_dict['rois'] = targets_dict['rois']
             batch_dict['roi_labels'] = targets_dict['roi_labels']
+            batch_dict['roi_cls_scores'] = targets_dict['roi_cls_scores']
 
         # pooled_features: (2x128=num rois, 512 points per roi, 133 feature dim=[3 = (points (in roi) xyz - roi_center) in roi frame, 1 point cls score, 1 depth, 128 features from pointnet++])
         # For empty rois, pooled featrues are filled with zeros
@@ -214,6 +215,18 @@ class PointRCNNHead(RoIHeadTemplate):
         shared_features = l_features[-1]  # (total_rois=256, num_features=512, 1 point) i.e. we get one 512 dim feature for each of the 256 rois via Set Abstraction
         rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 1) : objectness scores for 256 rois 
         rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # input: (B=256, C=512, H and W =1) > conv1D(512, 256)+bn+relu > conv1D(256, 256)+bn+relu > Conv1d(256, 1) > output: (B=256, 7) : box predicted offsets (from predicted rois to gt boxes?) for 256 rois
+
+        # if True:
+        #     batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
+        #             batch_size=batch_dict['batch_size'], rois=batch_dict['rois'], cls_preds=rcnn_cls, box_preds=rcnn_reg
+        #         )
+        #     batch_dict['batch_cls_preds'] = batch_cls_preds
+        #     batch_dict['batch_box_preds'] = batch_box_preds
+        #     batch_dict['cls_preds_normalized'] = False
+        #     targets_dict['rcnn_cls'] = rcnn_cls
+        #     targets_dict['rcnn_reg'] = rcnn_reg
+
+        #     self.forward_ret_dict = targets_dict
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
