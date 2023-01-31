@@ -58,6 +58,7 @@ def parse_config():
     cfg.EXP_GROUP_PATH = args.cfg_file.split('/')[-2] #dense_models #'/'.join(args.cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
 
     np.random.seed(1024)
+    common_utils.set_random_seed(1024)
 
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs, cfg)
@@ -199,7 +200,7 @@ def main():
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
         batch_size=args.batch_size,
-        dist=dist_test, workers=args.workers, logger=logger, training=False
+        dist=dist_test, workers=args.workers, logger=logger, training=False, seed=1024
     )
 
     if args.pickle_file:
