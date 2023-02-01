@@ -29,10 +29,10 @@ class WaymoDataset(DatasetTemplate):
         self.data_path = self.root_path / self.dataset_cfg.PROCESSED_DATA_TAG
         self.split = self.dataset_cfg.DATA_SPLIT[self.mode]
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
-        self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()]
+        self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()] #read split.txt
 
         self.infos = []
-        self.include_waymo_data(self.mode)
+        self.include_waymo_data(self.mode) # read tfrecords in sample_seq_list and then find its pkl in waymo_processed_data_10 and include the pkl infos in waymo infos
 
         self.use_shared_memory = self.dataset_cfg.get('USE_SHARED_MEMORY', False) and self.training
         if self.use_shared_memory:
@@ -63,14 +63,14 @@ class WaymoDataset(DatasetTemplate):
                 num_skipped_infos += 1
                 continue
             with open(info_path, 'rb') as f:
-                infos = pickle.load(f)
-                waymo_infos.extend(infos)
+                infos = pickle.load(f) # loads 20 infos for one seq pkl i.e. 20 frames if seq pkl was formed by sampling every 10th frame
+                waymo_infos.extend(infos) # each info is one frame
 
         self.infos.extend(waymo_infos[:])
         self.logger.info('Total skipped info %s' % num_skipped_infos)
-        self.logger.info('Total samples for Waymo dataset: %d' % (len(waymo_infos)))
+        self.logger.info('Total samples for Waymo dataset: %d' % (len(waymo_infos))) # total frames
 
-        if self.dataset_cfg.SAMPLED_INTERVAL[mode] > 1:
+        if self.dataset_cfg.SAMPLED_INTERVAL[mode] > 1: # not needed since our pkl file was already sampled at 10
             sampled_waymo_infos = []
             for k in range(0, len(self.infos), self.dataset_cfg.SAMPLED_INTERVAL[mode]):
                 sampled_waymo_infos.append(self.infos[k])
@@ -374,7 +374,7 @@ class WaymoDataset(DatasetTemplate):
 
         return ap_result_str, ap_dict
 
-    def create_groundtruth_database(self, info_path, save_path, used_classes=None, split='train', sampled_interval=10,
+    def create_groundtruth_database(self, info_path, save_path, used_classes=None, split='train', sampled_interval=1,
                                     processed_data_tag=None):
         database_save_path = save_path / ('%s_gt_database_%s_sampled_%d' % (processed_data_tag, split, sampled_interval))
         db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
@@ -400,17 +400,17 @@ class WaymoDataset(DatasetTemplate):
             difficulty = annos['difficulty']
             gt_boxes = annos['gt_boxes_lidar']
 
-            if k % 4 != 0 and len(names) > 0:
-                mask = (names == 'Vehicle')
-                names = names[~mask]
-                difficulty = difficulty[~mask]
-                gt_boxes = gt_boxes[~mask]
+            # if k % 4 != 0 and len(names) > 0:
+            #     mask = (names == 'Vehicle')
+            #     names = names[~mask]
+            #     difficulty = difficulty[~mask]
+            #     gt_boxes = gt_boxes[~mask]
 
-            if k % 2 != 0 and len(names) > 0:
-                mask = (names == 'Pedestrian')
-                names = names[~mask]
-                difficulty = difficulty[~mask]
-                gt_boxes = gt_boxes[~mask]
+            # if k % 2 != 0 and len(names) > 0:
+            #     mask = (names == 'Pedestrian')
+            #     names = names[~mask]
+            #     difficulty = difficulty[~mask]
+            #     gt_boxes = gt_boxes[~mask]
 
             num_obj = gt_boxes.shape[0]
             if num_obj == 0:
@@ -475,7 +475,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
+        sampled_interval=10 # 10 to make waymo_processed_data_10 and 1 to make gtdb
     )
     with open(train_filename, 'wb') as f:
         pickle.dump(waymo_infos_train, f)
@@ -485,7 +485,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_val = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
+        sampled_interval=10 # 10 to make waymo_processed_data_10
     )
     with open(val_filename, 'wb') as f:
         pickle.dump(waymo_infos_val, f)
@@ -633,7 +633,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_v0_5_0', help='')
+    parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_10', help='')
     args = parser.parse_args()
 
     if args.func == 'create_waymo_infos':

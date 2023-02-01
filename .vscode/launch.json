@@ -20,6 +20,27 @@
             "args": ["--func", "create_dense_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/dense_dataset.yaml"]
         },
         {
+            "name": "Python: create waymo infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.waymo.waymo_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": ["--func", "create_waymo_infos", "--cfg_file" ,"tools/cfgs/dataset_configs/waymo_dataset.yaml"]
+        },
+        {
+            "name": "train_waymo",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/pv_rcnn.yaml"
+            ]
+        },
+        {
             "name": "test-upsample",
             "type": "python",
             "request": "launch",
