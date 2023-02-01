@@ -25,7 +25,7 @@ EVAL_TAG='default' # Test only
 CKPT=None
 PRETRAINED_MODEL=None
 TCP_PORT=18888
-SYNC_BN=true
+SYNC_BN=false
 FIX_RANDOM_SEED=true
 #Save last 20 ckpts with interval 1
 CKPT_SAVE_INTERVAL=1
@@ -131,8 +131,6 @@ while :; do
                 INFOS_DIR=$INFOS_DIR_WAYMO
                 WORKERS=$(($SLURM_CPUS_PER_TASK / 2))
                 echo "Using default Waymo dataset dirs"
-                echo "cfg=$CFG_FILE"
-                echo "DATA_DIR=$DATA_DIR, DATA_DIR_WAYMO=$DATA_DIR_WAYMO"
             elif [[ "$CFG_FILE" == *"dense_models"* ]]; then
                 DATASET=dense
                 DATA_DIR=$DATA_DIR_DENSE
