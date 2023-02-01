@@ -24,8 +24,9 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         data_time = common_utils.AverageMeter()
         batch_time = common_utils.AverageMeter()
         forward_time = common_utils.AverageMeter()
+        print('Starting to train one epoch!!!!!!1')
 
-   
+
     for cur_it in range(total_it_each_epoch):
         end = time.time()
         try:
@@ -193,7 +194,11 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             train_loader.dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
             total_it_each_epoch = len(train_loader) // max(total_epochs, 1)
 
+        if rank == 0:
+            print('before iter')
         dataloader_iter = iter(train_loader)
+        if rank == 0:
+            print('After iter')
 
         if rank == 0:
             epoch_time = common_utils.AverageMeter()

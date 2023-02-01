@@ -157,9 +157,9 @@ def main():
     if args.fix_random_seed:
         common_utils.set_random_seed(666 + cfg.LOCAL_RANK)
 
-    output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG
+    output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG # exp_group = 'dense_models', Tag = 'pvrcnn_train_clear_FOV3000_60' (.yaml)
     if args.extra_tag != 'default':
-        output_dir = output_dir / args.extra_tag
+        output_dir = output_dir / args.extra_tag # 'pretrained chkpt or backbone ssl model'
     ckpt_dir = output_dir / 'ckpt'
     output_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -202,18 +202,18 @@ def main():
         original_dataset = build_dataset(dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
         logger=logger,
-        training=True)
+        training=True) # build dataset of all splits = clear+adverse
 
         train_set = copy.deepcopy(original_dataset)
         
         # include 5% randomly selected clear weather examples 
         adverse_indices = train_set.get_adverse_indices()
         if cfg.REPLAY.method == 'AGEM':
-            train_set.update_infos(adverse_indices)
+            train_set.update_infos(adverse_indices) #only add adverse weather data for AGEM
         else:
             clear_indices = train_set.get_clear_indices()
             #all samples = 6996 = 3365 adverse + 3631 clear
-            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist() # random sample 180 clear samples
             all_indices = adverse_indices + clear_indices_selected
             train_set.update_infos(all_indices)
         #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
@@ -233,7 +233,7 @@ def main():
     )
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
-    if args.sync_bn:
+    if dist_train and args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
 
@@ -253,6 +253,7 @@ def main():
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
+    # To continue training from last saved chkpt
     if args.ckpt is not None:
         it, start_epoch = model.load_params_with_optimizer(args.ckpt, to_cpu=dist_train, optimizer=optimizer, logger=logger)
         last_epoch = start_epoch + 1

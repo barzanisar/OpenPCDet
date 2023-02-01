@@ -1,5 +1,5 @@
 ##################################################### Train baselines
-sbatch --time=3:00:00 --array=1-4%1 --job-name=pvrcnn-clear-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pvrcnn_train_clear_FOV3000_60.yaml --tcp_port 18810 
+sbatch --time=1:00:00 --array=1-1%1 --job-name=pvrcnn-clear-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pvrcnn_train_clear_FOV3000_60.yaml --tcp_port 18810 
 # sbatch --time=3:00:00 --array=1-4%1 --job-name=pvrcnn-adverse-60-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pvrcnn_train_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18840 
 # sbatch --time=3:00:00 --array=1-5%1 --job-name=pvrcnn-all-60 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pvrcnn_train_all_FOV3000_60.yaml --tcp_port 18820 
 
