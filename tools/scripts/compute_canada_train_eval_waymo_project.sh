@@ -39,8 +39,8 @@ DATA_DIR_KITTI=/home/$USER/projects/def-swasland-ab/Datasets/Kitti
 INFOS_DIR_KITTI=data/kitti
 
 # ========== WAYMO ==========
-DATA_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo
-INFOS_DIR_WAYMO= /home/$USER/projects/def-swasland-ab/Datasets/Waymo/Infos
+DATA_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo
+INFOS_DIR_WAYMO=/home/$USER/projects/def-swasland-ab/Datasets/Waymo/Infos
 
 
 # Additional parameters
@@ -131,6 +131,8 @@ while :; do
                 INFOS_DIR=$INFOS_DIR_WAYMO
                 WORKERS=$(($SLURM_CPUS_PER_TASK / 2))
                 echo "Using default Waymo dataset dirs"
+                echo "cfg=$CFG_FILE"
+                echo "DATA_DIR=$DATA_DIR, DATA_DIR_WAYMO=$DATA_DIR_WAYMO"
             elif [[ "$CFG_FILE" == *"dense_models"* ]]; then
                 DATASET=dense
                 DATA_DIR=$DATA_DIR_DENSE
