@@ -15,8 +15,11 @@ import numpy as np
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None, old_dataloader = None):
     if total_it_each_epoch == len(train_loader):
+        print('train_one_epoch1')
         dataloader_iter = iter(train_loader)
+        print('train_one_epoch2')
     if old_dataloader is not None:
+        print('train_one_epoch3')
         old_dataloader_iter = iter(old_dataloader)
 
     if rank == 0:
@@ -30,12 +33,13 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
     for cur_it in range(total_it_each_epoch):
         end = time.time()
         try:
+            print('train_one_epoch4')
             batch = next(dataloader_iter)
         except StopIteration:
             dataloader_iter = iter(train_loader)
             batch = next(dataloader_iter)
             print('new iters')
-        
+        print('train_one_epoch5')
         if old_dataloader is not None:
             overhead_start = time.time()
             overhead_time = cfg.get('overhead_time_agem', 0)
