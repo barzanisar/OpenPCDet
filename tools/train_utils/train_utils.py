@@ -15,11 +15,8 @@ import numpy as np
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None, old_dataloader = None):
     if total_it_each_epoch == len(train_loader):
-        print('train_one_epoch1')
         dataloader_iter = iter(train_loader)
-        print('train_one_epoch2')
     if old_dataloader is not None:
-        print('train_one_epoch3')
         old_dataloader_iter = iter(old_dataloader)
 
     if rank == 0:
@@ -27,19 +24,16 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         data_time = common_utils.AverageMeter()
         batch_time = common_utils.AverageMeter()
         forward_time = common_utils.AverageMeter()
-        print('Starting to train one epoch!!!!!!1')
 
 
     for cur_it in range(total_it_each_epoch):
         end = time.time()
         try:
-            print('train_one_epoch4')
             batch = next(dataloader_iter)
         except StopIteration:
             dataloader_iter = iter(train_loader)
             batch = next(dataloader_iter)
             print('new iters')
-        print('train_one_epoch5')
         if old_dataloader is not None:
             overhead_start = time.time()
             overhead_time = cfg.get('overhead_time_agem', 0)
@@ -198,11 +192,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             train_loader.dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
             total_it_each_epoch = len(train_loader) // max(total_epochs, 1)
 
-        if rank == 0:
-            print('before iter')
         dataloader_iter = iter(train_loader)
-        if rank == 0:
-            print('After iter')
 
         if rank == 0:
             epoch_time = common_utils.AverageMeter()

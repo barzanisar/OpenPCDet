@@ -201,24 +201,20 @@ class DatasetTemplate(torch_data.Dataset):
         for key, val in data_dict.items():
             try:
                 if key in ['voxels', 'voxel_num_points']:
-                    # print('here1')
                     ret[key] = np.concatenate(val, axis=0)
                 elif key in ['points', 'voxel_coords']:
                     coors = []
-                    # print('here2')
                     for i, coor in enumerate(val):
                         coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
                         coors.append(coor_pad)
                     ret[key] = np.concatenate(coors, axis=0)
                 elif key in ['gt_boxes']:
-                    # print('here3')
                     max_gt = max([len(x) for x in val])
                     batch_gt_boxes3d = np.zeros((batch_size, max_gt, val[0].shape[-1]), dtype=np.float32)
                     for k in range(batch_size):
                         batch_gt_boxes3d[k, :val[k].__len__(), :] = val[k]
                     ret[key] = batch_gt_boxes3d
                 elif key in ['gt_boxes2d']:
-                    # print('here4')
                     max_boxes = 0
                     max_boxes = max([len(x) for x in val])
                     batch_boxes2d = np.zeros((batch_size, max_boxes, val[0].shape[-1]), dtype=np.float32)
@@ -227,7 +223,6 @@ class DatasetTemplate(torch_data.Dataset):
                             batch_boxes2d[k, :val[k].__len__(), :] = val[k]
                     ret[key] = batch_boxes2d
                 elif key in ["images", "depth_maps"]:
-                    # print('here5')
                     # Get largest image size (H, W)
                     max_h = 0
                     max_w = 0
@@ -256,10 +251,8 @@ class DatasetTemplate(torch_data.Dataset):
                         images.append(image_pad)
                     ret[key] = np.stack(images, axis=0)
                 else:
-                    # print('here6')
                     ret[key] = np.stack(val, axis=0)
             except:
-                # print('here7')
                 print('Error in collate_batch: key=%s' % key)
                 raise TypeError
 
