@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8             # CPU cores/threads
 #SBATCH --gres=gpu:t4:4                # Number of GPUs (per node)
 #SBATCH --mem=64000M                   # memory per node
-#SBATCH --output=./output/plog_dense_pvrcnn/%x-%j.out   # STDOUT
+#SBATCH --output=./output/plog/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
 #SBATCH --array=1-2%1   # 4 is the number of jobs in the chain
 #SBATCH --mail-user=barzanisar93@gmail.com

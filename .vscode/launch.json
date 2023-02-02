@@ -165,6 +165,18 @@
             ]
         },
         {
+            "name": "train_parta",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/centerpoint.yaml"
+            ]
+        },
+        {
             "name": "train_pvrcnn",
             "type": "python",
             "request": "launch",
@@ -173,7 +185,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pvrcnn.yaml"
+                "cfgs/dense_models/pvrcnn_train_clear_FOV3000_60.yaml"
             ]
         },
         {
