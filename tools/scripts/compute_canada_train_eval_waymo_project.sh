@@ -18,7 +18,7 @@ die() { echo "$*" 1>&2 ; exit 1; }
 CFG_FILE=tools/cfgs/kitti_models/pv_rcnn.yaml
 TRAIN_BATCH_SIZE='default'
 TEST_BATCH_SIZE='default'
-WORKERS=$SLURM_CPUS_PER_TASK
+WORKERS=6 #$SLURM_CPUS_PER_TASK
 EXTRA_TAG='default'
 TEST_INFO_PKL='default' # Test only 
 EVAL_TAG='default' # Test only 
