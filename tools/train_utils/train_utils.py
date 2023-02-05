@@ -24,6 +24,10 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         data_time = common_utils.AverageMeter()
         batch_time = common_utils.AverageMeter()
         forward_time = common_utils.AverageMeter()
+        if old_dataloader is not None:
+            overhead_time_agem = common_utils.AverageMeter() #overhead time taken for one iter avged over iters in one epoch
+            if cfg.get('overhead_time_agem_sum', 0) == 0:
+                cfg['overhead_time_agem_sum'] = 0 # summed over all iters
 
 
     for cur_it in range(total_it_each_epoch):
@@ -36,7 +40,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             print('new iters')
         if old_dataloader is not None:
             overhead_start = time.time()
-            overhead_time = cfg.get('overhead_time_agem', 0)
+            cur_overhead_time = 0 #cfg.get('iter_cur_overhead_time_agem', 0) #this iter's overhead time for agem
             try:
                 old_batch = next(old_dataloader_iter)
             except StopIteration:
@@ -44,7 +48,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 old_batch = next(old_dataloader_iter)
                 print('new iters')
             
-            overhead_time += time.time() - overhead_start 
+            cur_overhead_time += time.time() - overhead_start  #old dataloading time for agem
 
         data_timer = time.time()
         cur_data_time = data_timer - end
@@ -73,7 +77,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 if p.requires_grad:
                     grad_old.append(p.grad.view(-1))  
             grad_old = torch.cat(grad_old) 
-            overhead_time += time.time() - start_time
+            cur_overhead_time += time.time() - start_time # time for computing gradients wrt a minibatch of old data
 
         optimizer.zero_grad()
         loss, tb_dict, disp_dict = model_func(model, batch)
@@ -118,7 +122,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                         p.grad.copy_(grad_proj[index:index+n_param].view_as(p))
                         index += n_param
             
-            overhead_time += time.time() - start_time
+            cur_overhead_time += time.time() - start_time
 
 
         optimizer.step()
@@ -130,12 +134,16 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
         avg_data_time = commu_utils.average_reduce_value(cur_data_time)
         avg_forward_time = commu_utils.average_reduce_value(cur_forward_time)
         avg_batch_time = commu_utils.average_reduce_value(cur_batch_time)
+        if old_dataloader is not None:
+            avg_overhead_agem_time = commu_utils.average_reduce_value(cur_overhead_time)
+        
 
         # log to console and tensorboard
         if rank == 0:
             data_time.update(avg_data_time)
             forward_time.update(avg_forward_time)
             batch_time.update(avg_batch_time)
+            
             if len(optimizer.param_groups) > 1:
                 disp_dict.update({
                     'loss': loss.item(), 'lr': cur_lr, 'lr_bb': optimizer.param_groups[1]['lr'], 'd_time': f'{data_time.val:.2f}({data_time.avg:.2f})',
@@ -162,9 +170,13 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             wb_dict['loss'] = loss
             wb_dict['epoch'] = cur_epoch
             if old_dataloader is not None:
-                cfg['overhead_time_agem'] = overhead_time
+                overhead_time_agem.update(avg_overhead_agem_time)
+                cfg['overhead_time_agem_sum'] += overhead_time_agem.val
                 #print(f'overhead: {overhead_time}')
-                wb_dict['overhead_time_agem'] = overhead_time
+                wb_dict['iter_overhead_time_agem'] = overhead_time_agem.val
+                wb_dict['iter_overhead_time_agem_avg'] = overhead_time_agem.avg
+                wb_dict['iters_overhead_time_agem_sum'] = cfg['overhead_time_agem_sum']
+
 
             wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
@@ -236,6 +248,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                     else:
                         start_condition = (cur_epoch > 0) and ((cur_epoch + 1) % cfg.REPLAY.epoch_interval == 0)
 
+                # Store all clear samples losses
                 if  cfg.REPLAY.method == 'MIR' and start_condition:
                     model.train()
                     loss_prev_epoch_for_all_clear_samples = []
@@ -269,7 +282,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                                     loss, _, _ = model_func(model, batch)
                                     prev_loss = loss_prev_epoch_for_all_clear_samples[i]
                                     decrease_in_loss_all_clear_samples.append(prev_loss-loss.item())
-                                    loss_prev_epoch_for_all_clear_samples[i] = loss.item()
+                                    loss_prev_epoch_for_all_clear_samples[i] = loss.item() #update loss on all clear samples
                                 
                             #Sort decrease_in_loss_all_clear_samples in ascending order and choose k samples with lowest decrease in loss
                             decrease_in_loss_idx_selected = np.argsort(np.array(decrease_in_loss_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
@@ -404,8 +417,9 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             if rank == 0:
                 overhead_time.update(cur_overhead_time)
                 epoch_time.update(cur_epoch_time)
-                wb_dict = {'overhead_time': overhead_time.val, 
-                           'overhead_time_avg': overhead_time.avg,
+                wb_dict = {'epoch_overhead_time': overhead_time.val, 
+                           'epoch_overhead_time_avg': overhead_time.avg,
+                           'epoch_overhead_time_sum': overhead_time.sum,
                            'epoch_time': epoch_time.val, 
                            'epoch_time_avg': epoch_time.avg}
                 wandb_utils.log(cfg, wb_dict, accumulated_iter)
