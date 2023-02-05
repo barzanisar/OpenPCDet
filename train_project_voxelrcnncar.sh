@@ -16,10 +16,10 @@
 
 ############################################################ Finetune
 ###### Naive
-sbatch  --time=03:00:00 --gres=gpu:t4:5 --array=1-4%1 --job-name=finetune-adverse-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/voxelrcnncar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18857  --pretrained_model /OpenPCDet/checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth
+sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-5%1 --job-name=finetune-adverse-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/voxelrcnncar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18857  --pretrained_model /OpenPCDet/checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth
 
 ###### Low LR
-sbatch  --time=03:00:00 --gres=gpu:t4:5 --array=1-4%1 --job-name=finetune-adverse-all-gtdb-lowlr-0p003 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/voxelrcnncar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p003.yaml --tcp_port 18861  --pretrained_model /OpenPCDet/checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth
+sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-5%1 --job-name=finetune-adverse-all-gtdb-lowlr-0p003 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/voxelrcnncar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p003.yaml --tcp_port 18861  --pretrained_model /OpenPCDet/checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth
 
 
 ###### EWC
