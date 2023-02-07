@@ -246,6 +246,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                     dataset = old_train_set
                 )
 
+        if dist_train:
+            torch.distributed.barrier()
         
         # start_condition = True
         for cur_epoch in tbar:
