@@ -100,14 +100,13 @@
                 "${workspaceFolder}/tools/train.py", 
                 "--launcher", "pytorch", 
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_all_FOV3000_60_replay_MIR.yaml",
-                "--ckpt_save_interval", "5",
+                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_MIR_1ep_720.yaml",
                 "--pretrained_model",
-                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
+                "../checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth", "--fix_random_seed"
             ]
         },
         {
-            "name": "finetune_project",
+            "name": "finetune_MIR",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -115,10 +114,9 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_finetune_all_FOV3000_60_replay_AGEM_plus.yaml",
-                "--ckpt_save_interval", "1",
+                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_MIR_1ep_720.yaml",
                 "--pretrained_model",
-                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
+                "../checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth", "--fix_random_seed"
             ]
         },
         {
