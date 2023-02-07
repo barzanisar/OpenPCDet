@@ -208,17 +208,16 @@ def main():
         training=True) # build dataset of all splits = clear+adverse i.e. old + new
 
         train_set = copy.deepcopy(original_dataset)
-        
          
         adverse_indices = train_set.get_adverse_indices()
         if cfg.REPLAY.method == 'AGEM':
-            train_set.update_infos(adverse_indices[:20]) #only add adverse weather data for AGEM
+            train_set.update_infos(adverse_indices) #only add adverse weather data for AGEM ## HERE ## adverse_indices[:20]
         else:
             # include 5% randomly selected clear weather examples
             clear_indices = train_set.get_clear_indices()
             #all samples = 6996 = 3365 adverse + 3631 clear
             clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist() # random sample 180 clear samples
-            all_indices = adverse_indices[:20] + clear_indices_selected
+            all_indices = adverse_indices + clear_indices_selected ## HERE ## adverse_indices[:20]
             train_set.update_infos(all_indices)
         #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
 

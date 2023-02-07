@@ -211,8 +211,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             overhead_time = common_utils.AverageMeter()
 
         if 'REPLAY' in cfg:
-            orig_clear_indices = original_dataset.get_clear_indices()[:50]
-            adverse_indices = original_dataset.get_adverse_indices()[:20]
+            orig_clear_indices = original_dataset.get_clear_indices()# HERE [:50]
+            adverse_indices = original_dataset.get_adverse_indices()# HERE [:20]
             if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
                 # Reduce and fix samples in dataset buffer to save time
                 clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # 720 clear indices
@@ -245,6 +245,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                     seed=666 if args.fix_random_seed else None, 
                     dataset = old_train_set
                 )
+            elif cfg.REPLAY.method == 'GSS':
+                num_params_model =  sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         if dist_train:
             torch.distributed.barrier()
@@ -291,6 +293,31 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
                         old_train_loader.dataset.update_infos_given_infos(clear_indices, original_dataset.dense_infos)
                         
+                    # elif cfg.REPLAY.method == 'GSS':
+                    #     grad_old_dataset = np.zeros((len(orig_clear_indices), num_params_model)) #, device=model.device
+                    #     for i, idx in enumerate(orig_clear_indices):
+                    #         sample = original_dataset[idx]
+                    #         batch = original_dataset.collate_batch([sample])
+
+                    #         loss, _, _ = model_func(model, batch)
+
+                    #         optimizer.zero_grad()
+                    #         loss.backward()
+                    #         grad_idx_sample = []
+                    #         for p in model.parameters():
+                    #             if p.requires_grad:
+                    #                 grad_idx_sample.append(p.grad.view(-1))  
+                    #         grad_idx_sample = torch.cat(grad_idx_sample) 
+                    #         grad_old_dataset[i, :] = grad_idx_sample.numpy()
+                        
+                    #     # torch.matmul(grad_old_dataset, grad_old_dataset)
+                    #     grad_dot = grad_old_dataset @ grad_old_dataset.T
+                    #     grad_mag = np.linalg.norm(grad_old_dataset, axis=1) # get column vector of len orig_clear_indices
+                    #     grad_mag_cross = grad_mag @ grad_mag.T # col vector x row vector
+                    #     cos_theta_old_dataset = np.divide(grad_dot, grad_mag_cross) 
+                    #     max_cos_theta = np.max(cos_theta_old_dataset, axis=0) # column-wise max i.e. get a row vector 1 x  len orig_clear_indices
+                    #     cos_theta_idx_selected = np.argsort(np.array(max_cos_theta))[:cfg.REPLAY.memory_buffer_size]
+                    #     clear_indices_selected = [orig_clear_indices[idx] for idx in cos_theta_idx_selected]
 
                     elif cfg.REPLAY.method == 'EMIR':
                         models_current_grad = {}
