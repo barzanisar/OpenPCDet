@@ -100,7 +100,7 @@
                 "${workspaceFolder}/tools/train.py", 
                 "--launcher", "pytorch", 
                 "--cfg_file",
-                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_MIR_1ep_720.yaml",
+                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_EMIR.yaml",
                 "--pretrained_model",
                 "../checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth", "--fix_random_seed"
             ]
@@ -114,7 +114,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_MIR_1ep_720.yaml",
+                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_AGEM.yaml",
                 "--pretrained_model",
                 "../checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth", "--fix_random_seed"
             ]
