@@ -210,41 +210,41 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             epoch_time = common_utils.AverageMeter()
             overhead_time = common_utils.AverageMeter()
 
-            if 'REPLAY' in cfg:
-                orig_clear_indices = original_dataset.get_clear_indices()
-                adverse_indices = original_dataset.get_adverse_indices()[:20]
-                if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
-                    # Reduce and fix samples in dataset buffer to save time
-                    clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # 720 clear indices
-                    model.train()
-                    loss_prev_epoch_for_all_clear_samples = []
+        if 'REPLAY' in cfg:
+            orig_clear_indices = original_dataset.get_clear_indices()[:50]
+            adverse_indices = original_dataset.get_adverse_indices()[:20]
+            if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
+                # Reduce and fix samples in dataset buffer to save time
+                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # 720 clear indices
+                model.train()
+                loss_prev_epoch_for_all_clear_samples = []
 
-                    # Calculate loss using cur epoch params for each sample in original dataset
-                    # here single batch is single sample
-                    with torch.no_grad():
-                        for idx in clear_indices: #calc loss of model on 720 clear samples
-                            sample = original_dataset[idx]
-                            batch = original_dataset.collate_batch([sample])
+                # Calculate loss using cur epoch params for each sample in original dataset
+                # here single batch is single sample
+                with torch.no_grad():
+                    for idx in clear_indices: #calc loss of model on 720 clear samples
+                        sample = original_dataset[idx]
+                        batch = original_dataset.collate_batch([sample])
 
-                            loss, _, _ = model_func(model, batch)
-                            loss_prev_epoch_for_all_clear_samples.append(loss.item())
+                        loss, _, _ = model_func(model, batch)
+                        loss_prev_epoch_for_all_clear_samples.append(loss.item())
 
-                elif cfg.REPLAY.method == 'AGEM':
-                    # Reduce and fix samples in dataset buffer to save time
-                    clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
-                                            # include max interfered clear weather examples 
+            elif cfg.REPLAY.method == 'AGEM':
+                # Reduce and fix samples in dataset buffer to save time
+                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                                        # include max interfered clear weather examples 
 
-                    old_train_set = copy.deepcopy(original_dataset)
-                    old_train_set.update_infos(clear_indices)
-                    old_train_set, old_train_loader, old_train_sampler = build_dataloader(
-                        dataset_cfg=cfg.DATA_CONFIG,
-                        class_names=cfg.CLASS_NAMES,
-                        batch_size=args.batch_size,
-                        dist=dist_train, workers=2,
-                        training=True,
-                        seed=666 if args.fix_random_seed else None, 
-                        dataset = old_train_set
-                    )
+                old_train_set = copy.deepcopy(original_dataset)
+                old_train_set.update_infos(clear_indices)
+                old_train_set, old_train_loader, old_train_sampler = build_dataloader(
+                    dataset_cfg=cfg.DATA_CONFIG,
+                    class_names=cfg.CLASS_NAMES,
+                    batch_size=args.batch_size,
+                    dist=dist_train, workers=2,
+                    training=True,
+                    seed=666 if args.fix_random_seed else None, 
+                    dataset = old_train_set
+                )
 
         if dist_train:
             torch.distributed.barrier()
@@ -357,8 +357,6 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         all_indices = adverse_indices + clear_indices_selected
                         train_loader.dataset.update_infos_given_infos(all_indices, original_dataset.dense_infos)
 
-
-
             cur_overhead_time = time.time() - end
 
             if train_sampler is not None:
@@ -373,6 +371,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             else:
                 cur_scheduler = lr_scheduler
 
+            if dist_train:
+                torch.distributed.barrier()
             end = time.time()
 
             accumulated_iter = train_one_epoch(cfg, cur_epoch,

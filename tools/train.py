@@ -212,7 +212,7 @@ def main():
          
         adverse_indices = train_set.get_adverse_indices()
         if cfg.REPLAY.method == 'AGEM':
-            train_set.update_infos(adverse_indices) #only add adverse weather data for AGEM
+            train_set.update_infos(adverse_indices[:20]) #only add adverse weather data for AGEM
         else:
             # include 5% randomly selected clear weather examples
             clear_indices = train_set.get_clear_indices()
