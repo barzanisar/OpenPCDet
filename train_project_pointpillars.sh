@@ -16,14 +16,14 @@
 
 ############################################################ Finetune
 ###### Naive
-sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=pointpillar-finetune-adverse-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18457  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
+# sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=pointpillar-finetune-adverse-all-gtdb tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18457  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
 
-##### Low LR
-sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p003 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18461  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
+# ##### Low LR
+# sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p003 tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18461  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
 
 
-##### EWC
-sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-5%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18459  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
+# ##### EWC
+# sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-5%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18459  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
 
 ###### Replay #Choose best lr and set it in cfg file before running this
 # sbatch  --time=20:00:00 --gres=gpu:t4:4 --array=1-1%1 --job-name=pointpillar-finetune-adverse-180clear-allgtdb-replay-fixed tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_all_FOV3000_60_replay_fixed.yaml --tcp_port 18463  --pretrained_model /OpenPCDet/checkpoints/pointpillar_train_clear_FOV3000_60_ep77.pth
@@ -37,16 +37,16 @@ sbatch  --time=03:00:00 --gres=gpu:t4:4 --array=1-5%1 --job-name=pointpillar-fin
 
 ############################################################## Test finetune
 ###### Naive
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18393 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18394 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18393 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb.yaml --tcp_port 18394 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
 
-###### Low LR
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p003-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18397 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p003-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18398 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
+##### Low LR
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p001-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18397 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-lowlr-0p001-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_lowlr_0p001.yaml --tcp_port 18398 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
 
-###### EWC
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18397 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
-# sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18398 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
+##### EWC
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18395 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
+sbatch --time=02:00:00 --array=1-2%1 --job-name=pointpillar-finetune-adverse-all-gtdb-ewc-test-adverse  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_adverse_FOV3000_60_allgtdb_ewc.yaml --tcp_port 18396 --fix_random_seed --test_only --eval_tag test_adverse_FOV3000 --test_info_pkl dense_infos_test_adverse_FOV3000_25.pkl
 
 ###### REPLAY
 # sbatch --time=04:00:00 --array=1-1%1 --job-name=pointpillar-finetune-adverse-180clear-allgtdb-replay-fixed-test-clear  tools/scripts/compute_canada_train_eval_project.sh --cfg_file tools/cfgs/dense_models/pointpillar_finetune_all_FOV3000_60_replay_fixed.yaml --tcp_port 18391 --fix_random_seed --test_only --eval_tag test_clear_FOV3000 --test_info_pkl dense_infos_test_clear_FOV3000_25.pkl
