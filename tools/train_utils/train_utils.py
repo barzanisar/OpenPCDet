@@ -11,6 +11,7 @@ from pcdet.datasets import build_dataloader
 import copy
 import math
 import numpy as np
+#from matplotlib import pyplot as plt
 
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None, old_dataloader = None):
@@ -293,31 +294,41 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
                         old_train_loader.dataset.update_infos_given_infos(clear_indices, original_dataset.dense_infos)
                         
-                    # elif cfg.REPLAY.method == 'GSS':
-                    #     grad_old_dataset = np.zeros((len(orig_clear_indices), num_params_model)) #, device=model.device
-                    #     for i, idx in enumerate(orig_clear_indices):
-                    #         sample = original_dataset[idx]
-                    #         batch = original_dataset.collate_batch([sample])
+                    elif cfg.REPLAY.method == 'GSS':
+                        clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # choose 360 random clear samples
+                        bool_arr = [True, False]
+                        param_grad_mask = np.random.choice(bool_arr, num_params_model, p=[0.01, 0.99])
+                        num_params_selected = param_grad_mask.sum()
+                        #grad_old_dataset = np.zeros((len(clear_indices), num_params_model), dtype=np.float32) #, device=model.device
+                        grad_old_dataset = np.zeros((len(clear_indices), num_params_selected), dtype=np.float32) #, device=model.device
 
-                    #         loss, _, _ = model_func(model, batch)
+                        #start = time.time()
+                        for i, idx in tqdm.tqdm(enumerate(clear_indices)):
+                            sample = original_dataset[idx]
+                            batch = original_dataset.collate_batch([sample])
 
-                    #         optimizer.zero_grad()
-                    #         loss.backward()
-                    #         grad_idx_sample = []
-                    #         for p in model.parameters():
-                    #             if p.requires_grad:
-                    #                 grad_idx_sample.append(p.grad.view(-1))  
-                    #         grad_idx_sample = torch.cat(grad_idx_sample) 
-                    #         grad_old_dataset[i, :] = grad_idx_sample.numpy()
+                            loss, _, _ = model_func(model, batch)
+
+                            optimizer.zero_grad()
+                            loss.backward()
+                            grad_idx_sample = []
+                            for p in model.parameters():
+                                if p.requires_grad:
+                                    grad_idx_sample.append(p.grad.view(-1))  
+                            grad_idx_sample = torch.cat(grad_idx_sample) 
+                            grad_old_dataset[i, :] = grad_idx_sample.cpu().numpy()[param_grad_mask]
                         
-                    #     # torch.matmul(grad_old_dataset, grad_old_dataset)
-                    #     grad_dot = grad_old_dataset @ grad_old_dataset.T
-                    #     grad_mag = np.linalg.norm(grad_old_dataset, axis=1) # get column vector of len orig_clear_indices
-                    #     grad_mag_cross = grad_mag @ grad_mag.T # col vector x row vector
-                    #     cos_theta_old_dataset = np.divide(grad_dot, grad_mag_cross) 
-                    #     max_cos_theta = np.max(cos_theta_old_dataset, axis=0) # column-wise max i.e. get a row vector 1 x  len orig_clear_indices
-                    #     cos_theta_idx_selected = np.argsort(np.array(max_cos_theta))[:cfg.REPLAY.memory_buffer_size]
-                    #     clear_indices_selected = [orig_clear_indices[idx] for idx in cos_theta_idx_selected]
+                        # print(f'Time: {time.time() - start}')
+                        # torch.matmul(grad_old_dataset, grad_old_dataset)
+                        grad_dot = grad_old_dataset @ grad_old_dataset.T
+                        grad_mag = np.linalg.norm(grad_old_dataset, axis=1).reshape((len(clear_indices),1)) # get column vector of len clear_indices
+                        grad_mag_cross = grad_mag @ grad_mag.T # col vector x row vector
+                        cos_theta_old_dataset = np.divide(grad_dot, grad_mag_cross) # 50 x 50 i.e. len clear_indices x len clear_indices
+                        max_cos_theta = np.max(cos_theta_old_dataset, axis=0) # column-wise max i.e. get a row vector 1 x  len clear_indices
+                        cos_theta_idx_selected = np.argsort(np.array(max_cos_theta))[:cfg.REPLAY.memory_buffer_size]
+                        clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
+                        # plt.imshow(cos_theta_old_dataset, cmap='gray')
+                        # plt.show()
 
                     elif cfg.REPLAY.method == 'EMIR':
                         models_current_grad = {}
@@ -351,7 +362,9 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         
                         # Calculate cos_theta = - interference score for each sample in original dataset
                         # here single batch is single sample
-                        for idx in orig_clear_indices:
+                        # clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
+                        # start = time.time()
+                        for idx in tqdm.tqdm(orig_clear_indices):
                             sample = original_dataset[idx]
                             batch = original_dataset.collate_batch([sample])
 
@@ -374,6 +387,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                             cos_theta_for_all_clear_samples.append(a_dot_b/(norm_a * norm_b))
 
+                        #print(f'Time: {time.time() - start}')
                         #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
                         cos_theta_idx_selected = np.argsort(np.array(cos_theta_for_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
                         clear_indices_selected = [orig_clear_indices[idx] for idx in cos_theta_idx_selected]
