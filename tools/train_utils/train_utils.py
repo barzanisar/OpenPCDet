@@ -324,6 +324,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         grad_mag = np.linalg.norm(grad_old_dataset, axis=1).reshape((len(clear_indices),1)) # get column vector of len clear_indices
                         grad_mag_cross = grad_mag @ grad_mag.T # col vector x row vector
                         cos_theta_old_dataset = np.divide(grad_dot, grad_mag_cross) # 50 x 50 i.e. len clear_indices x len clear_indices
+                        np.fill_diagonal(cos_theta_old_dataset, -np.inf)
                         max_cos_theta = np.max(cos_theta_old_dataset, axis=0) # column-wise max i.e. get a row vector 1 x  len clear_indices
                         cos_theta_idx_selected = np.argsort(np.array(max_cos_theta))[:cfg.REPLAY.memory_buffer_size]
                         clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
