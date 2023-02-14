@@ -196,7 +196,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
 def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
-                merge_all_iters_to_one_epoch=False, save_ckpt_after_epoch=0, ewc_params=None, original_dataset=None, args=None, dist_train=False):
+                merge_all_iters_to_one_epoch=False, save_ckpt_after_epoch=0, ewc_params=None, original_dataset=None, args=None, dist_train=False, output_dir=None):
     accumulated_iter = start_iter
     with tqdm.trange(start_epoch, total_epochs, desc='epochs', dynamic_ncols=True, leave=(rank == 0)) as tbar:
         total_it_each_epoch = len(train_loader)
@@ -212,11 +212,25 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             overhead_time = common_utils.AverageMeter()
 
         if 'REPLAY' in cfg:
-            orig_clear_indices = original_dataset.get_clear_indices()# HERE [:50]
-            adverse_indices = original_dataset.get_adverse_indices()# HERE [:20]
+            orig_clear_indices = original_dataset.get_clear_indices() # HERE [:50]
+            adverse_indices = original_dataset.get_adverse_indices() # HERE [:20]
+
+            # Select a subset of orig_clear_indices for e.g 50% of orig_clear_indices
+            fn = output_dir / 'clear_indices.npy'
+            if fn.exists():
+                with open(fn, 'rb') as f:
+                    clear_indices = np.load(f)
+            else:
+                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size] # 720 clear indices
+                if rank == 0:
+                    with open(fn, 'wb') as f:
+                        np.save(fn, clear_indices)
+
+            clear_indices = clear_indices.tolist() # this is not used for fixed replay
+
             if (cfg.REPLAY.method == 'MIR' and cfg.REPLAY.epoch_interval == 1):
                 # Reduce and fix samples in dataset buffer to save time
-                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # 720 clear indices
+                
                 model.train()
                 loss_prev_epoch_for_all_clear_samples = []
 
@@ -232,11 +246,25 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
             elif cfg.REPLAY.method == 'AGEM':
                 # Reduce and fix samples in dataset buffer to save time
-                clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
-                                        # include max interfered clear weather examples 
+                clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected_*.npy'))
+                if len(clear_indices_selected_list) > 0:
+                    clear_indices_selected_list.sort(key=os.path.getmtime)
+                    filename = clear_indices_selected_list[-1]
+                    if not os.path.isfile(filename):
+                        raise FileNotFoundError
 
+                    with open(filename, 'rb') as f:
+                        clear_indices_selected = np.load(f)
+                else:
+                    clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size] # random sample 180 clear samples
+                    if rank == 0:
+                        fn = output_dir / f'clear_indices_selected.npy'
+                        with open(fn, 'wb') as f:
+                            np.save(f, clear_indices_selected)
+
+                clear_indices_selected = clear_indices_selected.tolist()
                 old_train_set = copy.deepcopy(original_dataset)
-                old_train_set.update_infos(clear_indices)
+                old_train_set.update_infos(clear_indices_selected)
                 old_train_set, old_train_loader, old_train_sampler = build_dataloader(
                     dataset_cfg=cfg.DATA_CONFIG,
                     class_names=cfg.CLASS_NAMES,
@@ -272,7 +300,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         # Calculate loss using cur epoch params for each sample in original dataset
                         # here single batch is single sample
                         with torch.no_grad():
-                            for i, idx in enumerate(clear_indices):  #calc loss of model on 720 clear samples
+                            for i, idx in tqdm.tqdm(enumerate(clear_indices)):  #calc loss of model on 720 clear samples
                                 sample = original_dataset[idx]
                                 batch = original_dataset.collate_batch([sample])
 
@@ -284,18 +312,29 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         #Sort decrease_in_loss_all_clear_samples in ascending order and choose k samples with lowest decrease in loss
                         decrease_in_loss_idx_selected = np.argsort(np.array(decrease_in_loss_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
                         clear_indices_selected = [clear_indices[i] for i in decrease_in_loss_idx_selected]
+                        if rank == 0:
+                            fn = output_dir / f'clear_indices_selected_{cur_epoch}.npy'
+                            with open(fn, 'wb') as f:
+                                np.save(f, clear_indices_selected)
 
 
                     elif cfg.REPLAY.method == 'random':
-                        clear_indices_selected = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                        clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                        if rank == 0:
+                            fn = output_dir / f'clear_indices_selected_{cur_epoch}.npy'
+                            with open(fn, 'wb') as f:
+                                np.save(f, clear_indices_selected)
 
                     elif cfg.REPLAY.method == 'AGEM' and cfg.REPLAY.method_variant == 'plus':
                         # resample randomly 180 clear samples from full clear dataset after every 10 epochs and update the replay buffer with new samples
-                        clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
-                        old_train_loader.dataset.update_infos_given_infos(clear_indices, original_dataset.dense_infos)
+                        clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist()
+                        old_train_loader.dataset.update_infos_given_infos(clear_indices_selected, original_dataset.dense_infos)
+                        fn = output_dir / f'clear_indices_selected_{cur_epoch}.npy'
+                        if rank == 0:
+                            with open(fn, 'wb') as f:
+                                np.save(fn, clear_indices_selected)
                         
                     elif cfg.REPLAY.method == 'GSS':
-                        clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist() # choose 360 random clear samples
                         bool_arr = [True, False]
                         param_grad_mask = np.random.choice(bool_arr, num_params_model, p=[0.01, 0.99])
                         num_params_selected = param_grad_mask.sum()
@@ -330,6 +369,10 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
                         # plt.imshow(cos_theta_old_dataset, cmap='gray')
                         # plt.show()
+                        if rank == 0:
+                            fn = output_dir / f'clear_indices_selected_{cur_epoch}.npy'
+                            with open(fn, 'wb') as f:
+                                np.save(f, clear_indices_selected)
 
                     elif cfg.REPLAY.method == 'EMIR':
                         models_current_grad = {}
@@ -352,6 +395,12 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                             for name, param in model.named_parameters():
                                 models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
+                        # elif cfg.REPLAY.method_variant == 'momentum':
+                        #     # Populate models_current_grad = {} from optimizer state exp_avg
+                        # for p in optimizer.param_groups[0]['params']:
+                        #     i+=1
+                        #     print(i, p.grad is None)
+                        
                         else:
                             for name, param in model.named_parameters():
                                 models_current_grad[name] = param.grad.data.clone()
@@ -363,9 +412,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         
                         # Calculate cos_theta = - interference score for each sample in original dataset
                         # here single batch is single sample
-                        # clear_indices = np.random.permutation(orig_clear_indices)[:cfg.REPLAY.dataset_buffer_size].tolist()
                         # start = time.time()
-                        for idx in tqdm.tqdm(orig_clear_indices):
+                        for idx in tqdm.tqdm(clear_indices):
                             sample = original_dataset[idx]
                             batch = original_dataset.collate_batch([sample])
 
@@ -391,7 +439,11 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                         #print(f'Time: {time.time() - start}')
                         #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
                         cos_theta_idx_selected = np.argsort(np.array(cos_theta_for_all_clear_samples))[:cfg.REPLAY.memory_buffer_size]
-                        clear_indices_selected = [orig_clear_indices[idx] for idx in cos_theta_idx_selected]
+                        clear_indices_selected = [clear_indices[idx] for idx in cos_theta_idx_selected]
+                        if rank == 0:
+                            fn = output_dir / f'clear_indices_selected_{cur_epoch}.npy'
+                            with open(fn, 'wb') as f:
+                                np.save(f, clear_indices_selected)
 
                     
                     if cfg.REPLAY.method != 'AGEM':

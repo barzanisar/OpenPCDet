@@ -216,7 +216,25 @@ def main():
             # include 5% randomly selected clear weather examples
             clear_indices = train_set.get_clear_indices()
             #all samples = 6996 = 3365 adverse + 3631 clear
-            clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size].tolist() # random sample 180 clear samples
+
+            clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected_*.npy'))
+            if len(clear_indices_selected_list) > 0:
+                clear_indices_selected_list.sort(key=os.path.getmtime)
+                filename = clear_indices_selected_list[-1]
+                if not os.path.isfile(filename):
+                    raise FileNotFoundError
+
+                logger.info('==> Loading clear_indices_selected from %s' % (filename))
+                with open(filename, 'rb') as f:
+                    clear_indices_selected = np.load(f)
+            else:
+                clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size] # random sample 180 clear samples
+                if cfg.LOCAL_RANK == 0:
+                    fn = output_dir / f'clear_indices_selected.npy'
+                    with open(fn, 'wb') as f:
+                        np.save(f, clear_indices_selected)
+            
+            clear_indices_selected = clear_indices_selected.tolist()
             all_indices = adverse_indices + clear_indices_selected ## HERE ## adverse_indices[:20]
             train_set.update_infos(all_indices)
         #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
@@ -305,7 +323,8 @@ def main():
         ewc_params=ewc_params,
         original_dataset= original_dataset if 'REPLAY' in cfg else None,
         dist_train=dist_train,
-        args= args if 'REPLAY' in cfg else None
+        args= args if 'REPLAY' in cfg else None, 
+        output_dir=output_dir
     )
 
     if hasattr(train_set, 'use_shared_memory') and train_set.use_shared_memory:
