@@ -237,7 +237,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 # Calculate loss using cur epoch params for each sample in original dataset
                 # here single batch is single sample
                 with torch.no_grad():
-                    for idx in clear_indices: #calc loss of model on 720 clear samples
+                    for idx in tqdm.tqdm(clear_indices): #calc loss of model on 720 clear samples
                         sample = original_dataset[idx]
                         batch = original_dataset.collate_batch([sample])
 
@@ -382,7 +382,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                                 models_current_grad[name] = torch.zeros_like(param.grad)
                             
                             # Calculate average gradient over all adverse data using current model
-                            for idx in adverse_indices:
+                            for idx in tqdm.tqdm(adverse_indices):
                                 sample = original_dataset[idx]
                                 batch = original_dataset.collate_batch([sample])
 
