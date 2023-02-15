@@ -217,7 +217,7 @@ def main():
             clear_indices = train_set.get_clear_indices()
             #all samples = 6996 = 3365 adverse + 3631 clear
 
-            clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected_*.npy'))
+            clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected*.npy'))
             if len(clear_indices_selected_list) > 0:
                 clear_indices_selected_list.sort(key=os.path.getmtime)
                 filename = clear_indices_selected_list[-1]
@@ -286,6 +286,21 @@ def main():
                 ckpt_list[-1], to_cpu=dist_train, optimizer=optimizer, logger=logger
             )
             last_epoch = start_epoch + 1
+            
+            if 'REPLAY' in cfg and cfg.REPLAY.method == 'EMIR' and cfg.REPLAY.method_variant == 'None':
+                grad_list = glob.glob(str(output_dir / '*model_param_grad_*.npy'))
+                if len(grad_list) > 0:
+                    grad_list.sort(key=os.path.getmtime)
+                    with open(grad_list[-1], 'rb') as f:
+                        model_grad = np.load(f)
+                    
+                    index = 0
+                    for p in model.parameters():
+                        if p.requires_grad:
+                            n_param = p.numel()
+                            p.grad = torch.zeros_like(p)
+                            p.grad.copy_(torch.from_numpy(model_grad[index:index+n_param]).view_as(p))
+                            index += n_param
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:

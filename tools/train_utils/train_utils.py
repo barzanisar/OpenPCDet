@@ -246,7 +246,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
             elif cfg.REPLAY.method == 'AGEM':
                 # Reduce and fix samples in dataset buffer to save time
-                clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected_*.npy'))
+                clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected*.npy'))
                 if len(clear_indices_selected_list) > 0:
                     clear_indices_selected_list.sort(key=os.path.getmtime)
                     filename = clear_indices_selected_list[-1]
@@ -379,7 +379,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                         if cfg.REPLAY.method_variant == 'plus':
                             for name, param in model.named_parameters():
-                                models_current_grad[name] = torch.zeros_like(param.grad)
+                                if param.requires_grad:
+                                    models_current_grad[name] = torch.zeros_like(param)
                             
                             # Calculate average gradient over all adverse data using current model
                             for idx in tqdm.tqdm(adverse_indices):
@@ -391,29 +392,26 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                                 optimizer.zero_grad()
                                 loss.backward()
                                 for name, param in model.named_parameters():
-                                    models_current_grad[name] += param.grad.data
+                                    if param.requires_grad:
+                                        models_current_grad[name] += param.grad.data
 
                             for name, param in model.named_parameters():
-                                models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
-                        # elif cfg.REPLAY.method_variant == 'momentum':
-                        #     # Populate models_current_grad = {} from optimizer state exp_avg
-                        # for p in optimizer.param_groups[0]['params']:
-                        #     i+=1
-                        #     print(i, p.grad is None)
+                                if param.requires_grad:
+                                    models_current_grad[name] = models_current_grad[name] / len(adverse_indices)
                         
-                        else:
+                        elif cfg.REPLAY.method_variant == 'None':
                             for name, param in model.named_parameters():
-                                models_current_grad[name] = param.grad.data.clone()
+                                if param.requires_grad:
+                                    models_current_grad[name] = param.grad.data.clone()
 
 
                         cos_theta_for_all_clear_samples = []
 
-                        model.train()
-                        
                         # Calculate cos_theta = - interference score for each sample in original dataset
                         # here single batch is single sample
                         # start = time.time()
                         for idx in tqdm.tqdm(clear_indices):
+                            model.train()
                             sample = original_dataset[idx]
                             batch = original_dataset.collate_batch([sample])
 
@@ -426,15 +424,29 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                             norm_b = 0
                             # Take dot product between current gradient vector and gradient vector
                             # due to this sample to get the cos(angle) = a . b / (norm_a * norm_b)
-                            for name, param in model.named_parameters():
-                                a_dot_b += torch.dot(models_current_grad[name].view(-1), param.grad.data.clone().view(-1)).item()
-                                norm_a += models_current_grad[name].pow(2).sum().item()
-                                norm_b += param.grad.data.clone().pow(2).sum().item()
 
-                            norm_a = math.sqrt(norm_a)
-                            norm_b = math.sqrt(norm_b)
+                            with torch.no_grad():
+                                if cfg.REPLAY.method_variant == 'EMA':
+                                    param_idx = 0
+                                    state_dict = optimizer.state_dict()['state']
+                                    for group in optimizer.param_groups:
+                                        for param in group['params']:
+                                            if param.requires_grad:
+                                                a_dot_b += torch.dot(state_dict[param_idx]['exp_avg'].view(-1), param.grad.view(-1)).item()
+                                                norm_a += state_dict[param_idx]['exp_avg'].pow(2).sum().item()
+                                                norm_b += param.grad.pow(2).sum().item()
+                                                param_idx +=1
+                                else:
+                                    for name, param in model.named_parameters():
+                                        if param.requires_grad:
+                                            a_dot_b += torch.dot(models_current_grad[name].view(-1), param.grad.view(-1)).item()
+                                            norm_a += models_current_grad[name].pow(2).sum().item()
+                                            norm_b += param.grad.pow(2).sum().item()
 
-                            cos_theta_for_all_clear_samples.append(a_dot_b/(norm_a * norm_b))
+                                norm_a = math.sqrt(norm_a)
+                                norm_b = math.sqrt(norm_b)
+
+                                cos_theta_for_all_clear_samples.append(a_dot_b/(norm_a * norm_b))
 
                         #print(f'Time: {time.time() - start}')
                         #Sort cos_theta_clear_samples in ascending order and choose k samples with lowest cos(theta)
@@ -492,6 +504,19 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 wandb_utils.log(cfg, wb_dict, accumulated_iter)
                 #print(f'EPOCH {cur_epoch} time: {epoch_time.val} sec\n')
 
+                # save model param grads for EMIR variant None since it depends on grad from last iteration
+                if 'REPLAY' in cfg and cfg.REPLAY.method == 'EMIR' and cfg.REPLAY.method_variant  == 'None':
+                    if cur_epoch > 0 and (cur_epoch+1) % cfg.REPLAY.epoch_interval == 0:
+                        model_param_grads = []
+                        for p in model.parameters():
+                            if p.requires_grad:
+                                model_param_grads.append(p.grad.view(-1))  
+                        model_param_grads = torch.cat(model_param_grads).cpu().detach().numpy()
+
+                        fn = output_dir / f'model_param_grad_{cur_epoch+1}.npy'
+                        with open(fn, 'wb') as f:
+                            np.save(f, model_param_grads)
+                
             # save trained model
             trained_epoch = cur_epoch + 1
             if trained_epoch >= save_ckpt_after_epoch and trained_epoch % ckpt_save_interval == 0 and rank == 0:
