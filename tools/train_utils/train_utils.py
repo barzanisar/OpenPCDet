@@ -285,7 +285,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
             
             end = time.time()
 
-            if 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
+            if rank == 0 and 'REPLAY' in cfg and cfg.REPLAY.method != 'fixed':
                 
                 if cur_epoch > 0 and (cur_epoch) % cfg.REPLAY.epoch_interval == 0:
                     # Generate new trainset, train loader and sampler
