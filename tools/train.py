@@ -42,7 +42,7 @@ def parse_config():
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=True, help='whether to use sync bn')
-    parser.add_argument('--fix_random_seed', action='store_true', default=True, help='')
+    parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--save_ckpt_after_epoch', type=int, default=0, help='number of training epochs to save ckpt after')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
