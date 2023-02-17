@@ -2,60 +2,36 @@ CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 WANDB:
     ENABLED: True
-    PROJECT: PointPillars_Dense
+    PROJECT: Second_dense
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_all']
+    tags: ['train_adverse_allgtdb']
 
 LOAD_WHOLE_MODEL: True
-REPLAY:
-    dataset_buffer_size: 3631 #50
-    memory_buffer_size: 180
-    epoch_interval: 10
-    method: 'EMIR'
-    method_variant: None
     
-DATA_CONFIG: 
+DATA_CONFIG:
     _BASE_CONFIG_: ../tools/cfgs/dataset_configs/dense_dataset.yaml
     
     # To create infos and gtdb infos
     DATA_SPLIT: {
-        'train': train_all_FOV3000_60,
+        'train': train_adverse_FOV3000_60,
         'test': val_clear_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
-        'train': [dense_infos_train_all_FOV3000_60.pkl],
+        'train': [dense_infos_train_adverse_FOV3000_60.pkl],
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
     FOV_POINTS_ONLY: True
 
-    POINT_CLOUD_RANGE: [0, -39.68, -3, 69.12, 39.68, 1]
-    DATA_PROCESSOR:
-        - NAME: mask_points_and_boxes_outside_range
-          REMOVE_OUTSIDE_BOXES: True
-
-        - NAME: shuffle_points
-          SHUFFLE_ENABLED: {
-            'train': True,
-            'test': False
-          }
-
-        - NAME: transform_points_to_voxels
-          VOXEL_SIZE: [0.16, 0.16, 4]
-          MAX_POINTS_PER_VOXEL: 32
-          MAX_NUMBER_OF_VOXELS: {
-            'train': 16000,
-            'test': 40000
-          }
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
         AUG_CONFIG_LIST:
             - NAME: gt_sampling
-              USE_ROAD_PLANE: False
+              USE_ROAD_PLANE: True
               DB_INFO_PATH:
                   - dense_dbinfos_train_all_FOV3000_60.pkl
               PREPARE: {
@@ -63,7 +39,7 @@ DATA_CONFIG:
                  filter_by_difficulty: [-1],
               }
 
-              SAMPLE_GROUPS: ['Car:15','Pedestrian:15', 'Cyclist:15']
+              SAMPLE_GROUPS: ['Car:15','Pedestrian:10', 'Cyclist:10']
               NUM_POINT_FEATURES: 5
               DATABASE_WITH_FAKELIDAR: False
               REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
@@ -79,26 +55,26 @@ DATA_CONFIG:
               WORLD_SCALE_RANGE: [0.95, 1.05]
 
 MODEL:
-    NAME: PointPillar
+    NAME: SECONDNet
 
     VFE:
-        NAME: PillarVFE
-        WITH_DISTANCE: False
-        USE_ABSLOTE_XYZ: True
-        USE_NORM: True
-        NUM_FILTERS: [64]
+        NAME: MeanVFE
+
+    BACKBONE_3D:
+        NAME: VoxelBackBone8x
 
     MAP_TO_BEV:
-        NAME: PointPillarScatter
-        NUM_BEV_FEATURES: 64
+        NAME: HeightCompression
+        NUM_BEV_FEATURES: 256
 
     BACKBONE_2D:
         NAME: BaseBEVBackbone
-        LAYER_NUMS: [3, 5, 5]
-        LAYER_STRIDES: [2, 2, 2]
-        NUM_FILTERS: [64, 128, 256]
-        UPSAMPLE_STRIDES: [1, 2, 4]
-        NUM_UPSAMPLE_FILTERS: [128, 128, 128]
+
+        LAYER_NUMS: [5, 5]
+        LAYER_STRIDES: [1, 2]
+        NUM_FILTERS: [128, 256]
+        UPSAMPLE_STRIDES: [1, 2]
+        NUM_UPSAMPLE_FILTERS: [256, 256]
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -116,7 +92,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-1.78],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.6,
                 'unmatched_threshold': 0.45
             },
@@ -126,7 +102,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-0.6],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.5,
                 'unmatched_threshold': 0.35
             },
@@ -136,7 +112,7 @@ MODEL:
                 'anchor_rotations': [0, 1.57],
                 'anchor_bottom_heights': [-0.6],
                 'align_center': False,
-                'feature_map_stride': 2,
+                'feature_map_stride': 8,
                 'matched_threshold': 0.5,
                 'unmatched_threshold': 0.35
             }
@@ -178,7 +154,7 @@ OPTIMIZATION:
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.005
+    LR: 0.0003
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

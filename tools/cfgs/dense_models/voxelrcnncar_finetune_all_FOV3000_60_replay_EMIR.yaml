@@ -1,6 +1,6 @@
 CLASS_NAMES: ['Car']
 WANDB:
-    ENABLED: True
+    ENABLED: False
     PROJECT: VoxelRCNNCar_Dense
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
@@ -10,8 +10,8 @@ WANDB:
 LOAD_WHOLE_MODEL: True
 REPLAY:
     dataset_buffer_size: 3631 #50
-    memory_buffer_size: 180 #20
-    epoch_interval: 10 #3
+    memory_buffer_size: 180 # 20
+    epoch_interval: 10 # 3
     method: 'EMIR'
     method_variant: None
 
@@ -215,7 +215,7 @@ OPTIMIZATION:
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.003
+    LR: 0.0003
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

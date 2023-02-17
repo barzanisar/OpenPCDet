@@ -6,28 +6,22 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train_all']
+    tags: ['train_adverse_allgtdb']
 
 LOAD_WHOLE_MODEL: True
-REPLAY:
-    dataset_buffer_size: 3631 #50
-    memory_buffer_size: 180
-    epoch_interval: 10
-    method: 'EMIR'
-    method_variant: None
-    
+
 DATA_CONFIG: 
     _BASE_CONFIG_: ../tools/cfgs/dataset_configs/dense_dataset.yaml
     
     # To create infos and gtdb infos
     DATA_SPLIT: {
-        'train': train_all_FOV3000_60,
+        'train': train_adverse_FOV3000_60,
         'test': val_clear_FOV3000_15
     }
 
     # To train/eval:
     INFO_PATH: {
-        'train': [dense_infos_train_all_FOV3000_60.pkl],
+        'train': [dense_infos_train_adverse_FOV3000_60.pkl],
         'test': [dense_infos_val_clear_FOV3000_15.pkl],
     }
 
@@ -178,7 +172,7 @@ OPTIMIZATION:
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.001
+    LR: 0.0003
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
