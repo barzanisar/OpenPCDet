@@ -435,7 +435,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                                                 a_dot_b += torch.dot(state_dict[param_idx]['exp_avg'].view(-1), param.grad.view(-1)).item()
                                                 norm_a += state_dict[param_idx]['exp_avg'].pow(2).sum().item()
                                                 norm_b += param.grad.pow(2).sum().item()
-                                                param_idx +=1
+                                            param_idx += 1
                                 else:
                                     for name, param in model.named_parameters():
                                         if param.requires_grad:
