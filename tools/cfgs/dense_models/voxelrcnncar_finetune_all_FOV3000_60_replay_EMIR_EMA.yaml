@@ -1,6 +1,6 @@
 CLASS_NAMES: ['Car']
 WANDB:
-    ENABLED: False
+    ENABLED: True
     PROJECT: VoxelRCNNCar_Dense
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
