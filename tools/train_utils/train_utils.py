@@ -500,6 +500,7 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                            'epoch_overhead_time_avg': overhead_time.avg,
                            'epoch_overhead_time_sum': overhead_time.sum,
                            'epoch_time': epoch_time.val, 
+                           'epoch_time_sum': epoch_time.sum,
                            'epoch_time_avg': epoch_time.avg}
                 wandb_utils.log(cfg, wb_dict, accumulated_iter)
                 #print(f'EPOCH {cur_epoch} time: {epoch_time.val} sec\n')
