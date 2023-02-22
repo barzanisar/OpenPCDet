@@ -40,7 +40,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             batch = next(dataloader_iter)
             print('new iters')
         if old_dataloader is not None:
-            overhead_start = time.time()
+            #overhead_start = time.time()
             cur_overhead_time = 0 #cfg.get('iter_cur_overhead_time_agem', 0) #this iter's overhead time for agem
             try:
                 old_batch = next(old_dataloader_iter)
@@ -49,7 +49,7 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
                 old_batch = next(old_dataloader_iter)
                 print('new iters')
             
-            cur_overhead_time += time.time() - overhead_start  #old dataloading time for agem
+            #cur_overhead_time += time.time() - overhead_start  #old dataloading time for agem
 
         data_timer = time.time()
         cur_data_time = data_timer - end
