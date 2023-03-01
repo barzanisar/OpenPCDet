@@ -216,6 +216,23 @@ def main():
             # include 5% randomly selected clear weather examples
             clear_indices = train_set.get_clear_indices()
             #all samples = 6996 = 3365 adverse + 3631 clear
+            # Select a subset of orig_clear_indices for e.g 50% of orig_clear_indices
+            fn = output_dir / 'clear_indices.npy'
+            if fn.exists():
+                with open(fn, 'rb') as f:
+                    clear_indices = np.load(f)
+            else:
+                if cfg.REPLAY.dataset_buffer_size == 1816:
+                    clear_indices = np.array([i for i in clear_indices if i % 2 == 0])
+                elif cfg.REPLAY.dataset_buffer_size == 1815:
+                    clear_indices = np.array([i for i in clear_indices if i % 2 != 0])
+                else:
+                    clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.dataset_buffer_size] # 720 clear indices
+                if cfg.LOCAL_RANK == 0:
+                    with open(fn, 'wb') as f:
+                        np.save(fn, clear_indices)
+
+            clear_indices = clear_indices.tolist() # this is not used for fixed replay
 
             clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected*.npy'))
             if len(clear_indices_selected_list) > 0:
