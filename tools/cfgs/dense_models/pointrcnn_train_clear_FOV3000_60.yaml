@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 WANDB:
-    ENABLED: False
+    ENABLED: True
     PROJECT: Pointrcnn_dense
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
