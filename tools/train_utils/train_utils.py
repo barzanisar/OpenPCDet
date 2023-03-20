@@ -14,7 +14,8 @@ import numpy as np
 #from matplotlib import pyplot as plt
 
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
-                    rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, ewc_params=None, old_dataloader = None):
+                    rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False, 
+                    ewc_params=None, old_dataloader = None, exp_avg=None):
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
     if old_dataloader is not None:
@@ -131,6 +132,27 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
 
         cur_batch_time = time.time() - end
 
+        # if exp_avg is not None:
+        #     # index = 0
+        #     # for p in model.parameters():
+        #     #     if p.requires_grad:
+        #     #         n_param = p.numel()
+        #     #         exp_avg[index:index+n_param] = 0.9 * exp_avg[index:index+n_param] + 0.1 * p.grad.view(-1)
+        #     #         index += n_param
+
+        #     param_idx = 0
+        #     index = 0
+        #     state_dict = optimizer.state_dict()['state']
+        #     for group in optimizer.param_groups:
+        #         for param in group['params']:
+        #             if param.requires_grad:
+        #                 n_param = param.numel()
+        #                 exp_avg[index:index+n_param] = 0.95 * exp_avg[index:index+n_param] + 0.05 * param.grad.view(-1)
+        #                 print(torch.sum(state_dict[param_idx]['exp_avg'].view(-1) - exp_avg[index:index+n_param]).item())
+        #             param_idx += 1
+        #             index += n_param
+
+
         # average reduce
         avg_data_time = commu_utils.average_reduce_value(cur_data_time)
         avg_forward_time = commu_utils.average_reduce_value(cur_forward_time)
@@ -243,6 +265,13 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
                         loss, _, _ = model_func(model, batch)
                         loss_prev_epoch_for_all_clear_samples.append(loss.item())
+            
+            # elif (cfg.REPLAY.method == 'EMIR' and cfg.REPLAY.method_variant == 'EMA'):
+            #     exp_avg = []
+            #     for p in model.parameters():
+            #         if p.requires_grad:
+            #             exp_avg.append(torch.zeros_like(p).view(-1))  
+            #     exp_avg = torch.cat(exp_avg) 
 
             elif cfg.REPLAY.method == 'AGEM':
                 # Reduce and fix samples in dataset buffer to save time
@@ -488,7 +517,8 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
                 rank=rank, tbar=tbar, tb_log=tb_log,
                 leave_pbar=(cur_epoch + 1 == total_epochs),
                 total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter, ewc_params=ewc_params, old_dataloader = old_train_loader if 'REPLAY' in cfg and cfg.REPLAY.method == 'AGEM' else None
+                dataloader_iter=dataloader_iter, ewc_params=ewc_params, old_dataloader = old_train_loader if 'REPLAY' in cfg and cfg.REPLAY.method == 'AGEM' else None,
+                #exp_avg = exp_avg if 'REPLAY' in cfg and cfg.REPLAY.method == 'EMIR' and cfg.REPLAY.method_variant == 'EMA' else None
             )
 
             cur_epoch_time = time.time() - end
