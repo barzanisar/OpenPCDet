@@ -229,6 +229,23 @@ def train_model(cfg, model, optimizer, train_loader, model_func, lr_scheduler, o
 
         dataloader_iter = iter(train_loader)
 
+        # backbone_params = 0
+        # backbone2d_params = 0
+        # other_params = 0
+        # for name, param in model.named_parameters():
+        #     if param.requires_grad:
+        #         if 'backbone_3d' in name:
+        #             backbone_params += param.numel()
+        #         elif 'backbone_2d' in name:
+        #             backbone2d_params += param.numel()
+        #         else:
+        #             other_params+= param.numel()
+        
+        # print(backbone_params)
+        # print(backbone2d_params)
+        # print(other_params)
+        # b=1
+
         if rank == 0:
             epoch_time = common_utils.AverageMeter()
             overhead_time = common_utils.AverageMeter()
