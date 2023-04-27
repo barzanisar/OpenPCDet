@@ -8,6 +8,31 @@ import torch
 import numpy as np
 import matplotlib as mpl
 import matplotlib.cm as cm
+from sklearn.manifold import TSNE
+import pickle
+
+def get_feature_colors(pc, feature):
+    # #Compute tsne
+    # feature = TSNE(n_components=1).fit_transform(point_features)
+    # pickle.dump(feature, open("tsne.pkl", "wb"))
+
+    # #load tsne
+    # feature = pickle.load(open("tsne.pkl", "rb"))
+    min_value = np.min(feature)
+    max_value = np.max(feature)
+
+    norm = mpl.colors.Normalize(vmin=min_value, vmax=max_value)
+
+
+    cmap = cm.jet  # sequential
+
+    m = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    colors = m.to_rgba(feature)
+    colors[:, [2, 1, 0, 3]] = colors[:, [0, 1, 2, 3]]
+    colors[:, 3] = 0.5
+
+    return colors[:, :3]
 
 def get_colors(pc, color_feature=None):
     # create colormap
@@ -138,13 +163,15 @@ def get_coor_colors(obj_labels):
     return label_rgba
 
 
-def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, color_feature=None, draw_origin=True):
+def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, color_feature=None, draw_origin=True, point_features=None):
     if isinstance(points, torch.Tensor):
         points = points.cpu().numpy()
     if isinstance(gt_boxes, torch.Tensor):
         gt_boxes = gt_boxes.cpu().numpy()
     if isinstance(ref_boxes, torch.Tensor):
         ref_boxes = ref_boxes.cpu().numpy()
+    if isinstance(point_features, torch.Tensor):
+        point_features = point_features.cpu().numpy()
 
     vis = open3d.visualization.Visualizer()
     vis.create_window()
@@ -161,7 +188,10 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
     pts.points = open3d.utility.Vector3dVector(points[:, :3])
 
     vis.add_geometry(pts)
-    point_colors = get_colors(points, color_feature)
+    if point_features is not None:
+        point_colors = get_feature_colors(points, point_features)
+    else:
+        point_colors = get_colors(points, color_feature)
     if point_colors is None:
         pts.colors = open3d.utility.Vector3dVector(np.ones((points.shape[0], 3)))
     else:
