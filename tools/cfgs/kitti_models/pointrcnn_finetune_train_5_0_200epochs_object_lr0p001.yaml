@@ -8,6 +8,8 @@ WANDB:
     dir: '/OpenPCDet/output'
     tags: ['train_5_0']
 
+LOAD_WHOLE_MODEL: True
+
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
 
@@ -190,7 +192,7 @@ OPTIMIZATION:
     NUM_EPOCHS: 200
 
     OPTIMIZER: adam_onecycle
-    LR: 0.01
+    LR: 0.001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
