@@ -114,9 +114,23 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/second_finetune_all_FOV3000_60_replay_EMIR.yaml",
+                "cfgs/dense_models/pointrcnn_finetune_all_FOV3000_60_replay_EMIR_EMA_lr0p005.yaml",
                 "--pretrained_model",
-                "../checkpoints/second_train_clear_FOV3000_60_ep74.pth", "--fix_random_seed"
+                "../checkpoints/pointrcnn_train_clear_FOV3000_60_ep78.pth", "--fix_random_seed"
+            ]
+        },
+        {
+            "name": "finetune_EMIR_voxel",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/dense_models/voxelrcnncar_finetune_all_FOV3000_60_replay_EMIR_EMA_d10.yaml",
+                "--pretrained_model",
+                "../checkpoints/voxelrcnncar_train_clear_FOV3000_60_ep71.pth", "--fix_random_seed"
             ]
         },
         {
@@ -131,6 +145,20 @@
                 "cfgs/dense_models/pointrcnn_finetune_train_all_FOV3000_60_50_freeze_bb.yaml",
                 "--eval_all", "--eval_tag", "test_clear_FOV3000_25", "--set", "DATA_CONFIG.INFO_PATH.test", 
                 "dense_infos_test_clear_FOV3000_25.pkl"
+            ]
+        },
+        {
+            "name": "finetune_kitti_object",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/kitti_models/pointrcnn_finetune_train_5_0_200epochs.yaml",
+                "--pretrained_model",
+                "../checkpoints/checkpoint_epoch_1_kitti_train_95_0_object.pth", "--fix_random_seed"
             ]
         },
         {
@@ -213,7 +241,7 @@
             ]
         },
         {
-            "name": "train_all_60_5",
+            "name": "train_kitti",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -221,8 +249,21 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/dense_models/pointrcnn_train_all_60_5.yaml",
+                "cfgs/kitti_models/pointrcnn_object.yaml",
                 "--ckpt_save_interval", "1"
+            ]
+        },
+        {
+            "name": "test_kitti",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/kitti_models/pointrcnn_object.yaml",
+                "--eval_all"
             ]
         },
         {
@@ -264,19 +305,6 @@
                 "--ckpt_save_interval", "1"
             ]
         },
-        // {
-        //     "name": "train_clear_60",
-        //     "type": "python",
-        //     "request": "launch",
-        //     "program": "${workspaceFolder}/tools/train.py",
-        //     "console": "integratedTerminal",
-        //     "cwd": "${workspaceFolder}/tools",
-        //     "args": [
-        //         "--cfg_file",
-        //         "cfgs/dense_models/pointrcnn_train_clear_60.yaml",
-        //         "--ckpt_save_interval", "5"
-        //     ]
-        // },
         {
             "name": "train_clear_FOV3000_60",
             "type": "python",
@@ -355,6 +383,32 @@
         "args": [
             "--cfg_file",
             "cfgs/dense_models/pointrcnn_train_clear_FOV3000_60.yaml",  "--eval_all"
+        ]
+    },
+    // {
+    //     "name": "test-kitti",
+    //     "type": "python",
+    //     "request": "launch",
+    //     "program": "${workspaceFolder}/tools/test.py",
+    //     "console": "integratedTerminal",
+    //     "cwd": "${workspaceFolder}/tools",
+    //     "args": [
+    //         "--cfg_file",
+    //         "cfgs/kitti_models/pointrcnn_train_5_1_500epochs.yaml", 
+    //         "--ckpt", 
+    //         "../checkpoints/kitti_5_1_500_epochs_scratch_pointrcnn_checkpoint_epoch_465.pth"
+    //     ]
+    // },
+    {
+        "name": "approx_bboxes",
+        "type": "python",
+        "request": "launch",
+        "program": "${workspaceFolder}/tools/approx_bboxes.py",
+        "console": "integratedTerminal",
+        "cwd": "${workspaceFolder}/tools",
+        "args": [
+            "--cfg_file",
+            "cfgs/kitti_models/pointrcnn.yaml"
         ]
     }
 ]
