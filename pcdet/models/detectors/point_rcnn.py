@@ -1,89 +1,89 @@
 from .detector3d_template import Detector3DTemplate
 
-import numpy as np
-import numpy.linalg as LA
-from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
-import torch
-import pickle
-from sklearn.manifold import TSNE
-from umap import UMAP
-from ...ops.roiaware_pool3d import roiaware_pool3d_utils
-import matplotlib.pyplot as plt
-import seaborn as sns
+# import numpy as np
+# import numpy.linalg as LA
+# from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
+# import torch
+# import pickle
+# from sklearn.manifold import TSNE
+# from umap import UMAP
+# from ...ops.roiaware_pool3d import roiaware_pool3d_utils
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-def draw2DRectangle(x1, y1, x2, y2):
-    # diagonal line
-    # plt.plot([x1, x2], [y1, y2], linestyle='dashed')
-    # four sides of the rectangle
-    plt.plot([x1, x2], [y1, y1], color='b') # -->
-    plt.plot([x2, x2], [y1, y2], color='b') # | (up)
-    plt.plot([x2, x1], [y2, y2], color='b') # <--
-    plt.plot([x1, x1], [y2, y1], color='b') # | (down)
-def draw3DRectangle(ax, x1, y1, z1, x2, y2, z2):
-    # the Translate the datatwo sets of coordinates form the apposite diagonal points of a cuboid
-    ax.plot([x1, x2], [y1, y1], [z1, z1], color='b') # | (up)
-    ax.plot([x2, x2], [y1, y2], [z1, z1], color='b') # -->
-    ax.plot([x2, x1], [y2, y2], [z1, z1], color='b') # | (down)
-    ax.plot([x1, x1], [y2, y1], [z1, z1], color='b') # <--
+# def draw2DRectangle(x1, y1, x2, y2):
+#     # diagonal line
+#     # plt.plot([x1, x2], [y1, y2], linestyle='dashed')
+#     # four sides of the rectangle
+#     plt.plot([x1, x2], [y1, y1], color='b') # -->
+#     plt.plot([x2, x2], [y1, y2], color='b') # | (up)
+#     plt.plot([x2, x1], [y2, y2], color='b') # <--
+#     plt.plot([x1, x1], [y2, y1], color='b') # | (down)
+# def draw3DRectangle(ax, x1, y1, z1, x2, y2, z2):
+#     # the Translate the datatwo sets of coordinates form the apposite diagonal points of a cuboid
+#     ax.plot([x1, x2], [y1, y1], [z1, z1], color='b') # | (up)
+#     ax.plot([x2, x2], [y1, y2], [z1, z1], color='b') # -->
+#     ax.plot([x2, x1], [y2, y2], [z1, z1], color='b') # | (down)
+#     ax.plot([x1, x1], [y2, y1], [z1, z1], color='b') # <--
 
-    ax.plot([x1, x2], [y1, y1], [z2, z2], color='b') # | (up)
-    ax.plot([x2, x2], [y1, y2], [z2, z2], color='b') # -->
-    ax.plot([x2, x1], [y2, y2], [z2, z2], color='b') # | (down)
-    ax.plot([x1, x1], [y2, y1], [z2, z2], color='b') # <--
+#     ax.plot([x1, x2], [y1, y1], [z2, z2], color='b') # | (up)
+#     ax.plot([x2, x2], [y1, y2], [z2, z2], color='b') # -->
+#     ax.plot([x2, x1], [y2, y2], [z2, z2], color='b') # | (down)
+#     ax.plot([x1, x1], [y2, y1], [z2, z2], color='b') # <--
     
-    ax.plot([x1, x1], [y1, y1], [z1, z2], color='b') # | (up)
-    ax.plot([x2, x2], [y2, y2], [z1, z2], color='b') # -->
-    ax.plot([x1, x1], [y2, y2], [z1, z2], color='b') # | (down)
-    ax.plot([x2, x2], [y1, y1], [z1, z2], color='b') # <--
+#     ax.plot([x1, x1], [y1, y1], [z1, z2], color='b') # | (up)
+#     ax.plot([x2, x2], [y2, y2], [z1, z2], color='b') # -->
+#     ax.plot([x1, x1], [y2, y2], [z1, z2], color='b') # | (down)
+#     ax.plot([x2, x2], [y1, y1], [z1, z2], color='b') # <--
 
-def visualize_tsne(pointwise_gt_cls, tsne):
+# def visualize_tsne(pointwise_gt_cls, tsne):
 
-    class_names = ['background', 'car', 'ped', 'cyc']
-    num_classes = len(class_names)
-    # We choose a color palette with seaborn.
-    palette = np.array(sns.color_palette("hls", num_classes))
+#     class_names = ['background', 'car', 'ped', 'cyc']
+#     num_classes = len(class_names)
+#     # We choose a color palette with seaborn.
+#     palette = np.array(sns.color_palette("hls", num_classes))
 
-    # scale and move the coordinates so they fit [0; 1] range
-    def scale_to_01_range(x):
-        # compute the distribution range
-        value_range = (np.max(x) - np.min(x))
+#     # scale and move the coordinates so they fit [0; 1] range
+#     def scale_to_01_range(x):
+#         # compute the distribution range
+#         value_range = (np.max(x) - np.min(x))
 
-        # move the distribution so that it starts from zero
-        # by extracting the minimal value from all its values
-        starts_from_zero = x - np.min(x)
+#         # move the distribution so that it starts from zero
+#         # by extracting the minimal value from all its values
+#         starts_from_zero = x - np.min(x)
 
-        # make the distribution fit [0; 1] by dividing by its range
-        return starts_from_zero / value_range
+#         # make the distribution fit [0; 1] by dividing by its range
+#         return starts_from_zero / value_range
 
-    # extract x and y coordinates representing the positions of the images on T-SNE plot
-    tx = tsne[:, 0]
-    ty = tsne[:, 1]
+#     # extract x and y coordinates representing the positions of the images on T-SNE plot
+#     tx = tsne[:, 0]
+#     ty = tsne[:, 1]
 
-    tx = scale_to_01_range(tx)
-    ty = scale_to_01_range(ty)
+#     tx = scale_to_01_range(tx)
+#     ty = scale_to_01_range(ty)
 
-    # initialize a matplotlib plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+#     # initialize a matplotlib plot
+#     fig = plt.figure()
+#     ax = fig.add_subplot(111)
 
-    # for every class, we'll add a scatter plot separately
-    for idx, label in enumerate(class_names):
-        # extract the coordinates of the points of this class only
-        current_tx = tx[pointwise_gt_cls == idx]
-        current_ty = ty[pointwise_gt_cls == idx]
+#     # for every class, we'll add a scatter plot separately
+#     for idx, label in enumerate(class_names):
+#         # extract the coordinates of the points of this class only
+#         current_tx = tx[pointwise_gt_cls == idx]
+#         current_ty = ty[pointwise_gt_cls == idx]
 
-        if idx == 0:
-            continue
-        # add a scatter plot with the corresponding color and label
-        ax.scatter(current_tx, current_ty, label=label, marker='x', linewidth=0.5)
+#         if idx == 0:
+#             continue
+#         # add a scatter plot with the corresponding color and label
+#         ax.scatter(current_tx, current_ty, label=label, marker='x', linewidth=0.5)
 
-    # build a legend using the labels we set previously
-    ax.legend(loc='best')
-    plt.grid()
-    plt.xlabel("x1")
-    plt.ylabel("x2")
-    plt.title(f"TSNE on point features")
-    plt.show()
+#     # build a legend using the labels we set previously
+#     ax.legend(loc='best')
+#     plt.grid()
+#     plt.xlabel("x1")
+#     plt.ylabel("x2")
+#     plt.title(f"TSNE on point features")
+#     plt.show()
 
 class PointRCNN(Detector3DTemplate):
     def __init__(self, model_cfg, num_class, dataset):
