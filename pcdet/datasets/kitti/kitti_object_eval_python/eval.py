@@ -58,7 +58,7 @@ def clean_data(gt_anno, dt_anno, current_class, difficulty):
         -1 means do not use this dt box for evaluation bcz name does not match the current class argument]
 
     """
-    CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck']
+    CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck', 'object']
     MIN_HEIGHT = [40, 25, 25] # for easy, moderate, hard difficulty
     MAX_OCCLUSION = [0, 1, 2] # for easy, moderate, hard difficulty
     MAX_TRUNCATION = [0.15, 0.3, 0.5] # for 15 % for easy, 30 % for moderate, 50 % for hard difficulty
@@ -91,6 +91,8 @@ def clean_data(gt_anno, dt_anno, current_class, difficulty):
             valid_class = 0 # gt class is a neighboring class of evaluation class
         elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name):
             valid_class = 0 # gt class is a neighboring class of evaluation class
+        elif (current_cls_name == "Object".lower() and gt_name in ["Van".lower(),  "Person_sitting".lower(), "Truck".lower()]):
+            valid_class = 0
         else:
             valid_class = -1 # classes not used for evaluation for current class
         
@@ -925,20 +927,24 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
     # Columns are for car, ped, cyc, van, person sitting, truck
     # Rows are for 2d bbox, bev, 3d bbox
     # We are only interested in 3d bbox row and car, ped, cyc columns
-    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7], 
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7],
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7]])  
-    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5], 
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
-    min_overlaps = np.stack([overlap_0_7, overlap_0_5], axis=0)
+    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7], 
+                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7],
+                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7]])  
+    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5,     0.7], 
+                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5],
+                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5]])
+    overlap_0_25 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5, 0.5], 
+                        [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.25],
+                        [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.25]])
+    min_overlaps = np.stack([overlap_0_7, overlap_0_5, overlap_0_25], axis=0)
     class_to_name = {
         0: 'Car',
         1: 'Pedestrian',
         2: 'Cyclist',
         3: 'Van',
         4: 'Person_sitting',
-        5: 'Truck'
+        5: 'Truck',
+        6: 'Object'
     }
     name_to_class = {v: n for n, v in class_to_name.items()}
     if not isinstance(current_classes, (list, tuple)):
