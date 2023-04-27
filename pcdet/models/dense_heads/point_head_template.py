@@ -144,6 +144,11 @@ class PointHeadTemplate(nn.Module):
         cls_weights = (negative_cls_weights + 1.0 * positives).float() #  (16382 x 2):1 for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
         pos_normalizer = positives.sum(dim=0).float() # total num gt object pts
         cls_weights /= torch.clamp(pos_normalizer, min=1.0)  #  (16382 x 2):1/(num gt obj pts) for object and background pt, 0 for ignored pts i.e. around gt box, we don't include loss on ignored pts
+        
+        # normalize bg points with bg num pts and normalize fg points with fg num pts and 0 weight for ignored pts
+        # pos_cls_weights =  (1.0 * positives) / torch.clamp(pos_normalizer, min=1.0)
+        # neg_cl_weights = negative_cls_weights / torch.clamp(negative_cls_weights.sum(), min=1.0)
+        # cls_weights = neg_cl_weights + pos_cls_weights
 
         one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1) # (16384 x 2, 3+1=4)
         one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0) #Create one hot vector of size (16384x2, 4) ->(point_cls_labels * (point_cls_labels >= 0).long()) gives (16384x2) vector which is 0: background and ignored points, 1: Car, 2: Ped, 3: Cyc
