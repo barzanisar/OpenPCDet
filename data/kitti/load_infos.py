@@ -41,38 +41,38 @@ import numpy as np
 
 
 ################ Convert car, ped, cyc dbinfos into Object dbinfos ##################3
-path = '/home/barza/OpenPCDet/data/kitti/kitti_dbinfos_train_95_0.pkl'
-with open(path, 'rb') as f:
-    infos_dbinfos_train = pickle.load(f)
+# path = '/home/barza/OpenPCDet/data/kitti/kitti_dbinfos_train_95_2.pkl'
+# with open(path, 'rb') as f:
+#     infos_dbinfos_train = pickle.load(f)
 
-for cls in ['Car', 'Cyclist', 'Pedestrian']:
-    cls_infos = infos_dbinfos_train[cls]
-    for info in cls_infos:
-        info['name'] = 'Object'
-object_dict = {'Object': infos_dbinfos_train['Pedestrian'] + infos_dbinfos_train['Car'] + infos_dbinfos_train['Cyclist']}
+# for cls in ['Car', 'Cyclist', 'Pedestrian']:
+#     cls_infos = infos_dbinfos_train[cls]
+#     for info in cls_infos:
+#         info['name'] = 'Object'
+# object_dict = {'Object': infos_dbinfos_train['Pedestrian'] + infos_dbinfos_train['Car'] + infos_dbinfos_train['Cyclist']}
 
-path = '/home/barza/OpenPCDet/data/kitti/kitti_dbinfos_train_95_0_object.pkl'
-with open(path, 'wb') as f:
-    pickle.dump(object_dict,f)
+# path = '/home/barza/OpenPCDet/data/kitti/kitti_dbinfos_train_95_2_object.pkl'
+# with open(path, 'wb') as f:
+#     pickle.dump(object_dict,f)
 
 ################ Convert car, ped, cyc in train infos to object classes ##################
-# path = '/home/barza/OpenPCDet/data/kitti/kitti_infos_val.pkl'
-# with open(path, 'rb') as f:
-#     infos_train = pickle.load(f)
+path = '/home/barza/OpenPCDet/data/kitti/kitti_infos_train_5_1.pkl'
+with open(path, 'rb') as f:
+    infos_train = pickle.load(f)
 
-# for info in infos_train:
-#     name_list = []
-#     for name in info['annos']['name']:
-#         if name in ['Car', 'Pedestrian', 'Cyclist']:
-#             name_list.append('Object')
-#         else:
-#             name_list.append(name)
-#     info['annos']['name'] = np.array(name_list)
+for info in infos_train:
+    name_list = []
+    for name in info['annos']['name']:
+        if name in ['Car', 'Pedestrian', 'Cyclist']:
+            name_list.append('Object')
+        else:
+            name_list.append(name)
+    info['annos']['name'] = np.array(name_list)
 
 
-# path = '/home/barza/OpenPCDet/data/kitti/kitti_infos_val_object.pkl'
-# with open(path, 'wb') as f:
-#     pickle.dump(infos_train,f)
+path = '/home/barza/OpenPCDet/data/kitti/kitti_infos_train_5_1_object.pkl'
+with open(path, 'wb') as f:
+    pickle.dump(infos_train,f)
 
 
 # path2 = '/home/barza/OpenPCDet/data/kitti/depth_contrast_infos/kitti_infos_val.pkl' #'/home/barza/OpenPCDet/data/kitti/kitti_infos_val.pkl'

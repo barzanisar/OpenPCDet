@@ -31,27 +31,19 @@ def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
 
-    parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
-    #parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
-
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
 
     np.random.seed(1024)
-    #common_utils.set_random_seed(1024)
-
     return args, cfg
 
 
 def main():
     args, cfg = parse_config()
-    
-    dist_test = False
-    total_gpus = 1
+
     classes = ['back', 'car', 'ped', 'cyc']
   
-    args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
     dataset_cfg=cfg.DATA_CONFIG
     dataset_train = build_dataset(dataset_cfg, cfg.CLASS_NAMES, root_path=None,
                   logger=None, training=False)
