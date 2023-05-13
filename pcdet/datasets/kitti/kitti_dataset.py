@@ -211,8 +211,11 @@ class KittiDataset(DatasetTemplate):
                     calib = self.get_calib(sample_idx)
                     pts_rect = calib.lidar_to_rect(points[:, 0:3])
 
-                    fov_flag = self.get_fov_flag(pts_rect, info['image']['image_shape'], calib)
-                    pts_fov = points[fov_flag]
+                    if self.dataset_cfg.FOV_POINTS_ONLY:
+                        fov_flag = self.get_fov_flag(pts_rect, info['image']['image_shape'], calib)
+                        pts_fov = points[fov_flag]
+                    else:
+                        pts_fov = points
                     corners_lidar = box_utils.boxes_to_corners_3d(gt_boxes_lidar)
                     num_points_in_gt = -np.ones(num_gt, dtype=np.int32)
 
@@ -310,7 +313,7 @@ class KittiDataset(DatasetTemplate):
             pred_scores = box_dict['pred_scores'].cpu().numpy()
             pred_boxes = box_dict['pred_boxes'].cpu().numpy()
             pred_labels = box_dict['pred_labels'].cpu().numpy()
-            pred_dict = get_template_prediction(pred_scores.shape[0])
+            pred_dict = get_template_prediction(pred_scores.shape[0]) # num pred boxes in this pc
             if pred_scores.shape[0] == 0:
                 return pred_dict
 
@@ -333,10 +336,10 @@ class KittiDataset(DatasetTemplate):
             return pred_dict
 
         annos = []
-        for index, box_dict in enumerate(pred_dicts):
+        for index, box_dict in enumerate(pred_dicts): # per pc in batch
             frame_id = batch_dict['frame_id'][index]
 
-            single_pred_dict = generate_single_sample_dict(index, box_dict)
+            single_pred_dict = generate_single_sample_dict(index, box_dict) # generate annos for one pc
             single_pred_dict['frame_id'] = frame_id
             annos.append(single_pred_dict)
 
