@@ -338,6 +338,7 @@ echo "Extracting dataset infos"
 unzip -qq $INFOS_DIR/kitti_train_infos_5.zip -d $TMP_DATA_DIR
 #unzip -qq $INFOS_DIR/kitti_infos.zip -d $TMP_DATA_DIR # contains gt database with labels
 unzip -qq $INFOS_DIR/kitti_train_infos_pca_object.zip -d $TMP_DATA_DIR
+unzip -qq $INFOS_DIR/gt_database_train_95_0_pca_object.zip -d $TMP_DATA_DIR
 
 echo "Done extracting dataset infos"
 
