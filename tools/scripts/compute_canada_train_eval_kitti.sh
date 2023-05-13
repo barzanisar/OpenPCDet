@@ -313,17 +313,17 @@ TMP_DATA_DIR=$SLURM_TMPDIR/data
 #     unzip -qq $file -d $TMP_DATA_DIR
 # done
 
-echo "Unzipping $file to $TMP_DATA_DIR"
+# echo "Unzipping $file to $TMP_DATA_DIR"
 unzip -qq $DATA_DIR/data_object_calib.zip -d $TMP_DATA_DIR
 
-echo "Unzipping $file to $TMP_DATA_DIR"
+# echo "Unzipping $file to $TMP_DATA_DIR"
 unzip -qq $DATA_DIR/data_object_label_2.zip -d $TMP_DATA_DIR
 
 
-echo "Unzipping $file to $TMP_DATA_DIR"
+# echo "Unzipping $file to $TMP_DATA_DIR"
 unzip -qq $DATA_DIR/data_object_velodyne.zip -d $TMP_DATA_DIR
 
-echo "Unzipping $file to $TMP_DATA_DIR"
+# echo "Unzipping $DATA_DIR/planes.zip to $TMP_DATA_DIR"
 unzip -qq $DATA_DIR/planes.zip -d $TMP_DATA_DIR
 
 
@@ -331,10 +331,14 @@ echo "Done extracting data"
 
 # Extract dataset infos
 echo "Extracting dataset infos"
-for file in $INFOS_DIR/*.zip; do
-    echo "Unzipping $file to $TMP_DATA_DIR"
-    unzip -qq $file -d $TMP_DATA_DIR
-done
+# for file in $INFOS_DIR/*.zip; do
+#     echo "Unzipping $file to $TMP_DATA_DIR"
+#     unzip -qq $file -d $TMP_DATA_DIR
+# done
+unzip -qq $INFOS_DIR/kitti_train_infos_5.zip -d $TMP_DATA_DIR
+#unzip -qq $INFOS_DIR/kitti_infos.zip -d $TMP_DATA_DIR # contains gt database with labels
+unzip -qq $INFOS_DIR/kitti_train_infos_pca_object.zip -d $TMP_DATA_DIR
+
 echo "Done extracting dataset infos"
 
 # Load Singularity
