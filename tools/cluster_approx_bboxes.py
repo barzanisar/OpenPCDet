@@ -1,7 +1,7 @@
 # import argparse
 
 import numpy as np
-# from tqdm import tqdm
+from tqdm import tqdm
 
 import numpy as np
 import numpy.linalg as LA
@@ -12,175 +12,300 @@ from pcdet.utils import box_utils, calibration_kitti
 import matplotlib.pyplot as plt
 from visual_utils.pcd_preprocess import *
 from pathlib import Path
+from sklearn.linear_model import RANSACRegressor
+
 
 np.random.seed(100)
 ROOT_PATH = Path('/home/barza/OpenPCDet/data/kitti')
-CLUSTER_HERE = True
-FILTER_GROUND_CLUSTERS= True
-FILTER_WALL_CLUSTERS= True
-FILTER_POLES= True
-approx_boxes_PCA = False# boxes with PCA
+FOV_POINTS_ONLY = True
 SHOW_PLOTS = False
 info_path = ROOT_PATH / 'kitti_infos_train_95_0.pkl'
+new_info_path = ROOT_PATH / 'kitti_infos_train_95_0_pca_object.pkl'
+METHOD='PCA' #'closeness', min_max
 
 
+def generate_prediction_dicts(info, approx_boxes, pc):
+        """
+        Args:
+        Returns:
 
-# def generate_prediction_dicts(frame_info, approx_boxes):
-        # """
-        # Args:
-        # Returns:
+        """
+        def get_calib(idx):
+            calib_file = ROOT_PATH / 'training' / 'calib' / ('%s.txt' % idx)
+            assert calib_file.exists()
+            return calibration_kitti.Calibration(calib_file)
+        
+        def get_fov_flag(pts_rect, img_shape, calib):
+            """
+            Args:
+                pts_rect:
+                img_shape:
+                calib:
 
-        # """
-        # def get_calib(idx):
-        #     calib_file = ROOT_PATH / 'training' / 'calib' / ('%s.txt' % idx)
-        #     assert calib_file.exists()
-        #     return calibration_kitti.Calibration(calib_file)
+            Returns:
 
-        # def get_template_prediction(num_samples):
-        #     ret_dict = {
-        #         'name': np.zeros(num_samples), 'truncated': np.zeros(num_samples),
-        #         'occluded': np.zeros(num_samples), 'alpha': np.zeros(num_samples),
-        #         'bbox': np.zeros([num_samples, 4]), 'dimensions': np.zeros([num_samples, 3]),
-        #         'location': np.zeros([num_samples, 3]), 'rotation_y': np.zeros(num_samples),
-        #         'score': np.zeros(num_samples), 'boxes_lidar': np.zeros([num_samples, 7])
-        #     }
-        #     return ret_dict
+            """
+            pts_img, pts_rect_depth = calib.rect_to_img(pts_rect)
+            val_flag_1 = np.logical_and(pts_img[:, 0] >= 0, pts_img[:, 0] < img_shape[1])
+            val_flag_2 = np.logical_and(pts_img[:, 1] >= 0, pts_img[:, 1] < img_shape[0])
+            val_flag_merge = np.logical_and(val_flag_1, val_flag_2)
+            pts_valid_flag = np.logical_and(val_flag_merge, pts_rect_depth >= 0)
 
-        # def generate_single_sample_dict(batch_index, box_dict):
-        #     pred_scores = box_dict['pred_scores'].cpu().numpy()
-        #     pred_boxes = box_dict['pred_boxes'].cpu().numpy()
-        #     pred_labels = box_dict['pred_labels'].cpu().numpy()
-        #     pred_dict = get_template_prediction(pred_scores.shape[0])
-        #     if pred_scores.shape[0] == 0:
-        #         return pred_dict
+            return pts_valid_flag
 
-        #     calib = batch_dict['calib'][batch_index]
-        #     image_shape = batch_dict['image_shape'][batch_index].cpu().numpy()
-        #     pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib)
-        #     pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
-        #         pred_boxes_camera, calib, image_shape=image_shape
-        #     )
+        num_boxes = approx_boxes.shape[0]
 
-        #     pred_dict['name'] = np.array(['Object'])[pred_labels - 1]
-        #     pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6]
-        #     pred_dict['bbox'] = pred_boxes_img
-        #     pred_dict['dimensions'] = pred_boxes_camera[:, 3:6]
-        #     pred_dict['location'] = pred_boxes_camera[:, 0:3]
-        #     pred_dict['rotation_y'] = pred_boxes_camera[:, 6]
-        #     pred_dict['score'] = pred_scores
-        #     pred_dict['boxes_lidar'] = pred_boxes
+        frame_id = info['point_cloud']['lidar_idx']
+        calib = get_calib(frame_id)
+        image_shape = info['image']['image_shape']
+        pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(approx_boxes, calib)
+        pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
+            pred_boxes_camera, calib, image_shape=image_shape
+        )
 
-        #     return pred_dict
+        annos = {
+            'name': np.array(['Object']*num_boxes),
+            'truncated': np.zeros(num_boxes),
+            'occluded': np.zeros(num_boxes), 
+            'alpha':  -np.arctan2(-approx_boxes[:, 1], approx_boxes[:, 0]) + pred_boxes_camera[:, 6],
+            'bbox': pred_boxes_img, 
+            'dimensions': pred_boxes_camera[:, 3:6],
+            'location': pred_boxes_camera[:, 0:3], 
+            'rotation_y':pred_boxes_camera[:, 6],
+            'score': -1*np.ones(num_boxes),
+            'difficulty': np.ones(num_boxes),
+            'gt_boxes_lidar': approx_boxes,
+            'num_points_in_gt': -np.ones(num_boxes, dtype=np.int32)
+ 
+        }  # all moderate
 
-       
-        # frame_id = info['point_cloud']['lidar_idx']
-        # calib = get_calib(frame_id)
-        # num_boxes = approx_boxes.shape[0]
-        # annos = {
-        #     'name': np.array(['Object']*num_boxes),
-        #     'truncated': np.zeros(num_boxes),
-        #     'occluded': np.zeros(num_boxes), 
-        #     'alpha': np.zeros(num_boxes),
-        #     'bbox': np.zeros([num_boxes, 4]), 
-        #     'dimensions': np.zeros([num_boxes, 3]),
-        #     'location': np.zeros([num_boxes, 3]), 
-        #     'rotation_y': np.zeros(num_boxes),
-        #     'score': np.zeros(num_boxes),
-        #     'difficulty': np.ones(num_boxes),
-        #     'index': np.array(list(range(num_objects))),
-        #     'gt_boxes_lidar': approx_boxes,
-        #     'num_points_in_gt': 
+        pts_rect = calib.lidar_to_rect(pc[:, 0:3])
 
-        # }
+        if FOV_POINTS_ONLY:
+            fov_flag = get_fov_flag(pts_rect, info['image']['image_shape'], calib)
+            pts_fov = pc[fov_flag]
+        else:
+            pts_fov = pc
+        corners_lidar = box_utils.boxes_to_corners_3d(approx_boxes)
+
+        for k in range(num_boxes):
+            flag = box_utils.in_hull(pts_fov[:, 0:3], corners_lidar[k])
+            annos['num_points_in_gt'][k] = flag.sum()
 
 
+        info['annos'] = annos
         
 
-        # return new_info
+        return info
 
 
-def draw2DRectangle(x1, y1, x2, y2):
+def drawMinMaxRectangle(x1, y1, x2, y2):
     # diagonal line
     # plt.plot([x1, x2], [y1, y2], linestyle='dashed')
     # four sides of the rectangle
-    plt.plot([x1, x2], [y1, y1], color='b') # -->
+    plt.plot([x1, x2], [y1, y1], color='b', label='min/max box') # -->
     plt.plot([x2, x2], [y1, y2], color='b') # | (up)
     plt.plot([x2, x1], [y2, y2], color='b') # <--
     plt.plot([x1, x1], [y2, y1], color='b') # | (down)
 
-def filter_ground(indices, pc):
-    object = pc[indices, :]
-    z = object[:,2]
-    h = z.max() - z.min()
-    # if height is not much, make this cluster background
-    if h < 0.4:
-        pc[indices, -1] = -1
-    if FILTER_POLES and h > 2.5:
-        pc[indices, -1] = -1
-    return pc
+def draw2DRectangle(rectangleCoordinates, color, label):
+    # diagonal line
+    # plt.plot([x1, x2], [y1, y2], linestyle='dashed')
+    # four sides of the rectangle
+    plt.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color=color, label=label) # | (up)
+    plt.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color=color) # -->
+    plt.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color=color)    # | (down)
+    plt.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color=color)    # <--
 
-def filter_walls(indices, pc):
-    object = pc[indices, :]
-    x = object[:,0]
-    y = object[:,1]
-    l = x.max() - x.min()
-    w = y.max() - y.min()
+
+
+# def filter_ground(indices, pc):
+#     object = pc[indices, :]
+#     z = object[:,2]
+#     h = z.max() - z.min()
+#     # if height is not much, make this cluster background
+#     if h < 0.4:
+#         pc[indices, -1] = -1
+#     if FILTER_POLES and h > 2.5:
+#         pc[indices, -1] = -1
+#     return pc
+
+# def filter_walls(indices, pc):
+#     object = pc[indices, :]
+#     x = object[:,0]
+#     y = object[:,1]
+#     l = x.max() - x.min()
+#     w = y.max() - y.min()
     
-    if l > 6 or w > 6:
-        pc[indices, -1] = -1
-        object_clustered, num_clusters_found = clusterize_pcd(object[:,:-1], 5, dist_thresh=0.1, eps=0.3)
-        #visualize_pcd_clusters(object_clustered)
-        if num_clusters_found > 1:
-            cluster_ids = object_clustered[:, -1] 
-            for cluster_id in np.unique(cluster_ids):
-                if cluster_id == -1:
-                    continue
-                mini_obj_indices = cluster_ids == cluster_id 
-                if FILTER_GROUND_CLUSTERS:
-                    object_clustered = filter_ground(mini_obj_indices, object_clustered)
-                if FILTER_WALL_CLUSTERS:
-                    mini_object = object_clustered[mini_obj_indices, :]
-                    x = mini_object[:,0]
-                    y = mini_object[:,1]
-                    l = x.max() - x.min()
-                    w = y.max() - y.min()
-                    if l > 6 or w > 6:
-                        object_clustered[mini_obj_indices, -1] = -1
+#     if l > 6 or w > 6:
+#         pc[indices, -1] = -1
+#         object_clustered, num_clusters_found = clusterize_pcd(object[:,:-1], 5, dist_thresh=0.1, eps=0.3)
+#         #visualize_pcd_clusters(object_clustered)
+#         if num_clusters_found > 1:
+#             cluster_ids = object_clustered[:, -1] 
+#             for cluster_id in np.unique(cluster_ids):
+#                 if cluster_id == -1:
+#                     continue
+#                 mini_obj_indices = cluster_ids == cluster_id 
+#                 if FILTER_GROUND_CLUSTERS:
+#                     object_clustered = filter_ground(mini_obj_indices, object_clustered)
+#                 if FILTER_WALL_CLUSTERS:
+#                     mini_object = object_clustered[mini_obj_indices, :]
+#                     x = mini_object[:,0]
+#                     y = mini_object[:,1]
+#                     l = x.max() - x.min()
+#                     w = y.max() - y.min()
+#                     if l > 6 or w > 6:
+#                         object_clustered[mini_obj_indices, -1] = -1
             
-            #visualize_pcd_clusters(object_clustered)
-            cluster_ids = object_clustered[:, -1]
-            if cluster_ids.max() > -1:
-                object_clustered[cluster_ids > -1,-1] += pc[:,-1].max()
-                pc[indices, :] = object_clustered
-                return pc
+#             #visualize_pcd_clusters(object_clustered)
+#             cluster_ids = object_clustered[:, -1]
+#             if cluster_ids.max() > -1:
+#                 object_clustered[cluster_ids > -1,-1] += pc[:,-1].max()
+#                 pc[indices, :] = object_clustered
+#                 return pc
             
-    return pc
+#     return pc
 
-def cluster(pc):
-    pc, num_clusters_found = clusterize_pcd(pc, 100, dist_thresh=0.1, eps=0.5) # reduce min samples
+def cluster(pc, min_num=20, dist_thresh=0.05, eps=0.5):
+
+    pc, num_clusters_found = clusterize_pcd(pc, min_num, dist_thresh=dist_thresh, eps=eps) # reduce min samples
     cluster_ids = pc[:,-1]
     assert cluster_ids.max() < np.iinfo(np.int16).max
-    if len(info['annos']['name']) > 0:
-        assert num_clusters_found > 1
+    # if len(info['annos']['name']) > 0:
+    #     assert num_clusters_found > 1
 
-    # Filter unnecessary clusters: ground, walls
-    for cluster_id in np.unique(cluster_ids):
-        if cluster_id == -1:
-            continue
-        indices = cluster_ids == cluster_id
-        cluster_pc = pc[indices, :]
-        if FILTER_GROUND_CLUSTERS:
-            pc = filter_ground(indices, pc)
-        if FILTER_WALL_CLUSTERS:
-            pc= filter_walls(indices, pc)
- 
-    visualize_pcd_clusters(pc)
-    return pc
+    # # Filter unnecessary clusters: ground, walls
+    # for cluster_id in np.unique(cluster_ids):
+    #     if cluster_id == -1:
+    #         continue
+    #     indices = cluster_ids == cluster_id
+    #     cluster_pc = pc[indices, :]
+    #     if FILTER_GROUND_CLUSTERS:
+    #         pc = filter_ground(indices, pc)
+    #     if FILTER_WALL_CLUSTERS:
+    #         pc= filter_walls(indices, pc)
+    if SHOW_PLOTS:
+        visualize_pcd_clusters(pc)
+    return pc[:,:4], cluster_ids.astype(int)
+
+def min_max_box(cluster_pc):
+    #min/max naive bbox
+    xc = 0.5*(np.max(cluster_pc[0,:]) + np.min(cluster_pc[0,:]))
+    yc = 0.5*(np.max(cluster_pc[1,:]) + np.min(cluster_pc[1,:]))
+    dx = np.max(cluster_pc[0,:]) - np.min(cluster_pc[0,:])
+    dy = np.max(cluster_pc[1,:]) - np.min(cluster_pc[1,:])
+
+    zc = 0.5*(np.max(cluster_pc[2,:]) + np.min(cluster_pc[2,:]))
+    dz = np.max(cluster_pc[2,:]) - np.min(cluster_pc[2,:])#zmax-zmin
+    heading = 0 
+    box = [xc, yc, zc, dx, dy, dz, heading]
+    return box
+
+def PCA_box(cluster_pc):
+    # cluster_pc 3xN points
+    #find cov of xy coords
+    cov = np.cov(cluster_pc[0:2, :]) #xy covariance
+    eval, evec = LA.eig(cov)
+
+    #sort eigen vals and eigen vecs from largest to smallest
+    idx = eval.argsort()[::-1]   
+    eval = eval[idx]
+    evec = evec[:,idx]
+    
+    # Check if evecs are orthogonal
+    # print(np.rad2deg(np.arccos(np.dot(evec[:,0], evec[:,1]))))
+    # print(np.allclose(LA.inv(evec), evec.T))
+
+    # center gt points
+    means = np.mean(cluster_pc, axis=1)
+    centered_pts = cluster_pc - means[:,np.newaxis]
+    
+    ### Rotate the points i.e. align the eigen vector to the cartesian basis
+    rot = lambda theta: np.array([[np.cos(theta), -np.sin(theta)],
+            [np.sin(theta),  np.cos(theta)]])
+    theta = np.arctan(evec[1,0]/evec[0,0]) # radians
+    aligned_pts = np.matmul(rot(-theta), centered_pts[:2,:])
+
+    # min/max bbox for axis aligned points
+    xmin, xmax, ymin, ymax = np.min(aligned_pts[0, :]), np.max(aligned_pts[0, :]), np.min(aligned_pts[1, :]), np.max(aligned_pts[1, :])
+    
+    # plt.scatter(aligned_pts[0, :], aligned_pts[1, :], label='centered points', color='g') 
+    # plt.scatter(0.5*(xmax+xmin), 0.5*(ymax+ymin), marker= 'x', color='b', label='center of box', linewidths=3)
+    # plt.scatter(0, 0, marker= 'x', label='mean of points', color='r', linewidths=3)
+    # draw2DRectangle(xmin, ymin, xmax, ymax)
+
+    # plt.xlabel('Eigen vector with max eigen value')
+    # plt.ylabel('Eigen vector with min eigen value')
+    # plt.grid()
+    # plt.legend()
+    # plt.show()
+
+    # Rotate points to align with the body frame i.e. e.vectors (back to their original orientation)
+    realigned_pts =  np.matmul(rot(theta), aligned_pts) 
+
+    # Translate points back to their original position
+    realigned_pts += means[:2, np.newaxis]
+
+    #Find axis-aligned min/max bbox corners
+    rectCoords = lambda x1, y1, x2, y2: np.array([[x1, x2, x2, x1],
+                            [y1, y1, y2, y2]])
+    rectangleCoordinates = rectCoords(xmin, ymin, xmax, ymax)
+
+    # Rotate and translate the axis-aligned min/max bbox corners to align with body frame i.e. e.vectors
+    rectangleCoordinates = np.matmul(rot(theta), rectangleCoordinates) #np.matmul(evec, rectCoords(xmin, ymin, zmin, xmax, ymax, zmax))
+    rectangleCoordinates += means[:2, np.newaxis]
 
 
-def approximate_boxes(pc, gt_boxes):
+    # Find box dims
+        #axis-aligned box dims
+    dx = xmax-xmin
+    dy = ymax-ymin
+    # Find box center
+    xc = 0.5*(rectangleCoordinates[0,2] + rectangleCoordinates[0,0])
+    yc = 0.5*(rectangleCoordinates[1,2] + rectangleCoordinates[1,0])
+    zc = 0.5*(np.max(cluster_pc[2,:]) + np.min(cluster_pc[2,:]))
+    dz = np.max(cluster_pc[2,:]) - np.min(cluster_pc[2,:])#zmax-zmin
+    
+    # Find yaw between body fixed frame (e.vectors) and lidar frame
+    heading = np.arctan2(evec[1,0], evec[0,0])
+
+    box = [xc, yc, zc, dx, dy, dz, heading]
+    
+
+    # if SHOW_PLOTS:
+
+    #     plt.scatter(realigned_pts[0, :], realigned_pts[1, :])
+    #     #plt.scatter(gt_points_np[0, :], gt_points_np[1, :], label='gt points')
+    #     plt.scatter(xc, yc, marker= 'x', label='center of PCA box', color='g', linewidths=3)
+    #     plt.scatter(means[0], means[1], marker= 'x',  color='r', label='mean of points', linewidths=3)
+    #     plt.scatter(0.5*(np.max(cluster_pc[0,:]) + np.min(cluster_pc[0,:])),0.5*(np.max(cluster_pc[1,:]) + np.min(cluster_pc[1,:])), marker= 'x',  color='b', label='center of min/max box', linewidths=3)
+
+    #     # four sides of the axis-aligned bbox
+    #     plt.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color='g', label='PCA box') # | (up)
+    #     plt.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color='g') # -->
+    #     plt.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color='g')    # | (down)
+    #     plt.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color='g')    # <--
+    #     # plot the eigen vactors scaled by their eigen values
+    #     plt.plot([xc, xc + eval[0] * evec[0, 0]],  [yc, yc + eval[0] * evec[1, 0]], label="e.vec1", color='r')
+    #     plt.plot([xc, xc + eval[1] * evec[0, 1]],  [yc, yc + eval[1] * evec[1, 1]], label="e.vec2", color='g')
+    #     plt.xlabel('x-lidar')
+    #     plt.ylabel('y-lidar')
+    #     # min/max bbox
+    #     draw2DRectangle(np.min(cluster_pc[0,:]), np.min(cluster_pc[1,:]), np.max(cluster_pc[0,:]), np.max(cluster_pc[1,:]))
+        
+    #     title = "Est Yaw: {:.2f}, Est Yaw2: {:.2f}".format(np.arctan2(evec[1,0], evec[0,0])*180/np.pi, 
+    #                                                                         np.arctan(evec[1,0]/ evec[0,0])*180/np.pi)
+    #     plt.title(title)
+    #     plt.grid()
+    #     plt.legend()
+    #     plt.show()
+    
+    return box, rectangleCoordinates, evec, eval
+
+
+def approximate_boxes(pc, cluster_ids, gt_boxes, method='closeness'):
     # Approx Bboxes
-    cluster_ids = pc[:,-1]
     num_clusters = len(np.unique(cluster_ids))
     approx_boxes = []
 
@@ -189,141 +314,285 @@ def approximate_boxes(pc, gt_boxes):
             continue
         indices = cluster_ids == cluster_id
         cluster_pc = pc[indices, :].T # 3xN
-
-        gt_points_np = cluster_pc # 3xN
-
-        num_gt_pts = gt_points_np.shape[1]
+        num_gt_pts = cluster_pc.shape[1]
         if num_gt_pts > 5:
-            #find cov of xy coords
-            cov = np.cov(gt_points_np[0:2, :]) #xy covariance
-            eval, evec = LA.eig(cov)
+            #if method == 'PCA':
+            box_pca, rec_coords_pca, evec, eval=PCA_box(cluster_pc)
+            #elif method == 'closeness':
+            corners, ry, area = closeness_rectangle(cluster_pc[[0, 1], :].T) # directly in LiDAR frame
+            heading = -1 * ry
+            dx = np.linalg.norm(corners[0] - corners[1])
+            dy = np.linalg.norm(corners[0] - corners[-1])
+            c = (corners[0] + corners[2]) / 2 # center in xz cam axis 
 
-            #sort evals and evecs from largest to smallest
-            idx = eval.argsort()[::-1]   
-            eval = eval[idx]
-            evec = evec[:,idx]
-            
-            # Check if evecs are orthogonal
-            # print(np.rad2deg(np.arccos(np.dot(evec[:,0], evec[:,1]))))
-            # print(np.allclose(LA.inv(evec), evec.T))
-
-            # center gt points
-            means = np.mean(gt_points_np, axis=1)
-            centered_pts = gt_points_np - means[:,np.newaxis]
-            
-            ### Rotate the points i.e. align the eigen vector to the cartesian basis
-            rot = lambda theta: np.array([[np.cos(theta), -np.sin(theta)],
-                    [np.sin(theta),  np.cos(theta)]])
-            theta = np.arctan(evec[1,0]/evec[0,0]) # radians
-            aligned_pts = np.matmul(rot(-theta), centered_pts[:2,:]) 
-
-            # min/max bbox for axis aligned points
-            xmin, xmax, ymin, ymax = np.min(aligned_pts[0, :]), np.max(aligned_pts[0, :]), np.min(aligned_pts[1, :]), np.max(aligned_pts[1, :])
-            
-            # Rotate points to align with the body frame i.e. e.vectors (back to their original orientation)
-            realigned_pts =  np.matmul(rot(theta), aligned_pts) 
-
-            # Translate points back to their original position
-            realigned_pts += means[:2, np.newaxis]
-
-            #Find axis-aligned min/max bbox corners
-            rectCoords = lambda x1, y1, x2, y2: np.array([[x1, x2, x2, x1],
-                                    [y1, y1, y2, y2]])
-            rectangleCoordinates = rectCoords(xmin, ymin, xmax, ymax)
-
-            # Rotate and translate the axis-aligned min/max bbox corners to align with body frame i.e. e.vectors
-            rectangleCoordinates = np.matmul(rot(theta), rectangleCoordinates) #np.matmul(evec, rectCoords(xmin, ymin, zmin, xmax, ymax, zmax))
-            rectangleCoordinates += means[:2, np.newaxis]
-
-
-            # Find box dims
-            if approx_boxes_PCA:
-                #axis-aligned box dims
-                dx = xmax-xmin
-                dy = ymax-ymin
-                # Find box center
-                xc = 0.5*(rectangleCoordinates[0,2] + rectangleCoordinates[0,0])
-                yc = 0.5*(rectangleCoordinates[1,2] + rectangleCoordinates[1,0])
-                
-            else:
-                #min/max naive bbox
-                xc = 0.5*(np.max(gt_points_np[0,:]) + np.min(gt_points_np[0,:]))
-                yc = 0.5*(np.max(gt_points_np[1,:]) + np.min(gt_points_np[1,:]))
-                dx = np.max(gt_points_np[0,:]) - np.min(gt_points_np[0,:])
-                dy = np.max(gt_points_np[1,:]) - np.min(gt_points_np[1,:])
-
-            zc = 0.5*(np.max(gt_points_np[2,:]) + np.min(gt_points_np[2,:]))
-            dz = np.max(gt_points_np[2,:]) - np.min(gt_points_np[2,:])#zmax-zmin
-            
-            # Find yaw between body fixed frame (e.vectors) and lidar frame
-            if approx_boxes_PCA:
-                heading = np.arctan2(evec[1,0], evec[0,0])
-            else:
-                heading = 0 
-
-            box = [xc, yc, zc, dx, dy, dz, heading]
-            est_vol = dx*dy*dz
-            print('est_vol ', est_vol)
-            if est_vol > 20:
-                continue
-            if dx > 6 or dy > 6 or dz > 2:
-                continue
-            #plot histogram of zc
-            approx_boxes.append(box)
-            
+            xc = c[0]
+            yc = c[1]
+            zc = 0.5*(np.max(cluster_pc[2,:]) + np.min(cluster_pc[2,:]))
+            dz = np.max(cluster_pc[2,:]) - np.min(cluster_pc[2,:])
+            box_closeness = [xc, yc, zc, dx, dy, dz, heading]
 
             if SHOW_PLOTS:
-
-                plt.scatter(realigned_pts[0, :], realigned_pts[1, :], label='realigned')
-                #plt.scatter(gt_points_np[0, :], gt_points_np[1, :], label='gt points')
-
-                # four sides of the axis-aligned bbox
-                plt.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color='g') # | (up)
-                plt.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color='g') # -->
-                plt.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color='g')    # | (down)
-                plt.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color='g')    # <--
+                plt.scatter(cluster_pc[0, :], cluster_pc[1, :], color='g') 
+                
+                # Draw PCA box four sides of the axis-aligned bbox
+                draw2DRectangle(rec_coords_pca, color='g', label='PCA')
                 # plot the eigen vactors scaled by their eigen values
-                plt.plot([xc, xc + eval[0] * evec[0, 0]],  [yc, yc + eval[0] * evec[1, 0]], label="e.vec1", color='r')
-                plt.plot([xc, xc + eval[1] * evec[0, 1]],  [yc, yc + eval[1] * evec[1, 1]], label="e.vec2", color='g')
-                plt.xlabel('x')
-                plt.ylabel('y')
+                plt.plot([box_pca[0], box_pca[0] + eval[0] * evec[0, 0]],  [box_pca[1], box_pca[1] + eval[0] * evec[1, 0]], label="e.vec1", color='r')
+                plt.plot([box_pca[0], box_pca[0] + eval[1] * evec[0, 1]],  [box_pca[1], box_pca[1] + eval[1] * evec[1, 1]], label="e.vec2", color='g')
+                
                 # min/max bbox
-                draw2DRectangle(np.min(gt_points_np[0,:]), np.min(gt_points_np[1,:]), np.max(gt_points_np[0,:]), np.max(gt_points_np[1,:]))
-                title = "Est Yaw: {:.2f}, Est Yaw2: {:.2f}".format(np.arctan2(evec[1,0], evec[0,0])*180/np.pi, 
-                                                                                    np.arctan(evec[1,0]/ evec[0,0])*180/np.pi)
+                drawMinMaxRectangle(np.min(cluster_pc[0,:]), np.min(cluster_pc[1,:]), np.max(cluster_pc[0,:]), np.max(cluster_pc[1,:]))
+                
+                # Draw closeness rect
+                draw2DRectangle(corners.T, color='r', label='closeness')
+                
+                plt.xlabel('x-lidar')
+                plt.ylabel('y-lidar')
+                
+                title = "Est Yaw PCA atan2: {:.2f}, Est Yaw PCA atan: {:.2f}, Est Yaw closeness: {:.2f}".format(np.arctan2(evec[1,0], evec[0,0])*180/np.pi, 
+                                                                                    np.arctan(evec[1,0]/ evec[0,0])*180/np.pi, heading*180/np.pi)
                 plt.title(title)
-                plt.show()
+                plt.grid()
+                plt.legend()
+        
+            if method == 'PCA':
+                box = box_pca
+            elif method == 'closeness':
+                box = box_closeness
+            else: # min/max box
+                box= min_max_box(cluster_pc)
+            
+
+            # filter based on big volume or very big len
+            if (box[3]*box[4]*box[5]) > 20:
+                continue
+            if box[3] > 6 or box[4] > 6 or box[5] > 2:
+                continue
+
+            approx_boxes.append(box)
 
 
+            
+    if SHOW_PLOTS:
+        plt.show()
     approx_boxes = np.array(approx_boxes)
-    for box in approx_boxes:
-        print('final est vol: ', box[3]*box[4]*box[5]) 
-    V.draw_scenes(pc[:,:-1], gt_boxes=gt_boxes, 
-                        ref_boxes=approx_boxes, ref_labels=None, ref_scores=None, 
-                        color_feature=None, draw_origin=True, 
-                        point_features=None)
+    # for box in approx_boxes:
+    #     print('final est vol: ', box[3]*box[4]*box[5])
+    if SHOW_PLOTS:
+        V.draw_scenes(pc[:,:-1], gt_boxes=gt_boxes, 
+                            ref_boxes=approx_boxes, ref_labels=None, ref_scores=None, 
+                            color_feature=None, draw_origin=True, 
+                            point_features=None)
     return approx_boxes
 
 
-with open(info_path, 'rb') as f:
-    infos = pickle.load(f)
 
-for info in infos:
-    sample_idx = info['point_cloud']['lidar_idx']
-    cluster_file = ROOT_PATH / 'training_clustered' / 'velodyne' / ('%s.bin' % sample_idx)
-    lidar_file = ROOT_PATH / 'training' / 'velodyne' / ('%s.bin' % sample_idx)
-    pc = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
-    # if cluster_file.exists() and not CLUSTER_HERE:
-    #     cluster_ids = np.fromfile(str(cluster_file), dtype=np.int16).reshape(-1, 1)
-    #     cluster_ids = cluster_ids.astype(np.float32)
-    #     pc = np.hstack((pc, cluster_ids))
-    # else:
-    pc = cluster(pc)
-    boxes = approximate_boxes(pc, info['annos']['gt_boxes_lidar'])
-    b=1
-    #new_info = generate_prediction_dicts(info, boxes)
-   
+def get_road_plane(idx):
+    plane_file = ROOT_PATH / 'training' / 'planes' / ('%s.txt' % idx)
+    if not plane_file.exists():
+        return None
+
+    with open(plane_file, 'r') as f:
+        lines = f.readlines()
+    lines = [float(i) for i in lines[3].split()]
+    plane = np.asarray(lines)
+
+    # Ensure normal is always facing up, this is in the rectified camera coordinate
+    if plane[1] > 0:
+        plane = -plane
+
+    norm = np.linalg.norm(plane[0:3])
+    plane = plane / norm
+    return plane
+
+def distance_to_plane(ptc, plane, directional=False):
+    d = ptc @ plane[:3] + plane[3]
+    if not directional:
+        d = np.abs(d)
+    d /= np.sqrt((plane[:3]**2).sum())
+    return d
+
+def above_plane(ptc, plane, offset=0.05, only_range=((-30, 30), (-30, 30))):
+    mask = distance_to_plane(ptc, plane, directional=True) < offset
+    if only_range is not None:
+        range_mask = (ptc[:, 0] < only_range[0][1]) * (ptc[:, 0] > only_range[0][0]) * \
+            (ptc[:, 1] < only_range[1][1]) * (ptc[:, 1] > only_range[1][0])
+        mask *= range_mask
+    return np.logical_not(mask) # returns mask of all non-plane points
+
+def estimate_plane(origin_ptc, max_hs=-1.5, it=1, ptc_range=((-20, 70), (-20, 20))):
+    mask = (origin_ptc[:, 2] < max_hs) & \
+        (origin_ptc[:, 0] > ptc_range[0][0]) & \
+        (origin_ptc[:, 0] < ptc_range[0][1]) & \
+        (origin_ptc[:, 1] > ptc_range[1][0]) & \
+        (origin_ptc[:, 1] < ptc_range[1][1])
+    for _ in range(it):
+        ptc = origin_ptc[mask]
+        reg = RANSACRegressor().fit(ptc[:, [0, 1]], ptc[:, 2])
+        w = np.zeros(3)
+        w[0] = reg.estimator_.coef_[0]
+        w[1] = reg.estimator_.coef_[1]
+        w[2] = -1.0
+        h = reg.estimator_.intercept_
+        norm = np.linalg.norm(w)
+        w /= norm
+        h = h / norm
+        result = np.array((w[0], w[1], w[2], h))
+        result *= -1
+        mask = np.logical_not(above_plane(
+            origin_ptc[:, :3], result, offset=0.2)) # mask of all plane-points
+    return result # minus [a,b,c,d] = -plane coeff
+
+def is_valid_cluster(
+        ptc,
+        plane,
+        min_points=10,
+        max_volume=20,
+        min_volume=0.5,
+        max_min_height=1,
+        min_max_height=0.5):
+    if ptc.shape[0] < min_points:
+        return False
+    volume = np.prod(ptc.max(axis=0) - ptc.min(axis=0))
+    if volume > max_volume or volume < min_volume: # volume too big or small
+        return False
+    distance_to_ground = distance_to_plane(ptc, plane, directional=True)
+    if distance_to_ground.min() > max_min_height: #min distance to plane > 1m, object floating in air
+        #V.draw_scenes(ptc[:,:4])
+        return False
+    if distance_to_ground.max() < min_max_height: #max distance to plane < 0.5, object underground or too small
+        #V.draw_scenes(ptc[:,:4])
+        return False
+    h = ptc[:,2].max() - ptc[:,2].min()
+    # if height is not much, make this cluster background
+    if h < 0.4:
+        return False
+    return True
+
+def filter_labels(
+    ptc,
+    labels
+):
+    labels = labels.copy()
+    plane = estimate_plane(ptc, max_hs=-1.5, ptc_range=((-70, 70), (-50, 50)))
+    for i in range(labels.max()+1):
+        if not is_valid_cluster(ptc[labels == i, :3], plane):
+            labels[labels == i] = -1
+        
+    label_mapping = sorted(list(set(labels)))
+    label_mapping = {x:i for i, x in enumerate(label_mapping)}
+    for i in range(len(labels)):
+        labels[i] = label_mapping[labels[i]]
+    return labels
+
+def closeness_rectangle(cluster_ptc, delta=0.1, d0=1e-2):
+    max_beta = -float('inf')
+    choose_angle = None
+    for angle in np.arange(0, 90+delta, delta): #from 0 to 90 deg, step 0.1
+        angle = angle / 180. * np.pi # convert to rad
+        components = np.array([
+            [np.cos(angle), np.sin(angle)],
+            [-np.sin(angle), np.cos(angle)]
+        ]) #rectangles orthogonal edge directions e1 = [np.cos(angle), np.sin(angle)], e2=[-np.sin(angle), np.cos(angle)]
+        projection = cluster_ptc @ components.T #project points to the rectangle's edges Nx2 i.e. C1 = Nx1 and C2 = Nx2
+        min_x, max_x = projection[:,0].min(), projection[:,0].max() #boundaries of projections along axis e1 i.e. min/max projection len
+        min_y, max_y = projection[:,1].min(), projection[:,1].max() #boundaries of projections along axis e2 i.e. min/max projection len
+        Dx = np.vstack((projection[:, 0] - min_x, max_x - projection[:, 0])).min(axis=0) # distance of all point projections to closest corner/boundary of e1
+        Dy = np.vstack((projection[:, 1] - min_y, max_y - projection[:, 1])).min(axis=0) # distance of all point projections to closest corner/boundary of e2
+        beta = np.vstack((Dx, Dy)).min(axis=0) #smallest distance between projected point and closest rectangle's edge
+        beta = np.maximum(beta, d0) 
+        beta = 1 / beta # closeness score
+        beta = beta.sum()
+        if beta > max_beta:
+            max_beta = beta
+            choose_angle = angle
+    angle = choose_angle
+    components = np.array([
+        [np.cos(angle), np.sin(angle)],
+        [-np.sin(angle), np.cos(angle)]
+    ])
+    projection = cluster_ptc @ components.T
+    min_x, max_x = projection[:, 0].min(), projection[:, 0].max()
+    min_y, max_y = projection[:, 1].min(), projection[:, 1].max()
+
+    if (max_x - min_x) < (max_y - min_y):
+        angle = choose_angle + np.pi / 2
+        components = np.array([
+            [np.cos(angle), np.sin(angle)],
+            [-np.sin(angle), np.cos(angle)]
+        ])
+        projection = cluster_ptc @ components.T
+        min_x, max_x = projection[:, 0].min(), projection[:, 0].max()
+        min_y, max_y = projection[:, 1].min(), projection[:, 1].max()
+
+    area = (max_x - min_x) * (max_y - min_y)
+
+    rval = np.array([
+        [max_x, min_y],
+        [min_x, min_y],
+        [min_x, max_y],
+        [max_x, max_y],
+    ]) # corners of rectangle in e1 and e2 i.e. rectangle edges frame i.e e.vectors frame
+    rval = rval @ components
+    return rval, angle, area
+
+def main():
+    with open(info_path, 'rb') as f:
+        infos = pickle.load(f)
+
+    new_infos = []
+    for info in tqdm(infos):
+        sample_idx = info['point_cloud']['lidar_idx']
+        #cluster_file = ROOT_PATH / 'training_clustered' / 'velodyne' / ('%s.bin' % sample_idx)
+        lidar_file = ROOT_PATH / 'training' / 'velodyne' / ('%s.bin' % sample_idx)
+        pc = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        # if cluster_file.exists() and not CLUSTER_HERE:
+        #     cluster_ids = np.fromfile(str(cluster_file), dtype=np.int16).reshape(-1, 1)
+        #     cluster_ids = cluster_ids.astype(np.float32)
+        #     pc = np.hstack((pc, cluster_ids))
+        # else:
+
+        # Only extract above plane points and points within x=[-70, 70], y=[-40, 40], z=[-3, 1]
+        plane = None #get_road_plane(sample_idx)
+        if plane is None:
+            plane = estimate_plane(pc[:, :3], max_hs=-1.5, ptc_range=[[-70, 70], [-20, 20]])
+        above_plane_mask = above_plane(
+            pc[:, :3], plane,
+            offset=0.05,
+            only_range=[[-70, 70], [-20, 20]])
+        range_mask = (pc[:, 0] <= 70) * \
+            (pc[:, 0] > -70) * \
+            (pc[:, 1] <= 40) * \
+            (pc[:, 1] > -40)
+        final_mask = above_plane_mask * range_mask #only above ground points and points in range -40,40 for y and -70,70 for x are clustered
+        
+        # V.draw_scenes(new_pc[:,:4])
+        new_pc = pc[final_mask]
+        #V.draw_scenes(pc[:,:4])
+
+        # Cluster above plane points
+        new_pc, cluster_labels = cluster(new_pc)
+
+        # Filter clusters
+        labels_filtered = filter_labels(
+            new_pc, cluster_labels) # makes background as 0th cluster
+        
+        labels_filtered[labels_filtered==0] = -1
+        if SHOW_PLOTS:
+            visualize_pcd_clusters(np.hstack((new_pc,labels_filtered.reshape(-1, 1))))
+
+        # Filter labels and boxes further based on volume
+        boxes = approximate_boxes(new_pc, labels_filtered, info['annos']['gt_boxes_lidar'], method=METHOD)
+
+        # nms boxes
+        if boxes.shape[0] > 0:
+            new_info = generate_prediction_dicts(info, boxes, pc)
+        new_infos.append(new_info)
+
+    with open(new_info_path, 'wb') as f:    
+        pickle.dump(new_infos, f)
     
+main()
 
     
 
