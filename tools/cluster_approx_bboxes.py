@@ -20,8 +20,9 @@ ROOT_PATH = Path('/home/barza/OpenPCDet/data/kitti')
 FOV_POINTS_ONLY = True
 SHOW_PLOTS = False
 info_path = ROOT_PATH / 'kitti_infos_train_95_0.pkl'
-new_info_path = ROOT_PATH / 'kitti_infos_train_95_0_pca_object.pkl'
-METHOD='PCA' #'closeness', min_max
+new_info_path = ROOT_PATH / 'kitti_infos_train_95_0_close_object.pkl'
+METHOD='closeness' #'closeness', min_max
+HEADING_ZERO=False
 
 
 def generate_prediction_dicts(info, approx_boxes, pc):
@@ -320,7 +321,7 @@ def approximate_boxes(pc, cluster_ids, gt_boxes, method='closeness'):
             box_pca, rec_coords_pca, evec, eval=PCA_box(cluster_pc)
             #elif method == 'closeness':
             corners, ry, area = closeness_rectangle(cluster_pc[[0, 1], :].T) # directly in LiDAR frame
-            heading = -1 * ry
+            heading = -1 * ry if not HEADING_ZERO else 0
             dx = np.linalg.norm(corners[0] - corners[1])
             dy = np.linalg.norm(corners[0] - corners[-1])
             c = (corners[0] + corners[2]) / 2 # center in xz cam axis 
