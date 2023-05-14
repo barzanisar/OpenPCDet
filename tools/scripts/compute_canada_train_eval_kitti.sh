@@ -36,8 +36,8 @@ SAVE_CKPT_AFTER_EPOCH=0
 NUM_EPOCHS_TO_EVAL=0
 
 # ========== KITTI ==========
-DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti
-INFOS_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti/Infos
+DATA_DIR=/home/$USER/scratch/Kitti
+INFOS_DIR=/home/$USER/scratch/Kitti/Infos
 
 # Additional parameters
 DATASET=kitti
