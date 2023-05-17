@@ -20,12 +20,14 @@
 
 ############### Self-Supervised pretraining: predict approx pca target boxes and fg/bg, Finetune on 5% with class labels ###################################
 # Train Pointrcnn Kitti 95% split 0, only predict pca boxes (and fg/bg)
-sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_pca_object tools/scripts/compute_canada_train_eval_kitti_pca.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_pca_object.yaml --tcp_port 18461 --fix_random_seed
-sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_close_object tools/scripts/compute_canada_train_eval_kitti_close.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_close_object.yaml --tcp_port 18462 --fix_random_seed
-sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_minmax_object tools/scripts/compute_canada_train_eval_kitti_minmax.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minmax_object.yaml --tcp_port 18463 --fix_random_seed
+# sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_pca_object tools/scripts/compute_canada_train_eval_kitti_pca.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_pca_object.yaml --tcp_port 18461 --fix_random_seed
+# sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_close_object tools/scripts/compute_canada_train_eval_kitti_close.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_close_object.yaml --tcp_port 18462 --fix_random_seed
+# sbatch --time=03:00:00 --gres=gpu:t4:4 --array=1-4%1 --job-name=kitti-pointrcnn-95_0_minmax_object tools/scripts/compute_canada_train_eval_kitti_minmax.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minmax_object.yaml --tcp_port 18463 --fix_random_seed
 
 # Validate Pointrcnn Kitti 95% split 0, only predict pca boxes to find best pretrained ckpt
-# sbatch --time=04:00:00 --array=1-1%1 --job-name=kitti-pointrcnn-95_0_pca_object-val  tools/scripts/compute_canada_train_eval_kitti.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_pca_object.yaml --tcp_port 18795 --fix_random_seed --test_only --eval_tag kitti_infos_val_pca_object
+sbatch --time=04:00:00 --array=1-1%1 --job-name=kitti-pointrcnn-95_0_pca_object-val  tools/scripts/compute_canada_train_eval_kitti_pca.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_pca_object.yaml --tcp_port 18795 --fix_random_seed --test_only --eval_tag kitti_infos_val_pca_object
+sbatch --time=04:00:00 --array=1-1%1 --job-name=kitti-pointrcnn-95_0_close_object-val  tools/scripts/compute_canada_train_eval_kitti_close.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_close_object.yaml --tcp_port 18796 --fix_random_seed --test_only --eval_tag kitti_infos_val_close_object
+sbatch --time=04:00:00 --array=1-1%1 --job-name=kitti-pointrcnn-95_0_minmax_object-val  tools/scripts/compute_canada_train_eval_kitti_minmax.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minmax_object.yaml --tcp_port 18797 --fix_random_seed --test_only --eval_tag kitti_infos_val_minmax_object
 
 #TODO: 
 # Get the best checkpt from above
