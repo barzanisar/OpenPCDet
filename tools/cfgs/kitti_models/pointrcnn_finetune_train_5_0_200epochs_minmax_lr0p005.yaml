@@ -1,4 +1,4 @@
-CLASS_NAMES: ['Object']
+CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 WANDB:
     ENABLED: True
@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['train']
+    tags: ['train_5_0']
 
 LOAD_WHOLE_MODEL: True
 
@@ -14,13 +14,13 @@ DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
 
     DATA_SPLIT: {
-        'train': train_95_0_close_object,
-        'test': val_close_object
+        'train': train_5_0,
+        'test': val
     }
 
     INFO_PATH: {
-        'train': [kitti_infos_train_95_0_close_object.pkl],
-        'test': [kitti_infos_val_close_object.pkl],
+        'train': [kitti_infos_train_5_0.pkl],
+        'test': [kitti_infos_val.pkl],
     }
 
     FOV_POINTS_ONLY: True
@@ -31,13 +31,13 @@ DATA_CONFIG:
             -   NAME: gt_sampling
                 USE_ROAD_PLANE: True
                 DB_INFO_PATH:
-                    - kitti_dbinfos_train_95_0_close_object.pkl
+                    - kitti_dbinfos_train_5_0.pkl
                 PREPARE: {
-                    filter_by_min_points: ['Object:5'], # ['Big, Medium, small']
+                    filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
                     filter_by_difficulty: [-1],
                 }
 
-                SAMPLE_GROUPS: ['Object:50'] # ['big:20', 'medium:15', 'small:15']
+                SAMPLE_GROUPS: ['Car:20','Pedestrian:15', 'Cyclist:15']
                 NUM_POINT_FEATURES: 4
                 DATABASE_WITH_FAKELIDAR: False
                 REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
@@ -51,7 +51,6 @@ DATA_CONFIG:
 
             -   NAME: random_world_scaling
                 WORLD_SCALE_RANGE: [0.95, 1.05]
-
 
     DATA_PROCESSOR:
         -   NAME: mask_points_and_boxes_outside_range
@@ -96,7 +95,7 @@ MODEL:
             BOX_CODER_CONFIG: {
                 'use_mean_size': True,
                 'mean_size': [
-                    [3.9, 1.6, 1.56], # Only keep one [2, 1, 1.6] or separate for big, medium, small
+                    [3.9, 1.6, 1.56],
                     [0.8, 0.6, 1.73],
                     [1.76, 0.6, 1.73]
                 ]
@@ -190,10 +189,10 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 80
+    NUM_EPOCHS: 200
 
     OPTIMIZER: adam_onecycle
-    LR: 0.01
+    LR: 0.005
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
