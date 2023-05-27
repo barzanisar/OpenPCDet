@@ -7,23 +7,28 @@ import numpy as np
 import numpy.linalg as LA
 from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
 import pickle
-# from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
+from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from pcdet.utils import box_utils, calibration_kitti
 import matplotlib.pyplot as plt
 from visual_utils.pcd_preprocess import *
 from pathlib import Path
 from sklearn.linear_model import RANSACRegressor
-
+import torch
+from sklearn import cluster
 
 np.random.seed(100)
 ROOT_PATH = Path('/home/barza/OpenPCDet/data/kitti')
-FOV_POINTS_ONLY = True
-SHOW_PLOTS = False
-info_path = ROOT_PATH / 'kitti_infos_train_95_0.pkl'
-new_info_path = ROOT_PATH / 'kitti_infos_train_95_0_close_object.pkl'
-METHOD='closeness' #'closeness', min_max
-HEADING_ZERO=False
+FOV_POINTS_ONLY = False
+SHOW_PLOTS = True
+info_path = ROOT_PATH / 'kitti_infos_train_360FOV.pkl'
+new_info_path = ROOT_PATH / 'kitti_infos_train_360FOV_close.pkl'
+METHOD='closeness'#, 'min_max' 'PCA'
+USE_SKLEARN_CLUSTER=False
 
+def get_calib(idx):
+    calib_file = ROOT_PATH / 'training' / 'calib' / ('%s.txt' % idx)
+    assert calib_file.exists()
+    return calibration_kitti.Calibration(calib_file)
 
 def generate_prediction_dicts(info, approx_boxes, pc):
         """
@@ -31,11 +36,6 @@ def generate_prediction_dicts(info, approx_boxes, pc):
         Returns:
 
         """
-        def get_calib(idx):
-            calib_file = ROOT_PATH / 'training' / 'calib' / ('%s.txt' % idx)
-            assert calib_file.exists()
-            return calibration_kitti.Calibration(calib_file)
-        
         def get_fov_flag(pts_rect, img_shape, calib):
             """
             Args:
@@ -168,9 +168,18 @@ def draw2DRectangle(rectangleCoordinates, color, label):
             
 #     return pc
 
-def cluster(pc, min_num=20, dist_thresh=0.05, eps=0.5):
+def cluster_pc(pc, min_num=20, dist_thresh=0.05, eps=0.5):
 
-    pc, num_clusters_found = clusterize_pcd(pc, min_num, dist_thresh=dist_thresh, eps=eps) # reduce min samples
+    if USE_SKLEARN_CLUSTER:
+        labels = np.zeros(pc.shape[0], dtype=int) - 1
+        labels = cluster.DBSCAN(
+            eps=eps,
+            min_samples=min_num,
+            n_jobs=-1).fit(pc).labels_
+        
+        pc = np.concatenate((pc, labels.reshape(-1, 1)), axis = 1)
+    else:
+        pc, num_clusters_found = clusterize_pcd(pc, min_num, dist_thresh=dist_thresh, eps=eps) # reduce min samples
     cluster_ids = pc[:,-1]
     assert cluster_ids.max() < np.iinfo(np.int16).max
     # if len(info['annos']['name']) > 0:
@@ -304,10 +313,68 @@ def PCA_box(cluster_pc):
     
     return box, rectangleCoordinates, evec, eval
 
+def approximate_boxes_from_gt(pc, gt_boxes):
+    point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+                torch.from_numpy(pc[:, 0:3]), torch.from_numpy(gt_boxes)
+            ).numpy()  # (nboxes, npoints)
+    gt_corners_lidar = box_utils.boxes_to_corners_3d(gt_boxes)
 
-def approximate_boxes(pc, cluster_ids, gt_boxes, method='closeness'):
+    err_pca_rot = []
+    err_closeness_rot = []
+    for i in range(gt_boxes.shape[0]):
+        gt_points = pc[point_indices[i] > 0][:, 0:3].T #3xN
+        if gt_points.shape[1] > 5:
+            box_pca, rec_coords_pca, evec, eval=PCA_box(gt_points)
+            corners, ry, area = closeness_rectangle(gt_points[[0, 1], :].T) # directly in LiDAR frame
+            heading = ry
+            dx = np.linalg.norm(corners[0] - corners[1])
+            dy = np.linalg.norm(corners[0] - corners[-1])
+            c = (corners[0] + corners[2]) / 2 # center in xz cam axis 
+
+            xc = c[0]
+            yc = c[1]
+            zc = 0.5*(np.max(gt_points[2,:]) + np.min(gt_points[2,:]))
+            dz = np.max(gt_points[2,:]) - np.min(gt_points[2,:])
+            box_closeness = [xc, yc, zc, dx, dy, dz, heading]
+
+            err_pca_rot.append((gt_boxes[i, -1]-box_pca[-1])**2)
+            err_closeness_rot.append((gt_boxes[i, -1]-heading)**2)
+
+            if SHOW_PLOTS:
+                plt.scatter(gt_points[0, :], gt_points[1, :], color='g') 
+                
+                # Draw PCA box four sides of the axis-aligned bbox
+                draw2DRectangle(rec_coords_pca, color='g', label='PCA')
+                # plot the eigen vactors scaled by their eigen values
+                plt.plot([box_pca[0], box_pca[0] + eval[0] * evec[0, 0]],  [box_pca[1], box_pca[1] + eval[0] * evec[1, 0]], label="e.vec1", color='r')
+                plt.plot([box_pca[0], box_pca[0] + eval[1] * evec[0, 1]],  [box_pca[1], box_pca[1] + eval[1] * evec[1, 1]], label="e.vec2", color='g')
+                
+                # min/max bbox
+                drawMinMaxRectangle(np.min(gt_points[0,:]), np.min(gt_points[1,:]), np.max(gt_points[0,:]), np.max(gt_points[1,:]))
+                
+                # Draw closeness rect
+                draw2DRectangle(corners.T, color='r', label='closeness')
+
+                
+                
+                # Draw closeness rect
+                draw2DRectangle(gt_corners_lidar[i].T, color='c', label='Gt')
+
+                
+                plt.xlabel('x-lidar')
+                plt.ylabel('y-lidar')
+                
+                title = "Gt Yaw: {:.2f}, Est Yaw PCA atan2: {:.2f}, Est Yaw PCA atan: {:.2f}, Est Yaw closeness: {:.2f}".format(gt_boxes[i, -1]*180/np.pi, np.arctan2(evec[1,0], evec[0,0])*180/np.pi, 
+                                                                                    np.arctan(evec[1,0]/ evec[0,0])*180/np.pi, heading*180/np.pi)
+                plt.title(title)
+                plt.grid()
+                plt.legend()
+                plt.show()
+
+    return err_pca_rot, err_closeness_rot
+
+def approximate_boxes(pc, cluster_ids, gt_boxes, calib, method='closeness'):
     # Approx Bboxes
-    num_clusters = len(np.unique(cluster_ids))
     approx_boxes = []
 
     for cluster_id in np.unique(cluster_ids):
@@ -319,18 +386,33 @@ def approximate_boxes(pc, cluster_ids, gt_boxes, method='closeness'):
         if num_gt_pts > 5:
             #if method == 'PCA':
             box_pca, rec_coords_pca, evec, eval=PCA_box(cluster_pc)
-            #elif method == 'closeness':
+
             corners, ry, area = closeness_rectangle(cluster_pc[[0, 1], :].T) # directly in LiDAR frame
-            heading = -1 * ry if not HEADING_ZERO else 0
             dx = np.linalg.norm(corners[0] - corners[1])
             dy = np.linalg.norm(corners[0] - corners[-1])
             c = (corners[0] + corners[2]) / 2 # center in xz cam axis 
-
+            # midpoint_w = (corners[0] + corners[-1])/2
+            # body_xvec = midpoint_w - c
+            heading = ry #np.arctan2(body_xvec[1], body_xvec[0]) #same as ry
+        
             xc = c[0]
             yc = c[1]
             zc = 0.5*(np.max(cluster_pc[2,:]) + np.min(cluster_pc[2,:]))
             dz = np.max(cluster_pc[2,:]) - np.min(cluster_pc[2,:])
             box_closeness = [xc, yc, zc, dx, dy, dz, heading]
+
+            if method == 'PCA':
+                box = box_pca
+            elif method == 'closeness':
+                box = box_closeness
+            else: # min/max box
+                box= min_max_box(cluster_pc)
+            
+            # filter based on big volume or very big len
+            if (box[3]*box[4]*box[5]) > 20:
+                continue
+            if box[3] > 6 or box[4] > 6 or box[5] > 2:
+                continue
 
             if SHOW_PLOTS:
                 plt.scatter(cluster_pc[0, :], cluster_pc[1, :], color='g') 
@@ -355,20 +437,6 @@ def approximate_boxes(pc, cluster_ids, gt_boxes, method='closeness'):
                 plt.title(title)
                 plt.grid()
                 plt.legend()
-        
-            if method == 'PCA':
-                box = box_pca
-            elif method == 'closeness':
-                box = box_closeness
-            else: # min/max box
-                box= min_max_box(cluster_pc)
-            
-
-            # filter based on big volume or very big len
-            if (box[3]*box[4]*box[5]) > 20:
-                continue
-            if box[3] > 6 or box[4] > 6 or box[5] > 2:
-                continue
 
             approx_boxes.append(box)
 
@@ -542,16 +610,27 @@ def main():
         infos = pickle.load(f)
 
     new_infos = []
-    for info in tqdm(infos):
+    for i, info in tqdm(enumerate(infos)):
         sample_idx = info['point_cloud']['lidar_idx']
+
         #cluster_file = ROOT_PATH / 'training_clustered' / 'velodyne' / ('%s.bin' % sample_idx)
         lidar_file = ROOT_PATH / 'training' / 'velodyne' / ('%s.bin' % sample_idx)
         pc = np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        calib = get_calib(sample_idx)
         # if cluster_file.exists() and not CLUSTER_HERE:
         #     cluster_ids = np.fromfile(str(cluster_file), dtype=np.int16).reshape(-1, 1)
         #     cluster_ids = cluster_ids.astype(np.float32)
         #     pc = np.hstack((pc, cluster_ids))
         # else:
+
+        # Approx boxes on GT clusters
+        # error_pca_rot = []
+        # error_close_rot = []
+        # err_pca, err_closeness = approximate_boxes_from_gt(pc, info['annos']['gt_boxes_lidar'])
+        # error_pca_rot.append(err_pca)
+        # error_close_rot.append(err_closeness)
+        # if i > 100:
+        #     break
 
         # Only extract above plane points and points within x=[-70, 70], y=[-40, 40], z=[-3, 1]
         plane = None #get_road_plane(sample_idx)
@@ -561,10 +640,14 @@ def main():
             pc[:, :3], plane,
             offset=0.05,
             only_range=[[-70, 70], [-20, 20]])
-        range_mask = (pc[:, 0] <= 70) * \
-            (pc[:, 0] > -70) * \
-            (pc[:, 1] <= 40) * \
-            (pc[:, 1] > -40)
+        # range_mask = (pc[:, 0] <= 70) * \
+        #     (pc[:, 0] > -70) * \
+        #     (pc[:, 1] <= 40) * \
+        #     (pc[:, 1] > -40)
+        range_mask = (pc[:, 0] <= 40) * \
+            (pc[:, 0] > -40) * \
+            (pc[:, 1] <= 20) * \
+            (pc[:, 1] > -20)
         final_mask = above_plane_mask * range_mask #only above ground points and points in range -40,40 for y and -70,70 for x are clustered
         
         # V.draw_scenes(new_pc[:,:4])
@@ -572,7 +655,7 @@ def main():
         #V.draw_scenes(pc[:,:4])
 
         # Cluster above plane points
-        new_pc, cluster_labels = cluster(new_pc)
+        new_pc, cluster_labels = cluster_pc(new_pc)
 
         # Filter clusters
         labels_filtered = filter_labels(
@@ -583,15 +666,17 @@ def main():
             visualize_pcd_clusters(np.hstack((new_pc,labels_filtered.reshape(-1, 1))))
 
         # Filter labels and boxes further based on volume
-        boxes = approximate_boxes(new_pc, labels_filtered, info['annos']['gt_boxes_lidar'], method=METHOD)
+        boxes = approximate_boxes(new_pc, labels_filtered, info['annos']['gt_boxes_lidar'], calib, method=METHOD)
 
         # nms boxes
         if boxes.shape[0] > 0:
             new_info = generate_prediction_dicts(info, boxes, pc)
         new_infos.append(new_info)
+    # print('pca err: ', np.mean(np.array(error_pca_rot).flatten()))
+    # print('close_err: ', np.mean(np.array(error_close_rot).flatten()))
 
-    with open(new_info_path, 'wb') as f:    
-        pickle.dump(new_infos, f)
+    # with open(new_info_path, 'wb') as f:    
+    #     pickle.dump(new_infos, f)
     
 main()
 
