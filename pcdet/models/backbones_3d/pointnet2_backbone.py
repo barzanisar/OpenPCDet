@@ -89,9 +89,9 @@ class PointNet2MSG(nn.Module):
                 l_xyz[i - 1], l_xyz[i], l_features[i - 1], l_features[i]
             )  # (B, C, N)
 
-        point_features = l_features[0].permute(0, 2, 1).contiguous()  # (B, N, C)
-        batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1]) # (16384x2, 128)
-        batch_dict['point_coords'] = torch.cat((batch_idx[:, None].float(), l_xyz[0].view(-1, 3)), dim=1) #batch idx, xyz
+        point_features = l_features[0] #.permute(0, 2, 1).contiguous()  # (B, N, C)    #(8, 128, 20000) - > (8, 20k, 128)
+        batch_dict['point_features'] = point_features #.view(-1, point_features.shape[-1]) #(8x20k, 128)
+        batch_dict['point_coords'] = torch.cat((batch_idx[:, None].float(), l_xyz[0].view(-1, 3)), dim=1) # batch_idx, xyz
         return batch_dict
 
 

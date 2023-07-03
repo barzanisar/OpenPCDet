@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from ...ops.iou3d_nms import iou3d_nms_utils
 from ...utils.spconv_utils import find_all_spconv_keys
-from .. import backbones_2d, backbones_3d, dense_heads, roi_heads
+from .. import backbones_2d, backbones_3d, dense_heads, roi_heads, pretext_heads
 from ..backbones_2d import map_to_bev
 from ..backbones_3d import pfe, vfe
 from ..model_utils import model_nms_utils
@@ -21,7 +21,7 @@ class Detector3DTemplate(nn.Module):
         self.register_buffer('global_step', torch.LongTensor(1).zero_())
 
         self.module_topology = [
-            'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
+            'vfe', 'backbone_3d', 'pretext_head', 'map_to_bev_module', 'pfe',
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
         ]
 
@@ -35,8 +35,8 @@ class Detector3DTemplate(nn.Module):
     def build_networks(self):
         model_info_dict = {
             'module_list': [],
-            'num_rawpoint_features': self.dataset.point_feature_encoder.num_point_features,
-            'num_point_features': self.dataset.point_feature_encoder.num_point_features,
+            'num_rawpoint_features': self.dataset.used_num_point_features, #xyzi i.e. used features
+            'num_point_features': self.dataset.used_num_point_features, #xyzi i.e. used features
             'grid_size': self.dataset.grid_size,
             'point_cloud_range': self.dataset.point_cloud_range,
             'voxel_size': self.dataset.voxel_size,
@@ -64,6 +64,16 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['num_point_features'] = vfe_module.get_output_feature_dim()
         model_info_dict['module_list'].append(vfe_module)
         return vfe_module, model_info_dict
+
+    def build_pretext_head(self, model_info_dict):
+        if self.model_cfg.get('PRETEXT_HEAD', None) is None:
+            return None, model_info_dict
+
+        pretext_head_module = pretext_heads.__all__[self.model_cfg.PRETEXT_HEAD.NAME](
+            model_cfg=self.model_cfg.PRETEXT_HEAD
+        )
+        model_info_dict['module_list'].append(pretext_head_module)
+        return pretext_head_module, model_info_dict
 
     def build_backbone_3d(self, model_info_dict):
         if self.model_cfg.get('BACKBONE_3D', None) is None:

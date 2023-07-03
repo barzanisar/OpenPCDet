@@ -21,4 +21,3 @@ scikit-learn
 PyMieScatt 
 pyquaternion
 spconv-cu111==2.1.21
-#SharedArray==3.1.0
