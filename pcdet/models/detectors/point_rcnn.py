@@ -14,7 +14,8 @@ class PointRCNN(Detector3DTemplate):
             loss, tb_dict, disp_dict = self.get_training_loss()
 
             ret_dict = {
-                'loss': loss
+                'loss': loss,
+                'batch_dict': batch_dict
             }
             return ret_dict, tb_dict, disp_dict
         else:
@@ -23,8 +24,11 @@ class PointRCNN(Detector3DTemplate):
 
     def get_training_loss(self):
         disp_dict = {}
-        loss_point, tb_dict = self.point_head.get_loss()
-        loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
-
-        loss = loss_point + loss_rcnn
+        loss = None
+        tb_dict = None
+        if self.point_head is not None:
+            loss_point, tb_dict = self.point_head.get_loss()
+        if self.roi_head is not None:
+            loss_rcnn, tb_dict = self.roi_head.get_loss(tb_dict)
+            loss = loss_point + loss_rcnn
         return loss, tb_dict, disp_dict

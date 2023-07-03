@@ -19,7 +19,7 @@ class _PointnetSAModuleBase(nn.Module):
     def forward(self, xyz: torch.Tensor, features: torch.Tensor = None, new_xyz=None) -> (torch.Tensor, torch.Tensor):
         """
         :param xyz: (B, N, 3) tensor of the xyz coordinates of the features
-        :param features: (B, N, C) tensor of the descriptors of the the features
+        :param features: (B, N, C) tensor of the descriptors of the the features (B=8, C=1, Num points)
         :param new_xyz:
         :return:
             new_xyz: (B, npoint, 3) tensor of the new features' xyz
@@ -28,7 +28,7 @@ class _PointnetSAModuleBase(nn.Module):
         new_features_list = []
 
         xyz_flipped = xyz.transpose(1, 2).contiguous()
-        if new_xyz is None:
+        if new_xyz is None: #x,y,z of 4096 centroids
             new_xyz = pointnet2_utils.gather_operation(
                 xyz_flipped,
                 pointnet2_utils.furthest_point_sample(xyz, self.npoint)
@@ -142,8 +142,8 @@ class PointnetFPModule(nn.Module):
             self, unknown: torch.Tensor, known: torch.Tensor, unknow_feats: torch.Tensor, known_feats: torch.Tensor
     ) -> torch.Tensor:
         """
-        :param unknown: (B, n, 3) tensor of the xyz positions of the unknown features
-        :param known: (B, m, 3) tensor of the xyz positions of the known features
+        :param unknown: (B, n, 3) tensor of the xyz positions of the unknown features n=num of centroids = N1 in PointNet++ paper
+        :param known: (B, m, 3) tensor of the xyz positions of the known features m=num of centroids = N2
         :param unknow_feats: (B, C1, n) tensor of the features to be propigated to
         :param known_feats: (B, C2, m) tensor of features to be propigated
         :return:
