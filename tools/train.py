@@ -67,74 +67,6 @@ def parse_config():
 
     return args, cfg
 
-def compute_fisher(cfg, args, dist_train, logger):
-    cfg.DATA_CONFIG.DATA_SPLIT['train'] = cfg.EWC.PREVIOUS_DATA_SPLIT
-    cfg.DATA_CONFIG.INFO_PATH['train'] = cfg.EWC.PREVIOUS_INFO_PATH
-    cfg.DATA_CONFIG.DATA_AUGMENTOR.AUG_CONFIG_LIST[0].DB_INFO_PATH = cfg.EWC.PREVIOUS_DBINFO_PATH
-    train_set, train_loader, train_sampler = build_dataloader(
-        dataset_cfg=cfg.DATA_CONFIG,
-        class_names=cfg.CLASS_NAMES,
-        batch_size=args.batch_size,
-        dist=dist_train, workers=args.workers,
-        logger=logger,
-        training=True,
-        merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
-        total_epochs=args.epochs,
-        seed=666 if args.fix_random_seed else None
-    )
-
-    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
-    if dist_train and args.sync_bn:
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model.cuda()
-
-    # load checkpoint if it is possible
-    if args.pretrained_model is not None:
-        # if cfg.get('LOAD_WHOLE_MODEL', False):
-        logger.info('**********************Loading whole model**********************')
-        model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist_train, logger=logger) 
-
-    optimizer = build_optimizer(model, cfg.OPTIMIZATION)
-
-    model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
-    if dist_train:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
-    logger.info(model)
-    
-    # -----------------------start training---------------------------
-    logger.info('**********************Start Computing Fisher %s/%s(%s)**********************'
-                % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
-    
-    model_func=model_fn_decorator()
-    total_it_each_epoch = len(train_loader)
-    dataloader_iter = iter(train_loader)
-
-    model.train()
-    optimizer.zero_grad()
-
-    # Accumulate gradients for one epoch
-    for cur_it in tqdm(range(total_it_each_epoch)):
-        try:
-            batch = next(dataloader_iter)
-        except StopIteration:
-            dataloader_iter = iter(train_loader)
-            batch = next(dataloader_iter)
-            print('new iters')
-
-        loss, _, _ = model_func(model, batch)
-
-        loss.backward()        
-    
-    fisher_dict= {}
-    optpar_dict = {}
-
-    # gradients accumulated can be used to calculate fisher
-    for name, param in model.named_parameters():
-        optpar_dict[name] = param.data.clone()
-        fisher_dict[name] = param.grad.data.clone().pow(2)
-
-    return {'fisher' :fisher_dict, 'optpar': optpar_dict}
-
 def main():
     args, cfg = parse_config()
     if args.launcher == 'none':
@@ -181,81 +113,6 @@ def main():
         os.system('cp %s %s' % (args.cfg_file, output_dir))
 
     tb_log = SummaryWriter(log_dir=str(output_dir / 'tensorboard')) if cfg.LOCAL_RANK == 0 else None
-    # -----------------------compute or get ewc params---------------------------
-    ewc_params = None
-    if 'EWC' in cfg:
-        ewc_param_path = output_dir / 'ewc_params.pkl'
-        ewc_params = {}
-        if ewc_param_path.exists():
-            logger.info('**********************Loading EWC Params **********************')
-            logger.info(f'EWC params path exists in: {ewc_param_path}')
-            with open(ewc_param_path, 'rb') as f:
-                ewc_params = pickle.load(f)
-        else:
-            ewc_params = compute_fisher(copy.deepcopy(cfg), copy.deepcopy(args), dist_train, logger)
-            # save fisher and opt param means 
-            if cfg.LOCAL_RANK == 0:
-                logger.info('**********************Saving EWC Params **********************')
-                logger.info(f'EWC params save path: {ewc_param_path}')
-                with open(ewc_param_path, 'wb') as f:
-                    pickle.dump(ewc_params, f)
-
-    # -----------------------create dataloader & network & optimizer---------------------------
-    if 'REPLAY' in cfg:
-        original_dataset = build_dataset(dataset_cfg=cfg.DATA_CONFIG,
-        class_names=cfg.CLASS_NAMES,
-        logger=logger,
-        training=True) # build dataset of all splits = clear+adverse i.e. old + new
-
-        train_set = copy.deepcopy(original_dataset)
-         
-        adverse_indices = train_set.get_adverse_indices()
-        if cfg.REPLAY.method == 'AGEM':
-            train_set.update_infos(adverse_indices) #only add adverse weather data for AGEM ## HERE ## adverse_indices[:20]
-        else:
-            # include 5% randomly selected clear weather examples
-            clear_indices = train_set.get_clear_indices()
-            #all samples = 6996 = 3365 adverse + 3631 clear
-            # Select a subset of orig_clear_indices for e.g 50% of orig_clear_indices
-            fn = output_dir / 'clear_indices.npy'
-            if fn.exists():
-                with open(fn, 'rb') as f:
-                    clear_indices = np.load(f)
-            else:
-                if cfg.REPLAY.dataset_buffer_size == 1816:
-                    clear_indices = np.array([i for i in clear_indices if i % 2 == 0])
-                elif cfg.REPLAY.dataset_buffer_size == 1815:
-                    clear_indices = np.array([i for i in clear_indices if i % 2 != 0])
-                else:
-                    clear_indices = np.random.permutation(clear_indices)[:cfg.REPLAY.dataset_buffer_size] # 720 clear indices
-                if cfg.LOCAL_RANK == 0:
-                    with open(fn, 'wb') as f:
-                        np.save(fn, clear_indices)
-
-            clear_indices = clear_indices.tolist() # this is not used for fixed replay
-
-            clear_indices_selected_list = glob.glob(str(output_dir / '*clear_indices_selected*.npy'))
-            if len(clear_indices_selected_list) > 0:
-                clear_indices_selected_list.sort(key=os.path.getmtime)
-                filename = clear_indices_selected_list[-1]
-                if not os.path.isfile(filename):
-                    raise FileNotFoundError
-
-                logger.info('==> Loading clear_indices_selected from %s' % (filename))
-                with open(filename, 'rb') as f:
-                    clear_indices_selected = np.load(f)
-            else:
-                clear_indices_selected = np.random.permutation(clear_indices)[:cfg.REPLAY.memory_buffer_size] # random sample 180 clear samples
-                if cfg.LOCAL_RANK == 0:
-                    fn = output_dir / f'clear_indices_selected.npy'
-                    with open(fn, 'wb') as f:
-                        np.save(f, clear_indices_selected)
-            
-            clear_indices_selected = clear_indices_selected.tolist()
-            all_indices = adverse_indices + clear_indices_selected ## HERE ## adverse_indices[:20]
-            train_set.update_infos(all_indices)
-        #assert len(all_indices) == len(train_set.get_adverse_indices()) + len(train_set.get_clear_indices())
-
 
     train_set, train_loader, train_sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
@@ -266,8 +123,7 @@ def main():
         training=True,
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs,
-        seed=666 if args.fix_random_seed else None, 
-        dataset = train_set if 'REPLAY' in cfg else None
+        seed=666 if args.fix_random_seed else None
     )
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
@@ -304,20 +160,6 @@ def main():
             )
             last_epoch = start_epoch + 1
             
-            if 'REPLAY' in cfg and cfg.REPLAY.method == 'EMIR' and cfg.REPLAY.method_variant == 'None':
-                grad_list = glob.glob(str(output_dir / '*model_param_grad_*.npy'))
-                if len(grad_list) > 0:
-                    grad_list.sort(key=os.path.getmtime)
-                    with open(grad_list[-1], 'rb') as f:
-                        model_grad = np.load(f)
-                    
-                    index = 0
-                    for p in model.parameters():
-                        if p.requires_grad:
-                            n_param = p.numel()
-                            p.grad = torch.zeros_like(p)
-                            p.grad.copy_(torch.from_numpy(model_grad[index:index+n_param]).view_as(p))
-                            index += n_param
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:
@@ -351,12 +193,7 @@ def main():
         ckpt_save_interval=args.ckpt_save_interval,
         max_ckpt_save_num=args.max_ckpt_save_num,
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
-        save_ckpt_after_epoch=args.save_ckpt_after_epoch,
-        ewc_params=ewc_params,
-        original_dataset= original_dataset if 'REPLAY' in cfg else None,
-        dist_train=dist_train,
-        args= args if 'REPLAY' in cfg else None, 
-        output_dir=output_dir
+        save_ckpt_after_epoch=args.save_ckpt_after_epoch
     )
 
     if hasattr(train_set, 'use_shared_memory') and train_set.use_shared_memory:
