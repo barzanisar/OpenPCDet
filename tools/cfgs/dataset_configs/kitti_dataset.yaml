@@ -4,16 +4,16 @@ DATA_PATH: '../data/kitti'
 POINT_CLOUD_RANGE: [0, -40, -3, 70.4, 40, 1]
 
 DATA_SPLIT: {
-    'train': train,
-    'test': val
+    'train': train_360FOV,
+    'test': val_360FOV
 }
 
 INFO_PATH: {
-    'train': [kitti_infos_train.pkl],
-    'test': [kitti_infos_val.pkl],
+    'train': [kitti_infos_train_360FOV.pkl],
+    'test': [kitti_infos_val_360FOV.pkl],
 }
 
-FOV_POINTS_ONLY: True
+FOV_POINTS_ONLY: False
 
 
 DATA_AUGMENTOR:
@@ -22,7 +22,7 @@ DATA_AUGMENTOR:
         - NAME: gt_sampling
           USE_ROAD_PLANE: True
           DB_INFO_PATH:
-              - kitti_dbinfos_train.pkl
+              - kitti_dbinfos_train_360FOV.pkl
           PREPARE: {
              filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
              filter_by_difficulty: [-1],
