@@ -428,6 +428,8 @@ class WaymoDataset(DatasetTemplate):
                 gt_points[:, :3] -= gt_boxes[i, :3]
 
                 if (used_classes is None) or names[i] in used_classes:
+                    gt_points = gt_points.astype(np.float32)
+                    assert gt_points.dtype == np.float32
                     with open(filepath, 'w') as f:
                         gt_points.tofile(f)
 
