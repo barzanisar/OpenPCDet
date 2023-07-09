@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 
+np.random.seed(100)
 def overlap_clusters(cluster_i, cluster_j, min_cluster_point=20):
     # get unique labels from pcd_i and pcd_j
     unique_i = np.unique(cluster_i)

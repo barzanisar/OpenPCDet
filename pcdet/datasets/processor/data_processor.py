@@ -68,8 +68,6 @@ class DataProcessor(object):
         self.mode = 'train' if training else 'test'
         self.grid_size = self.voxel_size = None
         self.data_processor_queue = []
-        # with open('/home/barza/outliers.txt', 'wb') as f:
-        #     f.close()
 
         self.voxel_generator = None
 
@@ -83,14 +81,6 @@ class DataProcessor(object):
 
         if data_dict.get('points', None) is not None:
             mask = common_utils.mask_points_by_range(data_dict['points'], self.point_cloud_range)
-            # masked_num_points = mask.sum()
-	        # if masked_num_points < 16384:
-	        #     if 16384 - masked_num_points > masked_num_points:
-	        #         with open('/home/barza/outliers.txt', 'a') as f:
-	        #             frame_id = data_dict['frame_id']
-	        #             orig_points = data_dict['points'].shape[0]
-	        #             f.write(f'{frame_id} {orig_points} {masked_num_points} \n')
-	        #             #f.close()
             data_dict['points'] = data_dict['points'][mask]
 
         if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
@@ -186,13 +176,8 @@ class DataProcessor(object):
             # if pc is super sparse that it has less than 16384 points to begin with
             choice = np.arange(0, len(points), dtype=np.int32)
             if num_points > len(points):
-                #frame_id = data_dict['frame_id']
-                #print(f'frame_id: {frame_id}, len_points: {len(points)}')
+
                 if num_points - len(points) > len(points):
-                    #hack to remove very sparse pcs i.e.len(points) < num_points/2
-                    #check with this, without this and without frames whose len(points) < 16384
-                    #print(f'frame_id: {frame_id}, len_points: {len(points)}')
-                    #data_dict['gt_boxes'] = []
                     extra_choice = np.random.choice(choice, num_points - len(points), replace=True)
                 else:
                     extra_choice = np.random.choice(choice, num_points - len(points), replace=False)
