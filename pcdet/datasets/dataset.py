@@ -191,7 +191,7 @@ class DatasetTemplate(torch_data.Dataset):
 
     @staticmethod
     def collate_batch(batch_list, _unused=False):
-        data_dict = defaultdict(list)
+        data_dict = defaultdict(list) # points: [[pc1], [pc1]], gt_boxes : [[gt_boxes for pc1], [for pc2]]
         for cur_sample in batch_list:
             for key, val in cur_sample.items():
                 data_dict[key].append(val)
@@ -205,12 +205,12 @@ class DatasetTemplate(torch_data.Dataset):
                 elif key in ['points', 'voxel_coords']:
                     coors = []
                     for i, coor in enumerate(val):
-                        coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
+                        coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i) #append batchidx, x,y,z,i
                         coors.append(coor_pad)
-                    ret[key] = np.concatenate(coors, axis=0)
+                    ret[key] = np.concatenate(coors, axis=0) # coors list of 2 pcs (each pc dim 16384, 4) -> (32k, 4)
                 elif key in ['gt_boxes']:
                     max_gt = max([len(x) for x in val])
-                    batch_gt_boxes3d = np.zeros((batch_size, max_gt, val[0].shape[-1]), dtype=np.float32)
+                    batch_gt_boxes3d = np.zeros((batch_size, max_gt, val[0].shape[-1]), dtype=np.float32) # (batch size = 2, max_gt_boxes in a pc in this batch = 67, 8)
                     for k in range(batch_size):
                         batch_gt_boxes3d[k, :val[k].__len__(), :] = val[k]
                     ret[key] = batch_gt_boxes3d

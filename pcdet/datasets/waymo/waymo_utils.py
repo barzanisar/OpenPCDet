@@ -189,7 +189,7 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
         print('NotFoundError: %s' % sequence_file)
         return []
 
-    dataset = tf.data.TFRecordDataset(str(sequence_file), compression_type='')
+    dataset = tf.data.TFRecordDataset(str(sequence_file), compression_type='') #one sequence
     cur_save_dir = save_path / sequence_name
     cur_save_dir.mkdir(parents=True, exist_ok=True)
     pkl_file = cur_save_dir / ('%s.pkl' % sequence_name)
