@@ -33,17 +33,16 @@ def append_module_suffix(state_dict, suffix):
     state_dict = {f"{suffix}{key}": val for (key, val) in state_dict.items()}
     return state_dict
 
-
 def init_model_from_weights(
     model,
     state_dict,
     logger,
     state_dict_key_name="model",
     skip_layers=None,
-    print_init_layers=False,
-    replace_suffix="module.trunk.",
+    print_init_layers=True,
+    replace_suffix="",
     freeze_bb=False,
-    append_suffix="trunk.base_model."
+    append_suffix=""
 ):
     """
     Initialize the model from any given params file. This is particularly useful
@@ -61,30 +60,20 @@ def init_model_from_weights(
             state_dict_key_name in state_dict.keys()
         ), f"Unknown state dict key: {state_dict_key_name}"
         state_dict = state_dict[state_dict_key_name]
-    if state_dict_key_name == "classy_state_dict":
-        classy_state_dict = state_dict["base_model"]["model"]
-        state_dict = {}
-        state_dict.update(classy_state_dict["trunk"])
-    if replace_suffix:
-        state_dict = replace_module_suffix(state_dict, replace_suffix)
-    if append_suffix:
-        state_dict = append_module_suffix(state_dict, append_suffix)
 
     all_layers = model.state_dict()
     init_layers = {layername: False for layername in all_layers}
 
     new_state_dict = {}
-
+    # Change  names of ssl model to match that of opdcmodel, select only those layers from ssl model that are present in opdmodel
+    #For all 'backbone3d' layers in opcdet model, if same layers exists in ssl state_dict, copy them to new_state_dict with keysname same as the opdcet model's backbone3d
     for param_name in init_layers:
-        if 'backbone_3d' not in param_name:
+        if 'global_step' in param_name: #skip copying global step
             continue
-        tempname = param_name[11:]
-        if "trunk.base_model.0"+tempname in state_dict:
-            new_state_dict[param_name] = state_dict["trunk.base_model.0"+tempname]
-        elif "trunk.base_model.2"+tempname in state_dict:
-            new_state_dict[param_name] = state_dict["trunk.base_model.2"+tempname]
+        if "module.trunk.0."+param_name in state_dict:
+            new_state_dict[param_name] = state_dict["module.trunk.0."+param_name] # this layer will be transfered to opdmodel
         else:
-            logger.info(param_name)
+            logger.info(f"{param_name} not found in ssl model!")
     state_dict = new_state_dict
             
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
