@@ -118,56 +118,6 @@ def draw2DRectangle(rectangleCoordinates, color, label):
     plt.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color=color)    # | (down)
     plt.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color=color)    # <--
 
-
-
-# def filter_ground(indices, pc):
-#     object = pc[indices, :]
-#     z = object[:,2]
-#     h = z.max() - z.min()
-#     # if height is not much, make this cluster background
-#     if h < 0.4:
-#         pc[indices, -1] = -1
-#     if FILTER_POLES and h > 2.5:
-#         pc[indices, -1] = -1
-#     return pc
-
-# def filter_walls(indices, pc):
-#     object = pc[indices, :]
-#     x = object[:,0]
-#     y = object[:,1]
-#     l = x.max() - x.min()
-#     w = y.max() - y.min()
-    
-#     if l > 6 or w > 6:
-#         pc[indices, -1] = -1
-#         object_clustered, num_clusters_found = clusterize_pcd(object[:,:-1], 5, dist_thresh=0.1, eps=0.3)
-#         #visualize_pcd_clusters(object_clustered)
-#         if num_clusters_found > 1:
-#             cluster_ids = object_clustered[:, -1] 
-#             for cluster_id in np.unique(cluster_ids):
-#                 if cluster_id == -1:
-#                     continue
-#                 mini_obj_indices = cluster_ids == cluster_id 
-#                 if FILTER_GROUND_CLUSTERS:
-#                     object_clustered = filter_ground(mini_obj_indices, object_clustered)
-#                 if FILTER_WALL_CLUSTERS:
-#                     mini_object = object_clustered[mini_obj_indices, :]
-#                     x = mini_object[:,0]
-#                     y = mini_object[:,1]
-#                     l = x.max() - x.min()
-#                     w = y.max() - y.min()
-#                     if l > 6 or w > 6:
-#                         object_clustered[mini_obj_indices, -1] = -1
-            
-#             #visualize_pcd_clusters(object_clustered)
-#             cluster_ids = object_clustered[:, -1]
-#             if cluster_ids.max() > -1:
-#                 object_clustered[cluster_ids > -1,-1] += pc[:,-1].max()
-#                 pc[indices, :] = object_clustered
-#                 return pc
-            
-#     return pc
-
 def cluster_pc(pc, min_num=20, dist_thresh=0.05, eps=0.5):
 
     if USE_SKLEARN_CLUSTER:
@@ -182,19 +132,7 @@ def cluster_pc(pc, min_num=20, dist_thresh=0.05, eps=0.5):
         pc, num_clusters_found = clusterize_pcd(pc, min_num, dist_thresh=dist_thresh, eps=eps) # reduce min samples
     cluster_ids = pc[:,-1]
     assert cluster_ids.max() < np.iinfo(np.int16).max
-    # if len(info['annos']['name']) > 0:
-    #     assert num_clusters_found > 1
 
-    # # Filter unnecessary clusters: ground, walls
-    # for cluster_id in np.unique(cluster_ids):
-    #     if cluster_id == -1:
-    #         continue
-    #     indices = cluster_ids == cluster_id
-    #     cluster_pc = pc[indices, :]
-    #     if FILTER_GROUND_CLUSTERS:
-    #         pc = filter_ground(indices, pc)
-    #     if FILTER_WALL_CLUSTERS:
-    #         pc= filter_walls(indices, pc)
     if SHOW_PLOTS:
         visualize_pcd_clusters(pc)
     return pc[:,:4], cluster_ids.astype(int)
@@ -240,17 +178,6 @@ def PCA_box(cluster_pc):
     # min/max bbox for axis aligned points
     xmin, xmax, ymin, ymax = np.min(aligned_pts[0, :]), np.max(aligned_pts[0, :]), np.min(aligned_pts[1, :]), np.max(aligned_pts[1, :])
     
-    # plt.scatter(aligned_pts[0, :], aligned_pts[1, :], label='centered points', color='g') 
-    # plt.scatter(0.5*(xmax+xmin), 0.5*(ymax+ymin), marker= 'x', color='b', label='center of box', linewidths=3)
-    # plt.scatter(0, 0, marker= 'x', label='mean of points', color='r', linewidths=3)
-    # draw2DRectangle(xmin, ymin, xmax, ymax)
-
-    # plt.xlabel('Eigen vector with max eigen value')
-    # plt.ylabel('Eigen vector with min eigen value')
-    # plt.grid()
-    # plt.legend()
-    # plt.show()
-
     # Rotate points to align with the body frame i.e. e.vectors (back to their original orientation)
     realigned_pts =  np.matmul(rot(theta), aligned_pts) 
 
@@ -281,35 +208,6 @@ def PCA_box(cluster_pc):
     heading = np.arctan2(evec[1,0], evec[0,0])
 
     box = [xc, yc, zc, dx, dy, dz, heading]
-    
-
-    # if SHOW_PLOTS:
-
-    #     plt.scatter(realigned_pts[0, :], realigned_pts[1, :])
-    #     #plt.scatter(gt_points_np[0, :], gt_points_np[1, :], label='gt points')
-    #     plt.scatter(xc, yc, marker= 'x', label='center of PCA box', color='g', linewidths=3)
-    #     plt.scatter(means[0], means[1], marker= 'x',  color='r', label='mean of points', linewidths=3)
-    #     plt.scatter(0.5*(np.max(cluster_pc[0,:]) + np.min(cluster_pc[0,:])),0.5*(np.max(cluster_pc[1,:]) + np.min(cluster_pc[1,:])), marker= 'x',  color='b', label='center of min/max box', linewidths=3)
-
-    #     # four sides of the axis-aligned bbox
-    #     plt.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color='g', label='PCA box') # | (up)
-    #     plt.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color='g') # -->
-    #     plt.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color='g')    # | (down)
-    #     plt.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color='g')    # <--
-    #     # plot the eigen vactors scaled by their eigen values
-    #     plt.plot([xc, xc + eval[0] * evec[0, 0]],  [yc, yc + eval[0] * evec[1, 0]], label="e.vec1", color='r')
-    #     plt.plot([xc, xc + eval[1] * evec[0, 1]],  [yc, yc + eval[1] * evec[1, 1]], label="e.vec2", color='g')
-    #     plt.xlabel('x-lidar')
-    #     plt.ylabel('y-lidar')
-    #     # min/max bbox
-    #     draw2DRectangle(np.min(cluster_pc[0,:]), np.min(cluster_pc[1,:]), np.max(cluster_pc[0,:]), np.max(cluster_pc[1,:]))
-        
-    #     title = "Est Yaw: {:.2f}, Est Yaw2: {:.2f}".format(np.arctan2(evec[1,0], evec[0,0])*180/np.pi, 
-    #                                                                         np.arctan(evec[1,0]/ evec[0,0])*180/np.pi)
-    #     plt.title(title)
-    #     plt.grid()
-    #     plt.legend()
-    #     plt.show()
     
     return box, rectangleCoordinates, evec, eval
 
