@@ -148,7 +148,7 @@ class Detector3DTemplate(nn.Module):
         if self.model_cfg.POINT_HEAD.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
             num_point_features = model_info_dict['num_point_features_before_fusion']
         else:
-            num_point_features = model_info_dict['num_point_features']
+            num_point_features = 128 #model_info_dict['num_point_features'] #TODO: Fix this
 
         point_head_module = dense_heads.__all__[self.model_cfg.POINT_HEAD.NAME](
             model_cfg=self.model_cfg.POINT_HEAD,
