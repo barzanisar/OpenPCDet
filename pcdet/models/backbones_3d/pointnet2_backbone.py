@@ -74,7 +74,7 @@ class PointNet2MSG(nn.Module):
         for bs_idx in range(batch_size):
             xyz_batch_cnt[bs_idx] = (batch_idx == bs_idx).sum()
 
-        assert xyz_batch_cnt.min() == xyz_batch_cnt.max()
+        assert xyz_batch_cnt.min() == xyz_batch_cnt.max(), print(xyz_batch_cnt)
         xyz = xyz.view(batch_size, -1, 3)
         features = features.view(batch_size, -1, features.shape[-1]).permute(0, 2, 1).contiguous() if features is not None else None
 
