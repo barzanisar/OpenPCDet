@@ -453,9 +453,9 @@ class WaymoDataset(DatasetTemplate):
         with open(db_info_save_path, 'wb') as f:
             pickle.dump(all_db_infos, f)
 
-        # it will be used if you choose to use shared memory for gt sampling
-        stacked_gt_points = np.concatenate(stacked_gt_points, axis=0)
-        np.save(db_data_save_path, stacked_gt_points)
+        # # it will be used if you choose to use shared memory for gt sampling
+        # stacked_gt_points = np.concatenate(stacked_gt_points, axis=0)
+        # np.save(db_data_save_path, stacked_gt_points)
 
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
@@ -465,7 +465,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
     )
-    train_split, val_split = 'train', 'val'
+    train_split, val_split = dataset_cfg.DATA_SPLIT['train'], dataset_cfg.DATA_SPLIT['test']#'train', 'val'
 
     train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
     val_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, val_split))
@@ -501,7 +501,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
         used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
     )
 
-    # print('---------------Data preparation Done---------------')
+    print('---------------Data preparation Done---------------')
 
 # def simulate_rain(clear_weather_split, sim_percent, sim_data_tag, data_path, processed_data_tag):
 #     simulator = LISA(rmax=200)
@@ -635,7 +635,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_10', help='')
+    # parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_10', help='')
     args = parser.parse_args()
 
     if args.func == 'create_waymo_infos':
@@ -647,14 +647,14 @@ if __name__ == '__main__':
             yaml_config = yaml.safe_load(open(args.cfg_file))
         dataset_cfg = EasyDict(yaml_config)
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
-        dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
+        # dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
         create_waymo_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
             raw_data_tag='raw_data',
-            processed_data_tag=args.processed_data_tag
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
         )
     
     # if args.func == 'simulate_rain':
