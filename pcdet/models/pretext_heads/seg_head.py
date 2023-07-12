@@ -37,20 +37,17 @@ class SegHead(nn.Module):
         """
         # gather from all gpus
 
-        # points = batch_dict['points'] # (not needed) unshuffle this (Bx20000, 5)
-        # points_feature_dim = points.shape[-1]
-
+        points = batch_dict['points'] # unshuffle this (Bx20000, 4) needed to create 'point_coords'
         point_features = batch_dict['point_features'] #  unshuffle this (B=2, C=128, N num points = 20000)    
         batch_size_this = batch_dict['batch_size'] #  unshuffle this
 
         # # gather all pcs
-        # all_pcs = concat_all_gather(points.view(batch_size_this, -1, points_feature_dim)) # (2, 20000, 5) -> (8, 20000, 5)
-        # batch_size_all = all_pcs.shape[0]
+        all_pcs = concat_all_gather(points) # (2, 20000, 4) -> (8, 20000, 4)
 
         # gather all point features
         all_point_features = concat_all_gather(point_features) #(B=2, C=128, N num points = 20000) -> (8, 128, 20k)
-        batch_size_all = all_point_features.shape[0]
         
+        batch_size_all = all_point_features.shape[0]
         num_gpus = batch_size_all // batch_size_this
         
         # restored index for this gpu
@@ -58,10 +55,10 @@ class SegHead(nn.Module):
         idx_this = idx_unshuffle.view(num_gpus, -1)[gpu_idx]
         
         # No need to unshuffle points because they are not needed.
-        #batch_dict['points'] = all_pcs[idx_this].view(-1, points_feature_dim)  #(2, 20k, 5) - > (40k, 5)
         batch_dict['point_features'] = all_point_features[idx_this] # (2, 128, 20k)
         batch_dict['batch_size'] = batch_dict['point_features'].shape[0]
-
+        batch_dict['points'] = all_pcs[idx_this] #(B, 20k, 4) 
+        
         return batch_dict
 
     
@@ -114,5 +111,13 @@ class SegHead(nn.Module):
         batch_dict["pretext_head_feats"] = all_seg_feats # (num clusters, 128)
         point_features = point_features.permute(0, 2, 1).contiguous()  # (B=2, N=20000, C=128)
         batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1]) # (B x N, 128)
+        num_points_per_pc = batch_dict['points'].shape[1]
+        
+        batch_ids = torch.stack([batch_idx*torch.ones(num_points_per_pc) for batch_idx in range(batch_dict['batch_size'])])
+        batch_ids = batch_ids.to(batch_dict['points'], non_blocking=True).unsqueeze(-1)
+        point_coords = torch.cat([batch_ids, batch_dict['points'][:,:,:3]], dim=2) #batch_idx, xyz
+        batch_dict['point_coords'] = point_coords.view(-1, 4) # (B, 20K, 4) -> #(BxN, 4) batch_idx, xyz
+        points_feature_dim = batch_dict['points'].shape[-1]
+        batch_dict['points'] = batch_dict['points'].view(-1, points_feature_dim) # (BxN, 4) xyzi
 
         return batch_dict        

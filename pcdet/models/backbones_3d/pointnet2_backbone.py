@@ -48,10 +48,9 @@ class PointNet2MSG(nn.Module):
         self.num_point_features = self.model_cfg.FP_MLPS[0][-1]
 
     def break_up_pc(self, pc):
-        batch_idx = pc[:, 0]
-        xyz = pc[:, 1:4].contiguous()
-        features = (pc[:, 4:].contiguous() if pc.size(-1) > 4 else None)
-        return batch_idx, xyz, features
+        xyz = pc[:, :, 0:3].contiguous()
+        features = (pc[:, :, 3:].contiguous() if pc.size(-1) > 3 else None)
+        return xyz, features
 
     def forward(self, batch_dict):
         """
@@ -66,17 +65,12 @@ class PointNet2MSG(nn.Module):
                 point_features: (N, C=128)
                 point_coords: (N, 4) [batch idx, x,y,z]
         """
-        batch_size = batch_dict['batch_size']
         points = batch_dict['points']
-        batch_idx, xyz, features = self.break_up_pc(points)
 
-        xyz_batch_cnt = xyz.new_zeros(batch_size).int()
-        for bs_idx in range(batch_size):
-            xyz_batch_cnt[bs_idx] = (batch_idx == bs_idx).sum()
+        xyz, features = self.break_up_pc(points)
 
-        assert xyz_batch_cnt.min() == xyz_batch_cnt.max(), print(xyz_batch_cnt)
-        xyz = xyz.view(batch_size, -1, 3)
-        features = features.view(batch_size, -1, features.shape[-1]).permute(0, 2, 1).contiguous() if features is not None else None
+
+        features = features.permute(0, 2, 1) if features is not None else None
 
         l_xyz, l_features = [xyz], [features]
         for i in range(len(self.SA_modules)):
@@ -89,9 +83,7 @@ class PointNet2MSG(nn.Module):
                 l_xyz[i - 1], l_xyz[i], l_features[i - 1], l_features[i]
             )  # (B, C, N)
 
-        point_features = l_features[0] #.permute(0, 2, 1).contiguous()  # (B, N, C)    #(8, 128, 20000) - > (8, 20k, 128)
-        batch_dict['point_features'] = point_features #.view(-1, point_features.shape[-1]) #(8x20k, 128)
-        batch_dict['point_coords'] = torch.cat((batch_idx[:, None].float(), l_xyz[0].view(-1, 3)), dim=1) # batch_idx, xyz
+        batch_dict['point_features'] = l_features[0] #(B, 128, 20K)         
         return batch_dict
 
 
