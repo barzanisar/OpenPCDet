@@ -3,7 +3,7 @@ from functools import partial
 from torch.utils.data import DataLoader
 from torch.utils.data import DistributedSampler as _DistributedSampler
 
-from pcdet.utils import common_utils
+from third_party.OpenPCDet.pcdet.utils import common_utils
 
 from .dataset import DatasetTemplate
 from .dense.dense_dataset import DenseDataset

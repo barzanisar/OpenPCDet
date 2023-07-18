@@ -12,8 +12,8 @@ import torch
 from ...utils import box_utils, common_utils
 from ..dataset import DatasetTemplate
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
-from pcdet.config import cfg
-from pcdet.datasets.cadc import cadc_calibration
+from third_party.OpenPCDet.pcdet.config import cfg
+from third_party.OpenPCDet.pcdet.datasets.cadc import cadc_calibration
 
 import time
 
@@ -407,7 +407,7 @@ class CadcDataset(DatasetTemplate):
 
     def evaluation(self, det_annos, class_names, **kwargs):
         assert 'annos' in self.cadc_infos[0].keys()
-        import pcdet.datasets.kitti.kitti_object_eval_python.eval as kitti_eval
+        import third_party.OpenPCDet.pcdet.datasets.kitti.kitti_object_eval_python.eval as kitti_eval
 
         if 'annos' not in self.cadc_infos[0]:
             return 'None', {}

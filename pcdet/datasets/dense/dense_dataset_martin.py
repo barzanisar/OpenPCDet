@@ -7,9 +7,9 @@ from skimage import io
 
 from multiprocessing import cpu_count
 
-from pcdet.datasets.dataset import DatasetTemplate, nth_repl
-from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
-from pcdet.utils import box_utils, calibration_kitti, common_utils, object3d_kitti
+from third_party.OpenPCDet.pcdet.datasets.dataset import DatasetTemplate, nth_repl
+from third_party.OpenPCDet.pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
+from third_party.OpenPCDet.pcdet.utils import box_utils, calibration_kitti, common_utils, object3d_kitti
 
 
 class Namespace:

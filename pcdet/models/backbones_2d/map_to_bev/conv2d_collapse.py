@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from pcdet.models.model_utils.basic_block_2d import BasicBlock2D
+from third_party.OpenPCDet.pcdet.models.model_utils.basic_block_2d import BasicBlock2D
 
 
 class Conv2DCollapse(nn.Module):

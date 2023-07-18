@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from pcdet.utils import loss_utils
+from third_party.OpenPCDet.pcdet.utils import loss_utils
 
 
 class Balancer(nn.Module):

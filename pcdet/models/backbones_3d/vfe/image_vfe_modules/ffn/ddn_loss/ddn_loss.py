@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 from .balancer import Balancer
-from pcdet.utils import transform_utils
+from third_party.OpenPCDet.pcdet.utils import transform_utils
 
 try:
     from kornia.losses.focal import FocalLoss

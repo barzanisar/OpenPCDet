@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation as R
 import json
 import matplotlib.patches as patches
 import os
-from pcdet.datasets.cadc.cadc_dataset import CadcDataset
+from third_party.OpenPCDet.pcdet.datasets.cadc.cadc_dataset import CadcDataset
 
 
 REPO_DIR='/home/mm/my_work/WISEOpenLidarPerceptron'

@@ -9,7 +9,7 @@ except Exception as e:
     # print('Warning: kornia is not installed correctly, please ignore this warning if you do not use CaDDN. Otherwise, it is recommended to use torch version greater than 1.2 to use kornia properly.')
     pass
 
-from pcdet.utils import transform_utils
+from third_party.OpenPCDet.pcdet.utils import transform_utils
 
 
 class FrustumGridGenerator(nn.Module):

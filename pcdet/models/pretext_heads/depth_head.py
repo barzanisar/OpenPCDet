@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from pcdet.models.pretext_heads.mlp import MLP
+from third_party.OpenPCDet.pcdet.models.pretext_heads.mlp import MLP
 
 
 @torch.no_grad()
