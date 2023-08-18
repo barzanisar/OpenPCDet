@@ -151,16 +151,23 @@ def fill_in_clusters(labels, pc):
         # Note: sending full_pc gets max point in the bev box to be in cluster. This could overestimate the box height
         # if there is a tree over the car 
 
+        if cluster_pc[:,2].max() - cluster_pc[:,2].min() < 0.8:
+            continue
         #Remove outlier ground points in the cluster
-        cxcycz= cluster_pc.median(axis = 0)
-        point_norms = np.linalg.norm(cluster_pc - cxcycz) #Npoints
-        ninety_perc_norm = np.percentile(point_norms, 90)
-        robust_cluster_pc = cluster_pc[point_norms <= ninety_perc_norm]
-
-        box, _, _ = fit_box(robust_cluster_pc, fit_method='closeness_to_edge') #, full_pc = pc[:,:3]
+        # cxcycz= np.mean(cluster_pc, axis = 0)
+        # point_norms =  np.linalg.norm(cluster_pc - cxcycz, axis = -1) #Npoints
+        # ninety_perc_norm = np.percentile(point_norms, 80)
+        # robust_cluster_pc = cluster_pc[point_norms <= ninety_perc_norm]
+        
+        min_height = np.max([cluster_pc[:,2].min()+0.5,cluster_pc[:,2].min()-0.5])
+        top_part_cluster = cluster_pc[cluster_pc[:,2]>min_height]
+        
+        if top_part_cluster.shape[0] == 0:
+            top_part_cluster=cluster_pc
+        box, _, _ = fit_box(top_part_cluster, fit_method='closeness_to_edge') #, full_pc = pc[:,:3]
         #enlarge box
         # box[3:6] -= np.array([0.1, 0.1, 0.])
-        # box[2] += 0.6
+        box[2] += 0.3
         #append label
         box = np.concatenate((box, [label]), axis = -1)
         boxes = np.vstack([boxes, box])
@@ -320,7 +327,7 @@ def cluster_all(dataset, show_plots=False):
         # labels = labels.reshape((-1,1)).astype(np.float16)
         # labels.tofile(save_labels_path.__str__())
         labels = np.fromfile(save_labels_path.__str__(), dtype=np.float16)
-        visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
+        #visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
         labels = fill_in_clusters(labels, xyzi_last_vehicle)
 
 
