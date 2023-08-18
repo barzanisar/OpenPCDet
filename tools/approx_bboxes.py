@@ -97,7 +97,7 @@ def main():
                 rot = lambda theta: np.array([[np.cos(theta), -np.sin(theta)],
                         [np.sin(theta),  np.cos(theta)]])
                 theta = np.arctan(evec[1,0]/evec[0,0]) # radians
-                aligned_pts = np.matmul(rot(-theta), centered_pts[:2,:]) 
+                aligned_pts = np.matmul(rot(-theta), centered_pts[:2,:]) #same as evec.T @ centered_pts[:2,:]
 
                 # min/max bbox for axis aligned points
                 xmin, xmax, ymin, ymax = np.min(aligned_pts[0, :]), np.max(aligned_pts[0, :]), np.min(aligned_pts[1, :]), np.max(aligned_pts[1, :])
@@ -200,9 +200,9 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    with open('bbox_hist.pkl', 'rb') as f:
-        hist_dict = pickle.load(f)
+    main()
+    # with open('bbox_hist.pkl', 'rb') as f:
+    #     hist_dict = pickle.load(f)
 
     # for cls in ['car', 'ped', 'cyc']:
     #     plt.figure()

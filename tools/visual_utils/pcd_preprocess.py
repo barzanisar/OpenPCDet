@@ -1,5 +1,8 @@
 import numpy as np
 import open3d as o3d
+import hdbscan
+import matplotlib.pyplot as plt
+
 
 np.random.seed(100)
 def overlap_clusters(cluster_i, cluster_j, min_cluster_point=20):
@@ -25,10 +28,11 @@ def overlap_clusters(cluster_i, cluster_j, min_cluster_point=20):
     return cluster_i, cluster_j
 
 def clusters_hdbscan(points_set, n_clusters):
-    clusterer = hdbscan.HDBSCAN(algorithm='best', alpha=1., approx_min_span_tree=True,
+    clusterer = hdbscan.HDBSCAN(algorithm='best', alpha=1.0, approx_min_span_tree=True,
                                 gen_min_span_tree=True, leaf_size=100,
-                                metric='euclidean', min_cluster_size=20, min_samples=None
-                            )
+                                metric='euclidean', min_cluster_size=20, min_samples=None,
+                                cluster_selection_method='eom', cluster_selection_epsilon=0.
+                            ) #cluster_selection_epsilon=0.05, 0.07 also work
 
     clusterer.fit(points_set)
 
@@ -38,14 +42,18 @@ def clusters_hdbscan(points_set, n_clusters):
     cluster_info = np.array(list(zip(lbls[1:], counts[1:])))
     cluster_info = cluster_info[cluster_info[:,1].argsort()]
 
-    clusters_labels = cluster_info[::-1][:n_clusters, 0]
+    if n_clusters == -1:
+        clusters_labels = cluster_info[::-1][:, 0]
+    else:
+        clusters_labels = cluster_info[::-1][:n_clusters, 0]
+    
     labels[np.in1d(labels, clusters_labels, invert=True)] = -1
 
     return labels
 
 def clusters_from_pcd(pcd, n_clusters, eps=0.25):
     # clusterize pcd points
-    labels = np.array(pcd.cluster_dbscan(eps=eps, min_points=10))
+    labels = np.array(pcd.cluster_dbscan(eps=eps, min_points=20))
     lbls, counts = np.unique(labels, return_counts=True)
     num_clusters_found = lbls.shape[0]
     if num_clusters_found > 1:
@@ -90,26 +98,44 @@ def clusterize_pcd(points, n_clusters, dist_thresh=0.25, eps=0.5):
 
     return np.concatenate((points, labels), axis=-1), num_clusters_found
 
-def visualize_pcd_clusters(point_set, visualize_sep_clusters = False):
+def visualize_pcd_clusters(points, labels):
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(point_set[:,:3])
+    pcd.points = o3d.utility.Vector3dVector(points[:,:3])
+    
+    colors = np.zeros((len(labels), 4))
+    flat_indices = np.unique(labels[:,-1])
+    max_instance = len(flat_indices)
+    colors_instance = plt.get_cmap("prism")(np.arange(len(flat_indices)) / (max_instance if max_instance > 0 else 1))
 
-    labels = point_set[:, -1]
-    import matplotlib.pyplot as plt
-    colors = plt.get_cmap("prism")(labels / (labels.max() if labels.max() > 0 else 1))
-    colors[labels < 0] = 0
+    for idx in range(len(flat_indices)):
+        colors[labels[:,-1] == flat_indices[int(idx)]] = colors_instance[int(idx)]
 
-    if visualize_sep_clusters:
-        for l in np.unique(labels):
-            if l < 0:
-                continue
-            this_cluster_color = np.copy(colors)
-            this_cluster_color[labels != l] = 0
-            pcd.colors = o3d.utility.Vector3dVector(this_cluster_color[:, :3])
-            o3d.visualization.draw_geometries([pcd])
+    colors[labels[:,-1] == -1] = [0.,0.,0.,0.]
 
-    pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    pcd.colors = o3d.utility.Vector3dVector(colors[:,:3])
+
     o3d.visualization.draw_geometries([pcd])
+
+# def visualize_pcd_clusters(point_set, visualize_sep_clusters = False):
+#     pcd = o3d.geometry.PointCloud()
+#     pcd.points = o3d.utility.Vector3dVector(point_set[:,:3])
+
+#     labels = point_set[:, -1]
+#     import matplotlib.pyplot as plt
+#     colors = plt.get_cmap("prism")(labels / (labels.max() if labels.max() > 0 else 1))
+#     colors[labels < 0] = 0
+
+#     if visualize_sep_clusters:
+#         for l in np.unique(labels):
+#             if l < 0:
+#                 continue
+#             this_cluster_color = np.copy(colors)
+#             this_cluster_color[labels != l] = 0
+#             pcd.colors = o3d.utility.Vector3dVector(this_cluster_color[:, :3])
+#             o3d.visualization.draw_geometries([pcd])
+
+#     pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+#     o3d.visualization.draw_geometries([pcd])
 
 def visualize_pcd_clusters_compare(point_set, pi, pj):
     pcd_ = o3d.geometry.PointCloud()

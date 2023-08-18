@@ -151,6 +151,7 @@ def min_max_box(cluster_pc):
     return box
 
 def PCA_box(cluster_pc):
+    #https://logicatcore.github.io/scratchpad/lidar/sensor-fusion/jupyter/2021/04/20/3D-Oriented-Bounding-Box.html
     # cluster_pc 3xN points
     #find cov of xy coords
     cov = np.cov(cluster_pc[0:2, :]) #xy covariance
