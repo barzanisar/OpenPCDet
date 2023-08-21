@@ -327,7 +327,7 @@ def fit_boxes(dataset, show_plots=False):
     infos= dataset.infos_dict[seq_name]
 
     print(f'Fitting boxes for sequence: {seq_name}')
-    approx_boxes = np.empty((0, 17))
+    approx_boxes = np.empty((0, 18))
     num_boxes_per_pc = np.zeros(len(infos), dtype=int)
     poses_inv= []
     for i, info in enumerate(infos):
@@ -341,7 +341,7 @@ def fit_boxes(dataset, show_plots=False):
         pc = dataset.get_lidar(sequence_name, sample_idx)
         labels = dataset.get_cluster_labels(sequence_name, sample_idx).flatten()
 
-        approx_boxes_this_pc = np.empty((0, 17))
+        approx_boxes_this_pc = np.empty((0, 18))
         for label in np.unique(labels):
             if label == -1:
                 continue
@@ -351,7 +351,8 @@ def fit_boxes(dataset, show_plots=False):
             full_box[0,:7] = box
             full_box[0,7:15] = corners.flatten()
             full_box[0,15] = i # info index
-            full_box[0,16] = label
+            full_box[0,16] = cluster_pc.shape[0] # num_points
+            full_box[0,17] = label
             approx_boxes_this_pc = np.vstack([approx_boxes_this_pc, full_box])
             #[cxy[0], cxy[1], cz, l, w, h, rz, corner0_x, corner0_y, ..., corner3_x, corner3_y  area, label]
             #corner0-3 are BEV box corners in lidar frame
@@ -380,7 +381,7 @@ def fit_boxes(dataset, show_plots=False):
         # to avoid partial boxes floating in air
         max_h = boxes_this_label[:, 5].max()
         cz_in_v=None
-        # ind = np.argmax(max_h)
+        # ind = np.argmax(boxes_this_label[:, 5])
         # cxyz_max_h_in_v2 = boxes_this_label[ind, :3]
         # info_ind = int(boxes_this_label[ind, 15])
         # pose_w_vm = infos[info_ind]['pose']
@@ -390,8 +391,22 @@ def fit_boxes(dataset, show_plots=False):
         # cxyz_max_h_in_v = cxyz_max_h_in_v.reshape((-1, 4))
         # cz_in_v = cxyz_max_h_in_v[:, -2]
 
+        #max_l, max_w, max_h =  boxes_this_label[ind_max_numpts, 3], boxes_this_label[ind_max_numpts, 4], boxes_this_label[ind_max_numpts, 5]
+      
+        # To avoid different rotations of partial view boxes
+        # ind_max_numpts = np.argmax(boxes_this_label[:, 16])
+        # ry_maxhbox_vm = boxes_this_label[ind_max_numpts, 6]
+        # info_ind_vm = int(boxes_this_label[ind_max_numpts, 15])
+        # pose_w_vm =infos[info_ind_vm]['pose'] #(4,4)
+        # poses_v_w = poses_inv[boxes_this_label[:, 15].astype(int)] #(m, 4, 4)
+        # poses_v_vm = poses_v_w @ pose_w_vm #(m, 4, 4)
+        # ry_vm_v= np.arctan2(poses_v_vm[..., 1, 0], poses_v_vm[..., 0, 0]) # heading of vm wrt v1
+        # ry_box_v = ry_maxhbox_vm + ry_vm_v #(m)
+        ry_box_v = None
+        
 
-        boxes_this_label = refine_boxes(boxes_this_label, max_l, max_w, max_h=max_h, cz_max_h=cz_in_v)
+
+        boxes_this_label = refine_boxes(boxes_this_label, max_l, max_w, max_h=max_h, cz_max_h=cz_in_v, rys=ry_box_v)
         refined_boxes[labels==label,:]= boxes_this_label
     
     refined_boxes = np.array(refined_boxes)
@@ -413,11 +428,11 @@ def fit_boxes(dataset, show_plots=False):
             approx_boxes_this_pc = approx_boxes[ind:ind+num_boxes_this_pc]
             refined_boxes_this_pc = refined_boxes[ind:ind+num_boxes_this_pc]
             ind += num_boxes_this_pc
-            show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'approx_boxes', refined_boxes_this_pc, 'refined_boxes')
-            # V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
-            #                     ref_boxes=refined_boxes_this_pc[:,:7]) #gt_boxes=blue, ref_boxes=green
-            V.draw_scenes(pc, gt_boxes=gt_boxes, 
-                                ref_boxes=refined_boxes_this_pc[:,:7])
+            #show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'approx_boxes', refined_boxes_this_pc, 'refined_boxes')
+            V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
+                                ref_boxes=refined_boxes_this_pc[:,:7]) #gt_boxes=blue, ref_boxes=green
+            # V.draw_scenes(pc, gt_boxes=gt_boxes, 
+            #                     ref_boxes=refined_boxes_this_pc[:,:7])
     
     ind = 0
     for i, info in enumerate(infos):
