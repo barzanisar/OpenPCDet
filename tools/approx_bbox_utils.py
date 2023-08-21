@@ -78,7 +78,7 @@ def refine_box(anchor, cx, cy, cz, l,w,h, heading, max_l, max_w):
     
     return cxyz, lwh, heading, bev_corners
 
-def refine_boxes(boxes_this_label, max_l, max_w):
+def refine_boxes(boxes_this_label, max_l, max_w, max_h=None, cz_max_h=None):
     refined_boxes = np.empty((0,15))
     num_boxes = boxes_this_label.shape[0]
     corners = boxes_this_label[:, 7:15]
@@ -90,10 +90,12 @@ def refine_boxes(boxes_this_label, max_l, max_w):
     for i in range(num_boxes):
         closest_corner_ind = closest_corners_ind[i]
         closest_corner = corners[i, closest_corner_ind, :]
-
+        
+        cz = cz_max_h[i] if cz_max_h is not None else boxes_this_label[i, 2]
+        h =max_h if max_h is not None else boxes_this_label[i, 5]
         cxyz, lwh, heading, bev_corners = refine_box(anchor=closest_corner, 
-                                                     cx=boxes_this_label[i, 0], cy=boxes_this_label[i, 1], cz=boxes_this_label[i, 2], 
-                                                     l=boxes_this_label[i, 3], w=boxes_this_label[i, 4], h=boxes_this_label[i, 5], 
+                                                     cx=boxes_this_label[i, 0], cy=boxes_this_label[i, 1], cz=cz, 
+                                                     l=boxes_this_label[i, 3], w=boxes_this_label[i, 4], h=h, 
                                                      heading=boxes_this_label[i, 6], max_l=max_l, max_w=max_w)
        
         box3d_full = np.concatenate((cxyz, lwh, np.array([heading]), bev_corners.flatten()))

@@ -18,6 +18,13 @@ from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
 
 np.random.seed(100)
 
+def inv_pose(pose):
+    pose_inv = np.zeros((4,4))
+    pose_inv[-1,-1] = 1
+    pose_inv[:3,:3] = pose[:3,:3].T
+    pose_inv[:3,-1] = - pose_inv[:3,:3] @ pose[:3,-1]
+    return pose_inv
+
 class WaymoDataset():
     def __init__(self):
         self.root_path = Path('/home/barza/DepthContrast/data/waymo')
@@ -26,6 +33,7 @@ class WaymoDataset():
         self.data_path = self.root_path / self.processed_data_tag
         self.infos_pkl_path = self.root_path / f'{self.processed_data_tag}_infos_{self.split}.pkl'
         self.label_root_path = self.root_path / (self.processed_data_tag + '_clustered')
+        self.save_infos_pkl_path = self.root_path / f'{self.processed_data_tag}_infos_{self.split}_approx_boxes.pkl'
 
 
         self.infos_dict = {} # seq_name: [frame infos]
@@ -53,7 +61,13 @@ class WaymoDataset():
         label_file = self.label_root_path / sequence_name / ('%04d.npy' % sample_idx)
         labels = np.fromfile(label_file, dtype=np.float16)
         return labels.reshape((-1,1))
-    
+    def save_updated_infos(self):
+        infos_list = []
+        for seq_name, seq_infos in self.infos_dict.items():
+            infos_list += seq_infos
+        with open(self.save_infos_pkl_path, 'wb') as f:
+            pickle.dump(infos_list,f)
+        
     def aggregate_pcd(self, sequence_name):
         infos = self.infos_dict[sequence_name]
 
@@ -120,10 +134,7 @@ class WaymoDataset():
         
         non_ground_mask = non_ground_mask.flatten()
         # Inv(pose_world_from_vehicle)
-        pose_vehicle_from_world = np.zeros((4,4))
-        pose_vehicle_from_world[-1,-1] = 1
-        pose_vehicle_from_world[:3,:3] = pose_world_from_vehicle[:3,:3].T
-        pose_vehicle_from_world[:3,-1] = - pose_vehicle_from_world[:3,:3] @ pose_world_from_vehicle[:3,-1]
+        pose_vehicle_from_world = inv_pose(pose_world_from_vehicle)
 
         # diff=(pose_vehicle_from_world - np.linalg.inv(pose_world_from_vehicle)).sum()
         # Transform the points from the world frame to the last frame in the sequence
@@ -142,7 +153,7 @@ class WaymoDataset():
 
         return xyzi_last_vehicle, non_ground_mask, pc_lens
 
-def fill_in_clusters(labels, pc):
+def fill_in_clusters(labels, pc, show_plots=False):
     boxes = np.empty((0,8))
     for label in np.unique(labels):
         if label == -1:
@@ -154,10 +165,6 @@ def fill_in_clusters(labels, pc):
         if cluster_pc[:,2].max() - cluster_pc[:,2].min() < 0.8:
             continue
         #Remove outlier ground points in the cluster
-        # cxcycz= np.mean(cluster_pc, axis = 0)
-        # point_norms =  np.linalg.norm(cluster_pc - cxcycz, axis = -1) #Npoints
-        # ninety_perc_norm = np.percentile(point_norms, 80)
-        # robust_cluster_pc = cluster_pc[point_norms <= ninety_perc_norm]
         
         min_height = np.max([cluster_pc[:,2].min()+0.5,cluster_pc[:,2].min()-0.5])
         top_part_cluster = cluster_pc[cluster_pc[:,2]>min_height]
@@ -165,15 +172,17 @@ def fill_in_clusters(labels, pc):
         if top_part_cluster.shape[0] == 0:
             top_part_cluster=cluster_pc
         box, _, _ = fit_box(top_part_cluster, fit_method='closeness_to_edge') #, full_pc = pc[:,:3]
-        #enlarge box
-        # box[3:6] -= np.array([0.1, 0.1, 0.])
+        #shift box up
         box[2] += 0.3
         #append label
         box = np.concatenate((box, [label]), axis = -1)
         boxes = np.vstack([boxes, box])
     
     #fitted boxes
-    V.draw_scenes(pc[:,:3], gt_boxes=boxes)
+    print(f'4th Step Fit boxes on aggregate PC Done. Boxes: {boxes.shape[0]}')
+
+    if show_plots:
+        V.draw_scenes(pc[:,:3], gt_boxes=boxes)
 
     box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
     torch.from_numpy(pc[:, 0:3]).unsqueeze(dim=0).float().cuda(),
@@ -184,8 +193,11 @@ def fill_in_clusters(labels, pc):
         label = boxes[i, -1]
         labels[box_idxs_of_pts == i] = label
     
-    # Filled in clusters
-    visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
+    print(f'5th Step Clusters filling Done.')
+
+    if show_plots:
+        # Filled in clusters
+        visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
 
     return labels
 
@@ -199,152 +211,89 @@ def cluster_all(dataset, show_plots=False):
     save_seq_path = dataset.label_root_path / seq_name
     os.makedirs(save_seq_path.__str__(), exist_ok=True)
     cluster_files = []#glob.glob(f'{save_seq_path.__str__()}/*.npy') #TODO
-    save_labels_path = save_seq_path / 'all_None_0p05.npy'
+    #save_labels_path = save_seq_path / 'all.npy'
 
+    print(f'Clustering of sequence: {seq_name} started!')
     if len(cluster_files) < len(dataset.infos_dict[seq_name]):
-        # Aggregate
+        # Aggregate TODO: Use Patchwork to estimate ground
         xyzi_last_vehicle, non_ground_mask, pc_lens = dataset.aggregate_pcd(seq_name)
         
         # Only cluster non-ground points
-        # labels = cluster(xyzi_last_vehicle[:,:3], non_ground_mask) #TODO
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1))) #TODO
-        # assert (labels.max() < np.finfo('float16').max), 'max segment id overflow float16 number' #TODO
-        # labels = labels.astype(np.float16)
-        # labels.tofile(save_labels_path.__str__())
-        
-        # labels = np.fromfile(save_labels_path.__str__(), dtype=np.float16)
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
-        # labels, _ = filter_labels(xyzi_last_vehicle[:,:3], labels, labels.max()+1, estimate_dist_to_plane=False)
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
-        # labels = labels.astype(np.float16)
-        # labels.tofile(save_labels_path.__str__())
-        # labels = np.fromfile(save_labels_path.__str__(), dtype=np.float16)
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
+        labels = cluster(xyzi_last_vehicle[:,:3], non_ground_mask) 
+        assert (labels.max() < np.finfo('float16').max), 'max segment id overflow float16 number' 
+        # save_labels(labels, save_labels_path.__str__())
+        # labels = load_labels(save_labels_path.__str__())
+        print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
 
-       
-        
-        # labels = get_continuous_labels(labels)
+        if show_plots:
+            visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
+        labels, _ = filter_labels(xyzi_last_vehicle[:,:3], labels, labels.max()+1, estimate_dist_to_plane=False)
+        labels = get_continuous_labels(labels)
+        print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
 
-        # labels = labels.astype(np.float16)
-        # labels.tofile(save_labels_path.__str__())
-        # labels = np.fromfile(save_labels_path.__str__(), dtype=np.float16)
+        if show_plots:
+            visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
 
-        
-        # visualize_labels = np.zeros((labels.shape[0]))
-        # for label in np.unique(labels):
-        #     if label == -1: 
-        #         continue
-        #     ptc = xyzi_last_vehicle[label==labels,:3]
-        #     volume = np.prod(ptc.max(axis=0) - ptc.min(axis=0))
-        #     if volume > 70: # volume too big or small 69
-        #         visualize_labels[label==labels] = 1
 
-        #     if volume < 0.5:
-        #         visualize_labels[label==labels] = 2
-                
-        
-        #     h = ptc[:,2].max() - ptc[:,2].min()
-        #     w = ptc[:,1].max() - ptc[:,1].min()
-        #     l = ptc[:,0].max() - ptc[:,0].min()
-        #     # if height is not much, make this cluster background
-        #     if h < 0.4:
-        #         visualize_labels[label==labels] = 3
+        # Separate labels pc wise and filter labels
+        infos = dataset.infos_dict[seq_name]
+        i=0
+        num_obj_labels = int(labels.max()+1)
+        rejection_tags = np.empty((num_obj_labels, 0))
+        for info, pc_len in zip(infos, pc_lens):
+            label_this_pc = labels[i:i+pc_len]
+            #ground_mask_this_pc = ~non_ground_mask[i:i+pc_len]
+            pc_info = info['point_cloud']
+            sequence_name = pc_info['lidar_sequence']
+            sample_idx = pc_info['sample_idx']
+            print(f'sample idx: {sample_idx}')
             
-        #     # Remove walls/trees
-        #     if h > 3:
-        #         visualize_labels[label==labels] = 4
-        #     if l/w >= 4 or w/l >=4:
-        #         visualize_labels[label==labels] = 5
-
-        # labels = labels.reshape((-1,1))
-        # rejected_labels = labels.copy()
-        # rejected_labels[visualize_labels==0] = -1
-        # # visualize_pcd_clusters(xyzi_last_vehicle[visualize_labels==1,:3], labels[visualize_labels==1])
-        # visualize_pcd_clusters(xyzi_last_vehicle[visualize_labels==2,:3], labels[visualize_labels==2])
-        # # visualize_pcd_clusters(xyzi_last_vehicle[visualize_labels==3,:3], labels[visualize_labels==3])
-        # # visualize_pcd_clusters(xyzi_last_vehicle[visualize_labels==4,:3], labels[visualize_labels==4])
-        # # visualize_pcd_clusters(xyzi_last_vehicle[visualize_labels==5,:3], labels[visualize_labels==5])
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], rejected_labels)
-        # print(f'labels found after filtering: {np.unique(labels[visualize_labels==0]).shape[0]}')
-
-
-        # # Separate labels pc wise and filter labels
-        # infos = dataset.infos_dict[seq_name]
-        # i=0
-        # num_obj_labels = int(labels.max()+1)
-        # rejection_tags = np.empty((num_obj_labels, 0))
-        # for info, pc_len in zip(infos, pc_lens):
-        #     label_this_pc = labels[i:i+pc_len]
-        #     #ground_mask_this_pc = ~non_ground_mask[i:i+pc_len]
-        #     pc_info = info['point_cloud']
-        #     sequence_name = pc_info['lidar_sequence']
-        #     sample_idx = pc_info['sample_idx']
-        #     print(f'sample idx: {sample_idx}')
+            #points in current vehicle frame
+            this_pc = dataset.get_lidar(sequence_name, sample_idx)
+            # V.draw_scenes(this_pc[ground_mask_this_pc])
+            label_this_pc, rejection_tag = filter_labels(this_pc, label_this_pc, num_obj_labels, max_volume=60) #, ground_mask_this_pc
+            rejection_tags = np.hstack([rejection_tags, rejection_tag])
             
-        #     #points in current vehicle frame
-        #     this_pc = dataset.get_lidar(sequence_name, sample_idx)
-        #     # V.draw_scenes(this_pc[ground_mask_this_pc])
-        #     label_this_pc, rejection_tag = filter_labels(this_pc, label_this_pc, num_obj_labels, max_volume=60) #, ground_mask_this_pc
-        #     rejection_tags = np.hstack([rejection_tags, rejection_tag])
+            # if sample_idx == 170:
+            #     for key,val in REJECT.items():
+            #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+            #         print(f'rejected_labels: {rejected_labels}')
+            #         print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+            #         visualize_selected_labels(this_pc, labels[i:i+pc_len], rejected_labels)
             
-        #     # if sample_idx == 170:
-        #     #     for key,val in REJECT.items():
-        #     #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
-        #     #         print(f'rejected_labels: {rejected_labels}')
-        #     #         print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
-        #     #         visualize_selected_labels(this_pc, labels[i:i+pc_len], rejected_labels)
-            
-        #     labels[i:i+pc_len] = label_this_pc #set -1's to filtered labels
-        #     # if sample_idx >= 160:
-        #     #    visualize_pcd_clusters(this_pc[:,:3], labels[i:i+pc_len].reshape((-1,1)))
+            labels[i:i+pc_len] = label_this_pc #set -1's to filtered labels
+            # if sample_idx >= 160:
+            #    visualize_pcd_clusters(this_pc[:,:3], labels[i:i+pc_len].reshape((-1,1)))
 
-        #     i+=pc_len
-        
-        # reject_labels_mask = np.zeros(num_obj_labels, dtype=bool)
-        # num_strong_rejections = np.sum(rejection_tags>1, axis = -1)
-        # num_occur = np.sum(rejection_tags!=1, axis = -1)
-        # num_vol_too_big = np.sum(rejection_tags== REJECT['vol_too_big'], axis=-1)
-        # strong_rejection_ratio = num_strong_rejections/num_occur
-        # reject_labels_mask[strong_rejection_ratio >= np.percentile(strong_rejection_ratio, 80)] = True
-        # reject_labels_mask[num_vol_too_big > 0] = True
-
-        
-        # rejected_labels = labels.copy()
-        # for label in range(num_obj_labels):
-        #     if  not reject_labels_mask[label]:
-        #         rejected_labels[labels==label] = -1
-        #     else:
-        #         labels[labels==label] = -1
+            i+=pc_len
 
 
         # Keep labels continuous
-        # labels = get_continuous_labels(labels)
+        labels = get_continuous_labels(labels)
         # print(f'labels found after filtering: {np.unique(labels).shape[0]}')
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
-        # visualize_pcd_clusters(xyzi_last_vehicle[:,:3], rejected_labels.reshape((-1,1)))
-        
+        print(f'3rd Step Individual PC Filtering Done. Labels: {np.unique(labels).shape[0]}')
 
-        # labels = labels.reshape((-1,1)).astype(np.float16)
-        # labels.tofile(save_labels_path.__str__())
-        labels = np.fromfile(save_labels_path.__str__(), dtype=np.float16)
-        #visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
-        labels = fill_in_clusters(labels, xyzi_last_vehicle)
+        if show_plots:
+            visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))      
 
 
-        #TODO: fit box in aggregated view and find points in boxes and make them all the cluster label
+        labels = fill_in_clusters(labels, xyzi_last_vehicle, show_plots)
+        #save_labels(labels, save_labels_path.__str__())
 
         # Separate labels pc wise and save
         infos = dataset.infos_dict[seq_name]
         i=0
+        labels = labels.astype(np.float16)
         for info, pc_len in zip(infos, pc_lens):
             pc_info = info['point_cloud']
             sample_idx = pc_info['sample_idx']
-            save_labels_path = save_seq_path / ('%04d.npy' % sample_idx)
+            save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
 
-            label_this_pc = labels[i:i+pc_len, :]
+            label_this_pc = labels[i:i+pc_len]
             i+=pc_len
 
-            label_this_pc.tofile(save_labels_path.__str__())
+            label_this_pc.tofile(save_label_path.__str__())
+
     else:
         print(f'SKipping {seq_name}: Already exists with {len(cluster_files)} files in {save_seq_path}')
 
@@ -369,6 +318,7 @@ def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None):
     ax.grid()
     ax.legend()
     plt.show()
+
 def fit_boxes(dataset, show_plots=False):
     # Fit boxes 
     # for seq_name, infos in dataset.infos_dict.items():
@@ -376,12 +326,16 @@ def fit_boxes(dataset, show_plots=False):
     seq_name = 'segment-10061305430875486848_1080_000_1100_000_with_camera_labels'
     infos= dataset.infos_dict[seq_name]
 
+    print(f'Fitting boxes for sequence: {seq_name}')
     approx_boxes = np.empty((0, 17))
-    num_boxes_per_pc = np.zeros(len(infos))
+    num_boxes_per_pc = np.zeros(len(infos), dtype=int)
+    poses_inv= []
     for i, info in enumerate(infos):
         pc_info = info['point_cloud']
         sequence_name = pc_info['lidar_sequence']
         sample_idx = pc_info['sample_idx']
+        pose_w_v = info['pose']
+        poses_inv.append(inv_pose(pose_w_v))
 
         #points in current vehicle frame
         pc = dataset.get_lidar(sequence_name, sample_idx)
@@ -392,41 +346,57 @@ def fit_boxes(dataset, show_plots=False):
             if label == -1:
                 continue
             cluster_pc = pc[labels==label, :]
-            box, corners, area = fit_box(cluster_pc, fit_method='closeness_to_edge')
-            full_box = np.zeros((1, 17))
+            box, corners, _ = fit_box(cluster_pc, fit_method='closeness_to_edge')
+            full_box = np.zeros((1, approx_boxes_this_pc.shape[-1]))
             full_box[0,:7] = box
             full_box[0,7:15] = corners.flatten()
-            full_box[0,15] = area
+            full_box[0,15] = i # info index
             full_box[0,16] = label
             approx_boxes_this_pc = np.vstack([approx_boxes_this_pc, full_box])
             #[cxy[0], cxy[1], cz, l, w, h, rz, corner0_x, corner0_y, ..., corner3_x, corner3_y  area, label]
             #corner0-3 are BEV box corners in lidar frame
-        
-        num_boxes_per_pc[i] += approx_boxes_this_pc.shape[0]
+
+        num_boxes_per_pc[i] += int(approx_boxes_this_pc.shape[0])
         approx_boxes = np.vstack([approx_boxes, approx_boxes_this_pc])
 
-        if show_plots:
+        if False: #show_plots:
             gt_boxes = info['annos']['gt_boxes_lidar']
-
-            # show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'unrefined_approx_boxes')
-            # V.draw_scenes(pc, gt_boxes=gt_boxes, 
-            #                     ref_boxes=approx_boxes_this_pc[:,:7], ref_labels=None, ref_scores=None, 
-            #                     color_feature=None, draw_origin=True)
+            show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'unrefined_approx_boxes')
+            V.draw_scenes(pc, gt_boxes=gt_boxes, 
+                                ref_boxes=approx_boxes_this_pc[:,:7], ref_labels=None, ref_scores=None, 
+                                color_feature=None, draw_origin=True)
             
+    print(f'Fitting boxes Done.')
 
-    approx_boxes = np.array(approx_boxes) #(all pcs boxes, 17)
+    approx_boxes = np.array(approx_boxes) #(all pcs boxes, 16)
     labels = approx_boxes[:,-1]
     refined_boxes = np.zeros((approx_boxes.shape[0],15))
+    poses_inv = np.array(poses_inv) # (M infos, 4, 4)
+
     for label in np.unique(labels):
         boxes_this_label = approx_boxes[labels==label, :]
-        # max_len = np.max(boxes_this_label[:,3])
-        # max_len_ind = np.where(boxes_this_label[:,3]==max_len)[0][0]
-        # max_l, max_w = boxes_this_label[max_len_ind, 3], boxes_this_label[max_len_ind, 4]
-        max_l, max_w = np.percentile(boxes_this_label[:, 3], 95), np.percentile(boxes_this_label[:, 4], 95)
-        boxes_this_label = refine_boxes(boxes_this_label, max_l, max_w)
+        max_l, max_w = np.percentile(boxes_this_label[:, 3], 95), np.percentile(boxes_this_label[:, 4], 95) #TODO: after patchwork, make this max
+        
+        # to avoid partial boxes floating in air
+        max_h = boxes_this_label[:, 5].max()
+        cz_in_v=None
+        # ind = np.argmax(max_h)
+        # cxyz_max_h_in_v2 = boxes_this_label[ind, :3]
+        # info_ind = int(boxes_this_label[ind, 15])
+        # pose_w_vm = infos[info_ind]['pose']
+        # cxyz_max_h_in_w = pose_w_vm @ np.concatenate((cxyz_max_h_in_v2, [1])).reshape((4, -1))
+        # poses_v_w = poses_inv[boxes_this_label[:, 15].astype(int), :, :].reshape((-1, 4, 4)) # (M boxes this label, 4, 4)
+        # cxyz_max_h_in_v = poses_v_w @ cxyz_max_h_in_w
+        # cxyz_max_h_in_v = cxyz_max_h_in_v.reshape((-1, 4))
+        # cz_in_v = cxyz_max_h_in_v[:, -2]
+
+
+        boxes_this_label = refine_boxes(boxes_this_label, max_l, max_w, max_h=max_h, cz_max_h=cz_in_v)
         refined_boxes[labels==label,:]= boxes_this_label
     
     refined_boxes = np.array(refined_boxes)
+
+    print(f'Refining boxes Done.')
 
     if show_plots:
         ind = 0
@@ -434,6 +404,7 @@ def fit_boxes(dataset, show_plots=False):
             pc_info = info['point_cloud']
             sequence_name = pc_info['lidar_sequence']
             sample_idx = pc_info['sample_idx']
+            gt_boxes = info['annos']['gt_boxes_lidar']
 
             #points in current vehicle frame
             pc = dataset.get_lidar(sequence_name, sample_idx)
@@ -443,9 +414,10 @@ def fit_boxes(dataset, show_plots=False):
             refined_boxes_this_pc = refined_boxes[ind:ind+num_boxes_this_pc]
             ind += num_boxes_this_pc
             show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'approx_boxes', refined_boxes_this_pc, 'refined_boxes')
-            V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
-                                ref_boxes=refined_boxes_this_pc[:,:7], ref_labels=None, ref_scores=None, 
-                                color_feature=None, draw_origin=True)
+            # V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
+            #                     ref_boxes=refined_boxes_this_pc[:,:7]) #gt_boxes=blue, ref_boxes=green
+            V.draw_scenes(pc, gt_boxes=gt_boxes, 
+                                ref_boxes=refined_boxes_this_pc[:,:7])
     
     ind = 0
     for i, info in enumerate(infos):
@@ -453,15 +425,21 @@ def fit_boxes(dataset, show_plots=False):
         boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
 
         #save boxes this pc
-
+        info['approx_boxes'] = boxes_this_pc
         ind += num_boxes
 
-
+    dataset.save_updated_infos()
 def main():
     dataset = WaymoDataset()
 
-    cluster_all(dataset, show_plots=True)
-    #fit_boxes(dataset, show_plots=True)
+    cluster_all(dataset, show_plots=False)
+    fit_boxes(dataset, show_plots=True)
 
 if __name__ == '__main__':
     main()
+    # ry best is where we find max height -> get ry in current frame
+    # parallelizing
+    #TODO: patchwork ground estimation-> remove floating boxes if 1m above closest ground point
+    # lidomAug
+    # tracking
+

@@ -40,13 +40,14 @@ def above_plane(ptc, plane, offset=0.05, only_range=((-30, 30), (-30, 30))):
 def estimate_plane(origin_ptc, max_hs=0.05, it=1, ptc_range=((-70, 70), (-20, 20))):
     mask = np.ones(origin_ptc.shape[0], dtype=bool)
     if ptc_range is not None:
-        mask = (origin_ptc[:, 0] > np.min(ptc_range[0])) & \
+        mask = (origin_ptc[:, 2] < max_hs) & \
+            (origin_ptc[:, 0] > np.min(ptc_range[0])) & \
             (origin_ptc[:, 0] < np.max(ptc_range[0])) & \
             (origin_ptc[:, 1] > np.min(ptc_range[1])) & \
             (origin_ptc[:, 1] < np.max(ptc_range[1]))
-        if max_hs is not None:
-            if (origin_ptc[:, 2] < max_hs).sum() > 50:
-                mask = mask & (origin_ptc[:, 2] < max_hs)
+        # if max_hs is not None:
+        #     if (origin_ptc[:, 2] < max_hs).sum() > 50:
+        #         mask = mask & (origin_ptc[:, 2] < max_hs)
         if mask.sum() < 50: # if few valid points, don't estimate plane
             return None
     for _ in range(it):
@@ -162,3 +163,11 @@ def visualize_selected_labels(pc, labels, selected):
         selected_labels_mask[labels==i] = True
     lbls_to_show[selected_labels_mask] = labels[selected_labels_mask]
     visualize_pcd_clusters(pc[:,:3], lbls_to_show.reshape((-1,1)))
+
+def save_labels(labels, path):
+    labels = labels.astype(np.float16)
+    labels.tofile(path)
+
+def load_labels(path):
+    labels = np.fromfile(path, dtype=np.float16)
+    return labels
