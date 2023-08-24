@@ -78,7 +78,47 @@ def refine_box(anchor, cx, cy, cz, l,w,h, heading, max_l, max_w):
     
     return cxyz, lwh, heading, bev_corners
 
-def refine_boxes(boxes_this_label, max_l, max_w, max_h=None, cz_max_h=None, max_h_heading=None, rys=None):
+def refine_boxes(approx_boxes, approx_boxes_labels):
+    refined_boxes = np.zeros((approx_boxes.shape[0],15))
+    #poses_inv = np.array(poses_inv) # (M infos, 4, 4)
+
+    for label in np.unique(approx_boxes_labels):
+        boxes_this_label_mask = approx_boxes_labels==label
+        boxes_this_label = approx_boxes[boxes_this_label_mask, :]
+        max_l, max_w = np.percentile(boxes_this_label[:, 3], 95), np.percentile(boxes_this_label[:, 4], 95) #TODO: after patchwork, make this max
+        
+        # to avoid partial boxes floating in air
+        max_h = boxes_this_label[:, 5].max()
+        # ind = np.argmax(boxes_this_label[:, 5])
+        # cxyz_max_h_in_v2 = boxes_this_label[ind, :3]
+        # info_ind = int(boxes_this_label[ind, 15])
+        # pose_w_vm = infos[info_ind]['pose']
+        # cxyz_max_h_in_w = pose_w_vm @ np.concatenate((cxyz_max_h_in_v2, [1])).reshape((4, -1))
+        # poses_v_w = poses_inv[boxes_this_label[:, 15].astype(int), :, :].reshape((-1, 4, 4)) # (M boxes this label, 4, 4)
+        # cxyz_max_h_in_v = poses_v_w @ cxyz_max_h_in_w
+        # cxyz_max_h_in_v = cxyz_max_h_in_v.reshape((-1, 4))
+        # cz_in_v = cxyz_max_h_in_v[:, -2]
+
+        #max_l, max_w, max_h =  boxes_this_label[ind_max_numpts, 3], boxes_this_label[ind_max_numpts, 4], boxes_this_label[ind_max_numpts, 5]
+      
+        # To avoid different rotations of partial view boxes
+        # ind_max_numpts = np.argmax(boxes_this_label[:, 16])
+        # ry_maxhbox_vm = boxes_this_label[ind_max_numpts, 6]
+        # info_ind_vm = int(boxes_this_label[ind_max_numpts, 15])
+        # pose_w_vm =infos[info_ind_vm]['pose'] #(4,4)
+        # poses_v_w = poses_inv[boxes_this_label[:, 15].astype(int)] #(m, 4, 4)
+        # poses_v_vm = poses_v_w @ pose_w_vm #(m, 4, 4)
+        # ry_vm_v= np.arctan2(poses_v_vm[..., 1, 0], poses_v_vm[..., 0, 0]) # heading of vm wrt v1
+        # ry_box_v = ry_maxhbox_vm + ry_vm_v #(m)
+        
+        boxes_this_label = refine_boxes_this_label(boxes_this_label, max_l, max_w, max_h=max_h) #, cz_max_h=cz_in_v, rys=ry_box_v
+        refined_boxes[boxes_this_label_mask,:]= boxes_this_label
+    
+    refined_boxes = np.array(refined_boxes)
+
+    return refined_boxes
+
+def refine_boxes_this_label(boxes_this_label, max_l, max_w, max_h=None, cz_max_h=None, max_h_heading=None, rys=None):
     refined_boxes = np.empty((0,15))
     num_boxes = boxes_this_label.shape[0]
     corners = boxes_this_label[:, 7:15]

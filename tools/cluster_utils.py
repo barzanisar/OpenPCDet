@@ -1,7 +1,7 @@
 
 import numpy as np
 from sklearn.linear_model import RANSACRegressor
-from visual_utils.pcd_preprocess import *
+from third_party.OpenPCDet.tools.visual_utils.pcd_preprocess import *
 from lib.LiDAR_snow_sim.tools.visual_utils import open3d_vis_utils as V
 
 REJECT={'too_few_pts': 1,
@@ -87,12 +87,17 @@ def is_valid_cluster(
     
     if plane is not None:
         distance_to_ground = distance_to_plane(ptc, plane, directional=True) #signed distance to ground
-        if distance_to_ground.min() > max_min_height: #if min distance to plane > 1m, object floating in air
+        cxyz = ptc[:,:3].mean(axis=0)
+        inside_range = cxyz[0] < 50 and cxyz[0] > -50 and cxyz[1] < 20 and cxyz[1] > -20
+        if distance_to_ground.min() > max_min_height and not inside_range: #if min distance to plane > 1m, object floating in air
             #V.draw_scenes(ptc)
             return False, REJECT['floating']
-        if distance_to_ground.max() < min_max_height: #if max distance to plane < 0.5, object underground or too small
+        if distance_to_ground.max() < min_max_height and not inside_range: #if max distance to plane < 0.5, object underground or too small
             #V.draw_scenes(ptc)
             return False, REJECT['below_ground']
+        if not inside_range and volume < 0.3:
+            return False, REJECT['vol_too_small']
+
     h = ptc[:,2].max() - ptc[:,2].min()
     w = ptc[:,1].max() - ptc[:,1].min()
     l = ptc[:,0].max() - ptc[:,0].min()
@@ -111,7 +116,8 @@ def filter_labels(
     labels,
     num_obj_labels,
     max_volume = 70,
-    estimate_dist_to_plane = True
+    estimate_dist_to_plane = True,
+    min_volume = 0.3
     ):
     
     labels = labels.flatten().copy()
@@ -139,7 +145,7 @@ def filter_labels(
         #     ptc_range = ((cluster_center[0] + 20, cluster_center[0] - 20), (cluster_center[1] - 10, cluster_center[1] + 10))
         #     plane = estimate_plane(pc, max_hs=0.05, ptc_range=ptc_range)
 
-        is_valid, tag = is_valid_cluster(pc[labels == i, :3], plane, max_volume = max_volume)
+        is_valid, tag = is_valid_cluster(pc[labels == i, :3], plane, max_volume = max_volume, min_volume=min_volume)
         if not is_valid:
             labels[labels == i] = -1 #set as background
             rejection_tag[int(i)] = tag
@@ -153,6 +159,7 @@ def cluster(xyz, non_ground_mask):
     labels = np.ones((xyz.shape[0], 1)) * -1
 
     labels[non_ground_mask] = labels_non_ground #(N all points, 1)
+    assert (labels.max() < np.finfo('float16').max), 'max segment id overflow float16 number'
 
     return labels
 

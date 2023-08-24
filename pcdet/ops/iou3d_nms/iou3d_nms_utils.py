@@ -72,13 +72,16 @@ def boxes_iou3d_gpu(boxes_a, boxes_b):
 
     # 3d iou
     overlaps_3d = overlaps_bev * overlaps_h
-
-    vol_a = (boxes_a[:, 3] * boxes_a[:, 4] * boxes_a[:, 5]).view(-1, 1)
+    
+    try:
+        vol_a = (boxes_a[:, 3] * boxes_a[:, 4] * boxes_a[:, 5]).view(-1, 1)
+    except:
+        vol_a = (boxes_a[:, 3] * boxes_a[:, 4] * boxes_a[:, 5]).view(-1, 1)
     vol_b = (boxes_b[:, 3] * boxes_b[:, 4] * boxes_b[:, 5]).view(1, -1)
 
     iou3d = overlaps_3d / torch.clamp(vol_a + vol_b - overlaps_3d, min=1e-6) #intersection over union
 
-    return iou3d
+    return iou3d, overlaps_bev/(boxes_a[:, 3] * boxes_a[:, 4]).reshape((-1,1)), overlaps_3d/vol_a
 
 
 def nms_gpu(boxes, scores, thresh, pre_maxsize=None, **kwargs):
