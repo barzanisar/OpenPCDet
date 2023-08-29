@@ -29,123 +29,87 @@ def distance_to_plane(ptc, plane, directional=False):
     d /= np.sqrt((plane[:3]**2).sum())
     return d
 
-def above_plane(ptc, plane, offset=0.05, only_range=((-30, 30), (-30, 30))):
-    mask = distance_to_plane(ptc, plane, directional=True) < offset
-    # if only_range is not None:
-    #     range_mask = (ptc[:, 0] < only_range[0][1]) * (ptc[:, 0] > only_range[0][0]) * \
-    #         (ptc[:, 1] < only_range[1][1]) * (ptc[:, 1] > only_range[1][0])
-    #     mask *= range_mask
-    return np.logical_not(mask) # returns mask of all non-plane points
-
-def estimate_plane(origin_ptc, max_hs=0.05, it=1, ptc_range=((-70, 70), (-20, 20))):
-    mask = np.ones(origin_ptc.shape[0], dtype=bool)
-    if ptc_range is not None:
-        mask = (origin_ptc[:, 2] < max_hs) & \
-            (origin_ptc[:, 0] > np.min(ptc_range[0])) & \
-            (origin_ptc[:, 0] < np.max(ptc_range[0])) & \
-            (origin_ptc[:, 1] > np.min(ptc_range[1])) & \
-            (origin_ptc[:, 1] < np.max(ptc_range[1]))
-        # if max_hs is not None:
-        #     if (origin_ptc[:, 2] < max_hs).sum() > 50:
-        #         mask = mask & (origin_ptc[:, 2] < max_hs)
-        if mask.sum() < 50: # if few valid points, don't estimate plane
-            return None
-    for _ in range(it):
-        ptc = origin_ptc[mask]
-        reg = RANSACRegressor().fit(ptc[:, [0, 1]], ptc[:, 2])
-        w = np.zeros(3)
-        w[0] = reg.estimator_.coef_[0]
-        w[1] = reg.estimator_.coef_[1]
-        w[2] = -1.0
-        h = reg.estimator_.intercept_
-        norm = np.linalg.norm(w)
-        w /= norm
-        h = h / norm
-        result = np.array((w[0], w[1], w[2], h))
-        result *= -1
-        mask = np.logical_not(above_plane(
-            origin_ptc[:, :3], result, offset=0.2)) # mask of all plane-points
-    return result # minus [a,b,c,d] = -plane coeff
 
 def is_valid_cluster(
         ptc,
-        plane=None,
+        ground_o3d, ground_tree,
+        estimate_dist_to_plane,
         min_points=10,
         max_volume=70, #120
         min_volume=0.3,
-        max_min_height=1,
-        min_max_height=0.5):
+        max_height_for_lowest_point=1,
+        min_height_for_highest_point=0.5):
+    
     if ptc.shape[0] < min_points:
         return False, REJECT['too_few_pts']
     volume = np.prod(ptc.max(axis=0) - ptc.min(axis=0))
     if volume > max_volume: # volume too big 
-        #V.draw_scenes(ptc)
         return False, REJECT['vol_too_big']
     if volume < min_volume: # volume too small
-        #V.draw_scenes(ptc)
         return False, REJECT['vol_too_small']
     
-    if plane is not None:
-        distance_to_ground = distance_to_plane(ptc, plane, directional=True) #signed distance to ground
-        cxyz = ptc[:,:3].mean(axis=0)
-        inside_range = cxyz[0] < 50 and cxyz[0] > -50 and cxyz[1] < 20 and cxyz[1] > -20
-        if distance_to_ground.min() > max_min_height and not inside_range: #if min distance to plane > 1m, object floating in air
-            #V.draw_scenes(ptc)
+    if estimate_dist_to_plane:
+        cluster_centroid = ptc[:,:3].mean(axis = 0)
+        lowest_point_idx = np.argmin(ptc[:,2])
+        lowest_pt = ptc[lowest_point_idx]
+        
+        # Method 1. project to the closest ground normal
+        # dist_centroid_ground = np.linalg.norm(np.asarray(ground_o3d.points) - cluster_centroid.reshape((-1,3)), axis = 1)
+        # closest_ground_pt_idx = np.argmin(dist_centroid_ground)
+        # g_pt = ground_o3d.points[closest_ground_pt_idx]
+        # g_normal = ground_o3d.normals[closest_ground_pt_idx]
+        # signed_distance_to_ground = np.dot(ptc - g_pt, g_normal[...,np.newaxis])
+
+        # Method 2. Subtract z values assuming flat ground i.e. normal of [0,0,1]
+        [_, idx, _] = ground_tree.search_knn_vector_3d(lowest_pt, 20)
+        #g_pt = np.asarray(ground_o3d.points)[idx[10]] #median of 20 closest points
+        g_pt = np.asarray(ground_o3d.points)[idx].mean(axis = 0)
+        signed_distance_to_ground = ptc[:,-1] - g_pt[-1] # subtract z value of closest ground pt
+
+        if signed_distance_to_ground.min() > max_height_for_lowest_point: #if min distance to plane > 1m, object floating in air
             return False, REJECT['floating']
-        if distance_to_ground.max() < min_max_height and not inside_range: #if max distance to plane < 0.5, object underground or too small
-            #V.draw_scenes(ptc)
+        if signed_distance_to_ground.max() < min_height_for_highest_point: #if max distance to plane < 0.5, object underground or too small
             return False, REJECT['below_ground']
-        if not inside_range and volume < 0.3:
-            return False, REJECT['vol_too_small']
 
     h = ptc[:,2].max() - ptc[:,2].min()
-    w = ptc[:,1].max() - ptc[:,1].min()
-    l = ptc[:,0].max() - ptc[:,0].min()
+    # w = ptc[:,1].max() - ptc[:,1].min()
+    # l = ptc[:,0].max() - ptc[:,0].min()
     # if height is not much, make this cluster background
     if h < 0.4:
         return False, REJECT['h_too_small']
-    # Remove walls
-    if h > 3:
-        return False, REJECT['vol_too_big']
-    if l/w >= 4 or w/l >=4:
-        return False, REJECT['lw_ratio_off']
+    # # Remove walls
+    # if h > 3:
+    #     return False, REJECT['vol_too_big']
+    # if l/w >= 4 or w/l >=4:
+    #     return False, REJECT['lw_ratio_off']
     return True, 0
 
 def filter_labels(
     pc,
     labels,
-    num_obj_labels,
+    ground_o3d, ground_tree,
     max_volume = 70,
-    estimate_dist_to_plane = True,
-    min_volume = 0.3
+    min_volume = 0.3,
+    max_height_for_lowest_point=1,
+    min_height_for_highest_point=0.5,
+    estimate_dist_to_plane = True
     ):
     
     labels = labels.flatten().copy()
+    num_obj_labels = int(labels.max()+1)
     rejection_tag = np.zeros((int(num_obj_labels), 1)) #rejection tag for labels 0,1, ... (exclude label -1)
-    plane = None
-    if estimate_dist_to_plane:
-        plane = estimate_plane(pc, max_hs=0.05, ptc_range=((-70, 70), (-30, 30)))
-    # plane = estimate_plane(pc[ground_mask], max_hs=0.05, ptc_range=((-70, 70), (-30, 30)))
-    # above_plane_mask1 = above_plane(
-    #                     pc[:,:3], plane1,
-    #                     offset=0.1,
-    #                     only_range=None)
-    # above_plane_mask = above_plane(
-    #                     pc[:,:3], plane,
-    #                     offset=0.1,
-    #                     only_range=None)
-                
-    # V.draw_scenes(pc[:,:3][above_plane_mask1])
-    # V.draw_scenes(pc[:,:3][above_plane_mask])
-    for i in np.unique(labels): #range(int(labels.max())+1):
+
+    for i in np.unique(labels):
         if i == -1:
             continue
-        # if estimate_dist_to_plane:
-        #     cluster_center = pc[labels == i, :3].mean(axis=0)
-        #     ptc_range = ((cluster_center[0] + 20, cluster_center[0] - 20), (cluster_center[1] - 10, cluster_center[1] + 10))
-        #     plane = estimate_plane(pc, max_hs=0.05, ptc_range=ptc_range)
-
-        is_valid, tag = is_valid_cluster(pc[labels == i, :3], plane, max_volume = max_volume, min_volume=min_volume)
+        
+        # if i == labels[178343] or i == labels[113573]:
+        #     visualize_selected_labels(pc, labels, [i])
+        is_valid, tag = is_valid_cluster(pc[labels == i, :3],
+                                         ground_o3d, ground_tree, estimate_dist_to_plane, 
+                                         max_volume = max_volume, min_volume=min_volume,
+                                         max_height_for_lowest_point=max_height_for_lowest_point,
+                                         min_height_for_highest_point=min_height_for_highest_point)
         if not is_valid:
             labels[labels == i] = -1 #set as background
             rejection_tag[int(i)] = tag
@@ -163,13 +127,6 @@ def cluster(xyz, non_ground_mask):
 
     return labels
 
-def visualize_selected_labels(pc, labels, selected):
-    selected_labels_mask = np.zeros(labels.shape[0], dtype = bool)
-    lbls_to_show = -1 *np.ones(labels.shape[0]) 
-    for i in selected:
-        selected_labels_mask[labels==i] = True
-    lbls_to_show[selected_labels_mask] = labels[selected_labels_mask]
-    visualize_pcd_clusters(pc[:,:3], lbls_to_show.reshape((-1,1)))
 
 def save_labels(labels, path):
     labels = labels.astype(np.float16)

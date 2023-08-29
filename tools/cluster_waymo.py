@@ -10,7 +10,7 @@ from third_party.OpenPCDet.tools.cluster_utils import *
 from third_party.OpenPCDet.pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from third_party.OpenPCDet.pcdet.ops.iou3d_nms import iou3d_nms_utils
 from third_party.OpenPCDet.tools.tracker import PubTracker as Tracker
-
+from third_party.OpenPCDet.tools.estimate_ground import estimate_ground
 import multiprocessing as mp
 from functools import partial
 
@@ -206,24 +206,6 @@ def fill_in_clusters(labels, pc, show_plots=False):
         visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
 
     return labels
-
-def estimate_ground(pc):
-    above_plane_xyz = pc[:,:3]
-    above_plane_mask = np.ones(pc.shape[0], dtype=bool)
-    for i in range(10):
-        plane = estimate_plane(above_plane_xyz, max_hs=0.05, ptc_range=((-70, 70), (-30, 30)))
-        if plane is not None:
-            above_plane_mask_this = above_plane(
-                pc[:,:3], plane,
-                offset=0.1,
-                only_range=None)
-            above_plane_mask *= above_plane_mask_this
-        
-            above_plane_xyz = pc[:,:3][above_plane_mask]
-        else:
-            break
-
-    return above_plane_mask
     
 
 def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
@@ -238,24 +220,36 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
         for info in infos:
             pc_info = info['point_cloud']
             sample_idx = pc_info['sample_idx']
+            gt_boxes = info['annos']['gt_boxes_lidar']
             
             xyzi = dataset.get_lidar(seq_name, sample_idx)
             
-            above_plane_mask = estimate_ground(xyzi)
+            ground_mask, ground_o3d, ground_tree = estimate_ground(xyzi, show_plots=False)
             
             xyz = xyzi[:,:3]
-            labels = cluster(xyz, above_plane_mask)
+            labels = cluster(xyz, np.logical_not(ground_mask))
             print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
             if show_plots:
-                visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+                visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
 
-            num_obj_labels = int(labels.max()+1)
-            labels, _ = filter_labels(xyz, labels, num_obj_labels, max_volume=60)
-            labels = get_continuous_labels(labels)
+            new_labels, rejection_tag  = filter_labels(xyz, labels, ground_o3d, ground_tree,
+                                      max_volume=160, min_volume=0.1, 
+                                      max_height_for_lowest_point=1, 
+                                      min_height_for_highest_point=0.5,
+                                      estimate_dist_to_plane = True)
+            if show_plots:
+                for key, val in REJECT.items():
+                    rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+                    if len(rejected_labels):
+                        print(f'rejected_labels: {rejected_labels}')
+                        print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+                        visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+            
+            labels = get_continuous_labels(new_labels)
             print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
 
             if show_plots:
-                visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+                visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
                 
             save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
             save_labels(labels, save_label_path.__str__())
@@ -292,7 +286,7 @@ def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
         # Fitting boxes done for this pc
         info['approx_boxes'] = approx_boxes_this_pc
 
-        if False: #show_plots:
+        if show_plots:
             gt_boxes = info['annos']['gt_boxes_lidar']
             show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'unrefined_approx_boxes')
             V.draw_scenes(pc, gt_boxes=gt_boxes, 
@@ -399,8 +393,8 @@ def get_tracked_label_this_pc(info, dataset):
     seq_name = pc_info['lidar_sequence']
     sample_idx = pc_info['sample_idx']
     approx_boxes = info['approx_boxes']
-    approx_boxes_tracked = approx_boxes[info['tracking_results_forward']['box_ids']]
-    tracking_ids = info['tracking_results_forward']['tracking_ids']
+    approx_boxes_tracked = approx_boxes[info['tracking_result_forward']['box_ids']]
+    tracking_ids = info['tracking_result_forward']['tracking_ids']
 
     #points in current vehicle frame
     old_labels_this_pc = dataset.get_cluster_labels(seq_name, sample_idx)
@@ -422,7 +416,7 @@ def visualize_tracks(seq_name, dataset):
     tracked_labels_all_pc = np.empty((0,1))
     for info in infos:
         tracking_labels_this_pc = get_tracked_label_this_pc(info, dataset)
-        tracked_labels_all_pc = np.vstack([tracked_labels_all_pc, tracking_labels_this_pc])
+        tracked_labels_all_pc = np.vstack([tracked_labels_all_pc, tracking_labels_this_pc[...,np.newaxis]])
 
     visualize_pcd_clusters(xyzi_world[:,:3], tracked_labels_all_pc)
         
@@ -487,7 +481,9 @@ def cluster_seq(seq_name, dataset, show_plots=False):
 
         if show_plots:
             visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
-        labels, _ = filter_labels(xyzi_last_vehicle[:,:3], labels, labels.max()+1, estimate_dist_to_plane=False)
+        
+        
+        labels, _ = filter_labels(xyzi_last_vehicle[:,:3], labels, labels.max()+1, max_volume=120, estimate_dist_to_plane=False)
         labels = get_continuous_labels(labels)
         print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
 
@@ -510,7 +506,7 @@ def cluster_seq(seq_name, dataset, show_plots=False):
             #points in current vehicle frame
             this_pc = dataset.get_lidar(seq_name, sample_idx)
             # V.draw_scenes(this_pc[ground_mask_this_pc])
-            label_this_pc, rejection_tag = filter_labels(this_pc, label_this_pc, num_obj_labels, max_volume=60, min_volume=0.15) #, ground_mask_this_pc
+            label_this_pc, rejection_tag = filter_labels(this_pc, label_this_pc, num_obj_labels, max_volume=80, min_volume=0.15) #, ground_mask_this_pc
             rejection_tags = np.hstack([rejection_tags, rejection_tag])
             
             # if sample_idx == 170:
@@ -600,59 +596,6 @@ def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None, boxes3=None, la
     else:
         plt.show()
 
-def fit_approx_boxes(seq_name, dataset, show_plots=False):
-    infos= dataset.infos_dict[seq_name]
-
-    print(f'Fitting boxes for sequence: {seq_name}')
-    approx_boxes = np.empty((0, 18))
-    num_boxes_per_pc = np.zeros(len(infos), dtype=int)
-    #poses_inv= []
-    for i, info in enumerate(infos):
-        pc_info = info['point_cloud']
-        sample_idx = pc_info['sample_idx']
-        #pose_w_v = info['pose']
-        #poses_inv.append(inv_pose(pose_w_v))
-
-        #points in current vehicle frame
-        pc = dataset.get_lidar(seq_name, sample_idx)
-        labels = dataset.get_cluster_labels(seq_name, sample_idx).flatten()
-
-        approx_boxes_this_pc = np.empty((0, 18))
-        for label in np.unique(labels):
-            if label == -1:
-                continue
-            cluster_pc = pc[labels==label, :]
-            box, corners, _ = fit_box(cluster_pc, fit_method='closeness_to_edge')
-            full_box = np.zeros((1, approx_boxes_this_pc.shape[-1]))
-            full_box[0,:7] = box
-            full_box[0,7:15] = corners.flatten()
-            full_box[0,15] = i # info index
-            full_box[0,16] = cluster_pc.shape[0] # num_points
-            full_box[0,17] = label
-            approx_boxes_this_pc = np.vstack([approx_boxes_this_pc, full_box])
-            #[cxy[0], cxy[1], cz, l, w, h, rz, corner0_x, corner0_y, ..., corner3_x, corner3_y  area, label]
-            #corner0-3 are BEV box corners in lidar frame
-
-        num_boxes_per_pc[i] += int(approx_boxes_this_pc.shape[0])
-        info['approx_boxes'] = approx_boxes_this_pc
-        approx_boxes = np.vstack([approx_boxes, approx_boxes_this_pc])
-
-        # if show_plots:
-        #     gt_boxes = info['annos']['gt_boxes_lidar']
-        #     # show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'unrefined_approx_boxes')
-        #     V.draw_scenes(pc, gt_boxes=gt_boxes, 
-        #                         ref_boxes=approx_boxes_this_pc[:,:7], ref_labels=None, ref_scores=None, 
-        #                         color_feature=None, draw_origin=True)
-            
-    print(f'Fitting boxes Done.')
-
-    #save approx boxes
-    save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
-    with open(save_path, 'wb') as f:
-        pickle.dump(infos, f)
-
-    return np.array(approx_boxes), num_boxes_per_pc
-
 
 def refine_boxes_seq(seq_name, dataset, show_plots=False):
     
@@ -718,7 +661,7 @@ def refine_boxes_seq(seq_name, dataset, show_plots=False):
 
 def fit_boxes_all(dataset, show_plots=False):
     num_workers = mp.cpu_count() - 2
-    fit_single_seq = partial(fit_approx_boxes, dataset=dataset, show_plots=show_plots)
+    fit_single_seq = partial(fit_approx_boxes_seq, dataset=dataset, show_plots=show_plots)
 
     seq_name_list = [seq_name for seq_name in dataset.infos_dict]
     with mp.Pool(num_workers) as p:
@@ -908,7 +851,14 @@ def main():
     # eval_all(dataset)
     # eval_all(dataset, only_class_names=True)
     # eval_all(dataset, only_close_range=True)
-    eval_all(dataset, only_close_range=True, only_class_names=True)
+    # eval_all(dataset, only_close_range=True, only_class_names=True)
+
+    ########################## Tracking###############
+    #cluster_seq_each_pc(seq_name, dataset=dataset, show_plots=False)
+    #fit_approx_boxes_seq(seq_name, dataset, show_plots=False)
+    #track_boxes_seq(seq_name, dataset)
+    visualize_tracks(seq_name, dataset)
+
     #visualize_all(dataset)
     
 
@@ -921,6 +871,7 @@ if __name__ == '__main__':
     #TODO: patchwork ground estimation-> remove floating boxes accurately if 1m above closest ground point
     # lidomAug
     # tracking
+    # tune filter with other sequences!!!!!
 
 
 
