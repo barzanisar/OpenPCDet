@@ -55,11 +55,11 @@ def overlap_clusters(cluster_i, cluster_j, min_cluster_point=20):
 
     return cluster_i, cluster_j
 
-def clusters_hdbscan(points_set, n_clusters):
+def clusters_hdbscan(points_set, n_clusters, eps=0.2):
     clusterer = hdbscan.HDBSCAN(algorithm='best', alpha=1.0, approx_min_span_tree=True,
                                 gen_min_span_tree=True, leaf_size=100,
                                 metric='euclidean', min_cluster_size=20, min_samples=None,
-                                cluster_selection_method='eom', cluster_selection_epsilon=0.2,
+                                cluster_selection_method='eom', cluster_selection_epsilon=eps,
                             core_dist_n_jobs=1) #cluster_selection_epsilon=0.05, 0.07 also work
 
     clusterer.fit(points_set)

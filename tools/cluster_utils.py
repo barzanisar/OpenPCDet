@@ -33,7 +33,6 @@ def distance_to_plane(ptc, plane, directional=False):
 def is_valid_cluster(
         ptc,
         ground_o3d, ground_tree,
-        estimate_dist_to_plane,
         min_points=10,
         max_volume=70, #120
         min_volume=0.3,
@@ -48,7 +47,7 @@ def is_valid_cluster(
     if volume < min_volume: # volume too small
         return False, REJECT['vol_too_small']
     
-    if estimate_dist_to_plane:
+    if ground_o3d is not None:
         cluster_centroid = ptc[:,:3].mean(axis = 0)
         lowest_point_idx = np.argmin(ptc[:,2])
         lowest_pt = ptc[lowest_point_idx]
@@ -87,17 +86,28 @@ def is_valid_cluster(
 def filter_labels(
     pc,
     labels,
-    ground_o3d, ground_tree,
     max_volume = 70,
     min_volume = 0.3,
     max_height_for_lowest_point=1,
     min_height_for_highest_point=0.5,
-    estimate_dist_to_plane = True
+    ground_mask = None
     ):
     
     labels = labels.flatten().copy()
     num_obj_labels = int(labels.max()+1)
     rejection_tag = np.zeros((int(num_obj_labels), 1)) #rejection tag for labels 0,1, ... (exclude label -1)
+
+    ground_o3d = None 
+    ground_tree = None
+    if ground_mask is not None:
+        ground = pc[ground_mask,:3]
+        ground_o3d = o3d.geometry.PointCloud()
+        ground_o3d.points = o3d.utility.Vector3dVector(ground)
+        # ground_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1,
+        #                                                   max_nn=30))
+        # ground_o3d.orient_normals_to_align_with_direction()
+        ground_tree = o3d.geometry.KDTreeFlann(ground_o3d)
+
 
     for i in np.unique(labels):
         if i == -1:
@@ -106,7 +116,7 @@ def filter_labels(
         # if i == labels[178343] or i == labels[113573]:
         #     visualize_selected_labels(pc, labels, [i])
         is_valid, tag = is_valid_cluster(pc[labels == i, :3],
-                                         ground_o3d, ground_tree, estimate_dist_to_plane, 
+                                         ground_o3d, ground_tree, 
                                          max_volume = max_volume, min_volume=min_volume,
                                          max_height_for_lowest_point=max_height_for_lowest_point,
                                          min_height_for_highest_point=min_height_for_highest_point)
@@ -116,9 +126,9 @@ def filter_labels(
     
     return labels, rejection_tag
 
-def cluster(xyz, non_ground_mask):
+def cluster(xyz, non_ground_mask, eps=0.2):
     
-    labels_non_ground = clusters_hdbscan(xyz[non_ground_mask], n_clusters=-1)[...,np.newaxis] #np.ones((non_ground_mask.sum(), 1))
+    labels_non_ground = clusters_hdbscan(xyz[non_ground_mask], n_clusters=-1, eps=eps)[...,np.newaxis] #np.ones((non_ground_mask.sum(), 1))
 
     labels = np.ones((xyz.shape[0], 1)) * -1
 

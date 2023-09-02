@@ -44,12 +44,21 @@ def estimate_plane_RANSAC(origin_ptc, max_hs=0.05, it=1, ptc_range=((-70, 70), (
         #     origin_ptc[:, :3], result, offset=0.2, only_range=((-30,30), (-30,30))) # mask of all plane-points
     return result # minus [a,b,c,d] = -plane coeff
 
-def visualize_ground(ground_o3d, nonground, centers=None, normals=None):
+def visualize_ground(ground, nonground, centers=None, normals=None):
         # Visualize
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(width = 600, height = 400)
 
     mesh = o3d.geometry.TriangleMesh.create_coordinate_frame()
+
+    ground_o3d = o3d.geometry.PointCloud()
+    ground_o3d.points = o3d.utility.Vector3dVector(ground)
+    ground_o3d.colors = o3d.utility.Vector3dVector(
+        np.array([[0.0, 1.0, 0.0] for _ in range(ground.shape[0])], dtype=float) # RGB
+    )
+    # ground_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1,
+    #                                                     max_nn=30))
+    # ground_o3d.orient_normals_to_align_with_direction()
 
     nonground_o3d = o3d.geometry.PointCloud()
     nonground_o3d.points = o3d.utility.Vector3dVector(nonground)
@@ -73,6 +82,18 @@ def visualize_ground(ground_o3d, nonground, centers=None, normals=None):
 
     vis.run()
     vis.destroy_window()
+
+# def estimate_ground_bad(pc, show_plots=True):
+#     plane = estimate_plane_RANSAC(pc, max_hs=0.5, ptc_range=((-40, 40), (-30, 30)))
+#     if plane is not None:
+#         ground_mask = get_plane_mask(
+#             pc, plane,
+#             offset=0.15,
+#             only_range=((-70, 70), (-30, 30)))
+#         ground = pc[ground_mask,:3]
+#         nonground =  pc[np.logical_not(ground_mask),:3]
+#         visualize_ground(ground, nonground)
+    
 
 def estimate_ground(pc, show_plots=False):
     # Patchwork++ initialization
@@ -144,30 +165,20 @@ def estimate_ground(pc, show_plots=False):
     # print('2. After removing close range ground')
     # visualize_ground(ground, nonground)
 
-    ground_o3d = o3d.geometry.PointCloud()
-    ground_o3d.points = o3d.utility.Vector3dVector(ground)
-    ground_o3d.colors = o3d.utility.Vector3dVector(
-        np.array([[0.0, 1.0, 0.0] for _ in range(ground.shape[0])], dtype=float) # RGB
-    )
-    ground_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1,
-                                                          max_nn=30))
-    ground_o3d.orient_normals_to_align_with_direction()
+   
 
     if show_plots:
         print('Showing Ground segmentation ...')
         #visualize_ground(pc[ground_mask,:3], pc[np.logical_not(ground_mask),:3], centers, normals)
-        visualize_ground(ground_o3d, nonground)
+        visualize_ground(ground, nonground)
 
 
-    ground_tree = o3d.geometry.KDTreeFlann(ground_o3d)
+    # ground_tree = o3d.geometry.KDTreeFlann(ground_o3d)
     # [_, idx, _] = pcd_ground_tree.search_knn_vector_3d(np.array([2,2,2]), 1)
     # normal = normals[idx[0]] / np.linalg.norm(normals[idx[0]])
     # signed_distance = np.dot(normals[idx[0]], np.array([2,2,2]))
 
-
-
-
-    return ground_mask, ground_o3d, ground_tree
+    return ground_mask
 
 
 def main():
@@ -179,8 +190,8 @@ def main():
         pc[:,3] = np.tanh(pc[:, 3]) * 255.0
         
         print(file)
-        
-        estimate_ground(pc)
+        #estimate_ground_bad(pc[:,:3], show_plots=True)
+        estimate_ground(pc[:,:3], show_plots=True)
 
 if __name__ == "__main__":
     main()

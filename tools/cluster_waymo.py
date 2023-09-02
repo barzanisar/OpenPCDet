@@ -11,11 +11,9 @@ from third_party.OpenPCDet.pcdet.ops.roiaware_pool3d import roiaware_pool3d_util
 from third_party.OpenPCDet.pcdet.ops.iou3d_nms import iou3d_nms_utils
 from third_party.OpenPCDet.tools.tracker import PubTracker as Tracker
 from third_party.OpenPCDet.tools.estimate_ground import estimate_ground
+from third_party.OpenPCDet.pcdet.utils import box_utils
 import multiprocessing as mp
 from functools import partial
-
-
-
 
 # import open3d as o3d
 import os
@@ -58,7 +56,7 @@ class WaymoDataset():
             sequence_name = info['point_cloud']['lidar_sequence']
             if sequence_name not in self.infos_dict:
                 self.infos_dict[sequence_name] = []
-                print(sequence_name)
+                #print(sequence_name)
             self.infos_dict[sequence_name].append(info)
     
     def get_lidar(self, seq_name, sample_idx):
@@ -71,6 +69,12 @@ class WaymoDataset():
         label_file = self.label_root_path / seq_name / ('%04d.npy' % sample_idx)
         labels = np.fromfile(label_file, dtype=np.float16)
         return labels
+    
+    def get_ground_mask(self, seq_name, sample_idx):
+        path = self.label_root_path / seq_name / 'ground' /('%04d.npy' % sample_idx)
+        ground_mask = np.fromfile(path, dtype=np.bool_)
+        return ground_mask
+    
     def save_updated_infos(self):
         infos_list = []
         for seq_name, seq_infos in self.infos_dict.items():
@@ -135,7 +139,9 @@ class WaymoDataset():
 
         return xyzi_frame_i, pc_lens
     
-    def aggregate_above_plane_mask(self, seq_name):
+    def estimate_ground_seq(self, seq_name):
+        save_seq_path = self.label_root_path / seq_name / 'ground'
+        os.makedirs(save_seq_path.__str__(), exist_ok=True)
         infos = self.infos_dict[seq_name]
         non_ground_mask = np.empty((0,1), dtype=bool)
         for info in infos:
@@ -145,13 +151,132 @@ class WaymoDataset():
             #points in current vehicle frame
             xyzi = self.get_lidar(seq_name, sample_idx)
             
-            above_plane_mask = estimate_ground(xyzi[:,:3])
-            non_ground_mask = np.vstack([non_ground_mask, above_plane_mask[..., np.newaxis]])
-            #V.draw_scenes(xyzi[above_plane_mask])
-  
-        return non_ground_mask.flatten()
+            ground_mask = estimate_ground(xyzi)
+            save_path = save_seq_path / ('%04d.npy' % sample_idx)
+            ground_mask.tofile(save_path)
+        
+        print('Estimating ground Done!')
 
-def fill_in_clusters(labels, pc, show_plots=False):
+def fill_in_clusters_with_knn(labels, xyz, show_plots):
+    # labels and xyz are of nonground pts
+    unlabeled_pts_mask = labels == -1
+    labeled_pts_mask = labels > -1
+    unlabeled_pc = xyz[unlabeled_pts_mask]
+    labeled_pc = xyz[labeled_pts_mask]
+
+    labeled_pcd = o3d.geometry.PointCloud()
+    labeled_pcd.points = o3d.utility.Vector3dVector(labeled_pc)
+
+    labeled_tree = o3d.geometry.KDTreeFlann(labeled_pcd)
+    for i in range(unlabeled_pc.shape[0]):
+        pt = unlabeled_pc[i]
+        #Find its neighbors with distance less than 0.2
+        [_, idx, _] = labeled_tree.search_radius_vector_3d(pt, 0.4)
+        if len(idx):
+            nearest_labels = labels[labeled_pts_mask][np.asarray(idx)]
+            label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
+            labels[unlabeled_pts_mask][i] = label_of_majority
+
+    if show_plots:
+        # Filled in clusters
+        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    return labels #of nonground pts
+
+def fill_in_clusters_with_bbox_knn(labels, pc, show_plots=False):
+    boxes = np.empty((0,8))
+    for label in np.unique(labels):
+        if label == -1:
+            continue
+        cluster_pc = pc[labels==label, :3]
+        # Note: sending full_pc gets max point in the bev box to be in cluster. This could overestimate the box height
+        # if there is a tree over the car 
+
+        # if cluster_pc[:,2].max() - cluster_pc[:,2].min() < 0.8:
+        #     continue
+        #Fit box to cluster, ignoring outlier ground points
+        min_height = np.max([cluster_pc[:,2].min()+0.2,cluster_pc[:,2].min()-0.2])
+        top_part_cluster = cluster_pc[cluster_pc[:,2]>min_height]
+        
+        if top_part_cluster.shape[0] == 0:
+            top_part_cluster=cluster_pc
+        box, _, _ = fit_box(top_part_cluster, fit_method='min_zx_area_fit') #, full_pc = pc[:,:3]
+        #shift box back down
+        #box[2] -= 0.2
+        box[5] += 0.3 #increase height
+        #append label
+        box = np.concatenate((box, [label]), axis = -1)
+        boxes = np.vstack([boxes, box])
+    
+    #fitted boxes
+    print(f'4th Step Fit boxes on aggregate PC Done. Boxes: {boxes.shape[0]}')
+
+    if show_plots:
+        V.draw_scenes(pc[:,:3], gt_boxes=boxes)
+
+    # try:
+    #     box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
+    #     torch.from_numpy(pc[:, 0:3]).unsqueeze(dim=0).float().cuda(),
+    #     torch.from_numpy(boxes[:, 0:7]).unsqueeze(dim=0).float().cuda()
+    #     ).long().squeeze(dim=0).cpu().numpy() #(npoints)
+
+    #     for i in range(boxes.shape[0]):
+    #         label = boxes[i, -1]
+    #         labels[box_idxs_of_pts == i] = label
+    # except:
+
+     # labels and xyz are of nonground pts
+    unlabeled_pts_mask = labels == -1
+    labeled_pts_mask = labels > -1
+    unlabeled_pc = pc[unlabeled_pts_mask]
+    labeled_pc = pc[labeled_pts_mask]
+    labels_for_unlabeled_pc = labels[unlabeled_pts_mask]
+    labels_for_labeled_pc = labels[labeled_pts_mask]
+
+    # bev_corners = box_utils.boxes_to_corners_3d(boxes[:, 0:7])[:, :12] #get_box_corners(cxyz, lwh, heading)
+    # flag = box_utils.in_hull(unlabeled_pc[:,:2], bev_corners)
+    point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+    torch.from_numpy(unlabeled_pc[:,:3]), torch.from_numpy(boxes[:, 0:7])).numpy()  # (nboxes, n unlabelled points mask) 1 if box i contains pt j, 0 otherwise
+    
+    pt_indices_mask_in_one_box = point_indices.sum(axis=0) == 1
+    pt_indices_mask_in_multiple_boxes = point_indices.sum(axis=0) > 1
+    for i in range(boxes.shape[0]):
+        label = boxes[i, -1]
+        labels_for_unlabeled_pc[(point_indices[i]>0) & pt_indices_mask_in_one_box] = label
+    
+    #Resolve points in multiple boxes with knn
+    num_unlabeled_pts_in_multiple_boxes = pt_indices_mask_in_multiple_boxes.sum() #unlabeled_pc[pt_indices_mask_in_multiple_boxes].shape[0]
+    if num_unlabeled_pts_in_multiple_boxes:
+        labeled_pcd = o3d.geometry.PointCloud()
+        labeled_pcd.points = o3d.utility.Vector3dVector(labeled_pc)
+
+        labeled_tree = o3d.geometry.KDTreeFlann(labeled_pcd)
+        conflicted_pts = unlabeled_pc[pt_indices_mask_in_multiple_boxes]
+        labels_for_conflicted_pts = labels_for_unlabeled_pc[pt_indices_mask_in_multiple_boxes]
+        for i in range(num_unlabeled_pts_in_multiple_boxes):
+            conflicted_pt = conflicted_pts[i]
+            #Find its neighbors with distance less than 0.2
+            [_, idx, _] = labeled_tree.search_knn_vector_3d(conflicted_pt, 5)
+            if len(idx):
+                nearest_labels = labels_for_labeled_pc[np.asarray(idx)]
+                label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
+                labels_for_conflicted_pts[i] = label_of_majority
+        
+        labels_for_unlabeled_pc[pt_indices_mask_in_multiple_boxes] = labels_for_conflicted_pts
+
+    labels[unlabeled_pts_mask] = labels_for_unlabeled_pc
+
+    print(f'5th Step Clusters filling Done.')
+
+    if show_plots:
+        # Filled in clusters
+        visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)), boxes=boxes, mode='')
+        visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
+
+    return labels
+
+
+def fill_in_clusters_with_bbox(labels, pc, show_plots=False):
     boxes = np.empty((0,8))
     for label in np.unique(labels):
         if label == -1:
@@ -164,14 +289,14 @@ def fill_in_clusters(labels, pc, show_plots=False):
             continue
         #Remove outlier ground points in the cluster
         
-        min_height = np.max([cluster_pc[:,2].min()+0.5,cluster_pc[:,2].min()-0.5])
+        min_height = np.max([cluster_pc[:,2].min()+0.3,cluster_pc[:,2].min()-0.3])
         top_part_cluster = cluster_pc[cluster_pc[:,2]>min_height]
         
         if top_part_cluster.shape[0] == 0:
             top_part_cluster=cluster_pc
         box, _, _ = fit_box(top_part_cluster, fit_method='closeness_to_edge') #, full_pc = pc[:,:3]
         #shift box up
-        box[2] += 0.3
+        #box[2] += 0.3
         #append label
         box = np.concatenate((box, [label]), axis = -1)
         boxes = np.vstack([boxes, box])
@@ -179,8 +304,8 @@ def fill_in_clusters(labels, pc, show_plots=False):
     #fitted boxes
     print(f'4th Step Fit boxes on aggregate PC Done. Boxes: {boxes.shape[0]}')
 
-    # if show_plots:
-    #     V.draw_scenes(pc[:,:3], gt_boxes=boxes)
+    if show_plots:
+        V.draw_scenes(pc[:,:3], gt_boxes=boxes)
 
     # try:
     #     box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
@@ -215,44 +340,173 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
     #save_labels_path = save_seq_path / 'all.npy'
 
     print(f'Clustering of sequence: {seq_name} started!')
+    path = save_seq_path / 'max_cluster_id.pkl'
+    with open(path, 'rb') as f:
+        max_cluster_id_dict = pickle.load(f)
+    max_label = max_cluster_id_dict['max_cluster_id_aggregated']
+
+    path = save_seq_path / 'cluster2frame_id_dict.pkl'
+    with open(path, 'rb') as f:
+        cluster2frame_id_dict = pickle.load(f)
+
     if len(cluster_files) < len(dataset.infos_dict[seq_name]):
         infos = dataset.infos_dict[seq_name]
-        for info in infos:
+        for frame_idx, info in enumerate(infos):
             pc_info = info['point_cloud']
             sample_idx = pc_info['sample_idx']
             gt_boxes = info['annos']['gt_boxes_lidar']
             
             xyzi = dataset.get_lidar(seq_name, sample_idx)
+            labels_from_aggregated_clustering = dataset.get_cluster_labels(seq_name, sample_idx)
+            ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
             
-            ground_mask, ground_o3d, ground_tree = estimate_ground(xyzi, show_plots=False)
-            
+
+            # cluster points that are not ground
             xyz = xyzi[:,:3]
             labels = cluster(xyz, np.logical_not(ground_mask))
             print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
             if show_plots:
+                visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
                 visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
+            
 
-            new_labels, rejection_tag  = filter_labels(xyz, labels, ground_o3d, ground_tree,
+            new_labels, rejection_tag  = filter_labels(xyz, labels,
                                       max_volume=160, min_volume=0.1, 
                                       max_height_for_lowest_point=1, 
                                       min_height_for_highest_point=0.5,
-                                      estimate_dist_to_plane = True)
-            if show_plots:
-                for key, val in REJECT.items():
-                    rejected_labels = np.where(rejection_tag == REJECT[key])[0]
-                    if len(rejected_labels):
-                        print(f'rejected_labels: {rejected_labels}')
-                        print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
-                        visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+                                      ground_mask = ground_mask)
+            # if show_plots:
+            #     for key, val in REJECT.items():
+            #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+            #         if len(rejected_labels):
+            #             print(f'rejected_labels: {rejected_labels}')
+            #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+            #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
             
             labels = get_continuous_labels(new_labels)
             print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
-
             if show_plots:
+                visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
                 visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
+            labels_only_in_frame_view = []
+            labels_frame2aggr_map = {}
+            labels_only_in_aggr_view = []
+            
+            for i in np.unique(labels):
+                if i == -1:
+                    continue
+                pt_indices_for_new_label = (labels==i).nonzero()[0]
+                labels_in_aggr_view = labels_from_aggregated_clustering[pt_indices_for_new_label]
+                if labels_in_aggr_view.max() == -1:
+                    labels_only_in_frame_view.append(i)
+                else:
+                    obj_labels_in_aggr_view = labels_in_aggr_view[labels_in_aggr_view>-1]
+                    label_of_majority_aggr = np.bincount(obj_labels_in_aggr_view.astype(int)).argmax()
+                    labels_frame2aggr_map[i] = label_of_majority_aggr
+            
+            for i in np.unique(labels_from_aggregated_clustering):
+                if i == -1:
+                    continue
+                pt_indices_aggr_label = (labels_from_aggregated_clustering == i).nonzero()[0]
+                labels_in_frame_view = labels[pt_indices_aggr_label]
+                if labels_in_frame_view.max() == -1:
+                    labels_only_in_aggr_view.append(i)
+            
+            # Start fusing aggregated view and new frame view labels
+            new_labels = -1 * np.ones(labels.shape[0])
+
+            #Add labels_only_in_frame_view
+            if len(labels_only_in_frame_view):
+                label_mapping_frame_view = {old_label:i+max_label for i, old_label in enumerate(sorted(labels_only_in_frame_view))}
+                for old_lbl, new_lbl in label_mapping_frame_view.items():
+                    new_labels[labels == old_lbl] = new_lbl
+                    cluster2frame_id_dict[new_lbl] = [frame_idx]
+                max_label = np.max(labels_only_in_frame_view) + max_label
+                #save max cluster id
+                path = save_seq_path / 'max_cluster_id.pkl'
+                max_cluster_id_dict['max_cluster_id'] = max_label
+                with open(path, 'wb') as f:
+                    pickle.dump(max_cluster_id_dict,f)
                 
+                # save new cluster2frame_id_dict
+                save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
+                with open(save_path, 'wb') as f:
+                    pickle.dump(cluster2frame_id_dict, f)
+
+
+            for frame_view_lbl, aggr_view_lbl in labels_frame2aggr_map.items():
+                pt_indices_this_label = (labels == frame_view_lbl) | (labels_from_aggregated_clustering == aggr_view_lbl)
+                new_labels[pt_indices_this_label] = aggr_view_lbl
+            
+            for aggr_view_lbl in labels_only_in_aggr_view:
+                new_labels[labels_from_aggregated_clustering == aggr_view_lbl] = aggr_view_lbl
+            
+            if show_plots:
+                visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
+        
+            # Save labels with new clusters
             save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
-            save_labels(labels, save_label_path.__str__())
+            save_labels(new_labels, save_label_path.__str__())
+
+
+
+            # flag_pts_labelled_in_frame_view_but_not_in_agg_view = (labels>-1) & (labels_from_aggregated_clustering == -1)
+
+            # if flag_pts_labelled_in_frame_view_but_not_in_agg_view.sum():
+            #     new_labels = -1 * np.ones(labels.shape[0])
+            #     new_labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view] = labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view]
+
+            #     if show_plots:
+            #         # visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
+            #         visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
+
+            #     # Points labelled in this frame view but unlabelled in aggregated view
+            #     # Assign them a new cluster id -> max+1
+            #     # (Assign them to cluster label in aggregated view if 90% of them fit in the aggregated view boxes. 
+            #     # If they don't fit in any boxes, assign them a new cluster label i.e. max + 1)
+            #     #labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view==0] = -1
+                
+            #     # fill in labels_from_aggregated_clustering with pts from new_labels found close to the labels_from_aggregated_clustering
+            #     flag_pts_labelled_aggr =  labels_from_aggregated_clustering>-1
+            #     pc_labelled_aggr = xyz[flag_pts_labelled_aggr]
+            #     labels_for_pc_labelled_aggr = labels_from_aggregated_clustering[flag_pts_labelled_aggr]
+                
+            #     pcd_labelled_aggr = o3d.geometry.PointCloud()
+            #     pcd_labelled_aggr.points = o3d.utility.Vector3dVector(pc_labelled_aggr)
+            #     tree = o3d.geometry.KDTreeFlann(pcd_labelled_aggr)
+                
+            #     for i in np.unique(new_labels):
+            #         if i == -1:
+            #             continue
+            #         cluster_pt_indices = (new_labels==i).nonzero()[0]
+            #         for new_pt_idx in cluster_pt_indices:
+            #             [_, idx, _] = tree.search_radius_vector_3d(xyz[new_pt_idx], 0.25)
+            #             if len(idx):
+            #                 nearest_labels = labels_for_pc_labelled_aggr[np.asarray(idx)]
+            #                 label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
+            #                 #Transfer aggregated view cluster label to these unlabelled pts in aggregated view
+            #                 labels_from_aggregated_clustering[cluster_pt_indices] = label_of_majority
+
+            #                 # so that new_labels only contains completely new clusters
+            #                 new_labels[cluster_pt_indices] = -1
+            #                 break
+                        
+            #     if show_plots:
+            #         visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
+            #         visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)), boxes=gt_boxes, mode='')
+                
+            #     labels = get_continuous_labels(new_labels)
+            #     labels[labels>-1] += max_label
+            #     max_label = labels.max()
+
+                #update the cluster2frameid by adding new clusters_id: this frame idx
+            
+
+             # Save labels with new clusters
+            # flag_pts_labelled_in_frame_view_but_not_in_agg_view = (labels>-1) & (labels_from_aggregated_clustering == -1)
+            # labels_from_aggregated_clustering[flag_pts_labelled_in_frame_view_but_not_in_agg_view] = labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view]
+            # save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
+            # save_labels(labels_from_aggregated_clustering, save_label_path.__str__())    
 
 def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
     infos= dataset.infos_dict[seq_name]
@@ -458,6 +712,127 @@ def refine_tracked_boxes(seq_name, dataset, show_plots=False):
     with open(save_path, 'wb') as f:
         pickle.dump(infos, f)
 
+def remove_outliers_cluster(xyz, labels):
+    for i in np.unique(labels):
+        if i == -1:
+            continue
+        cluster_indices = labels==i
+        cluster_pc = xyz[cluster_indices]
+        cluster_labels = labels[cluster_indices]
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(cluster_pc)
+
+        # set as background if point in cluster has less than 4 neighbors within 0.4 m distance
+        tree = o3d.geometry.KDTreeFlann(pcd)
+        for i in range(cluster_pc.shape[0]):
+            [_, idx, _] = tree.search_radius_vector_3d(cluster_pc[i], 0.4)
+            if len(idx) < 2:
+                cluster_labels[i] = -1
+        
+        labels[cluster_indices] = cluster_labels
+    
+    return labels
+
+def cluster_in_aggregated(seq_name, dataset, show_plots=False):
+    save_seq_path = dataset.label_root_path / seq_name
+    os.makedirs(save_seq_path.__str__(), exist_ok=True)
+    infos = dataset.infos_dict[seq_name]
+
+    print(f'Clustering of sequence: {seq_name} started!')
+    xyzi_last_vehicle, pc_lens = dataset.aggregate_pcd_in_frame_i(seq_name, -1)
+
+    ground_mask_all = np.empty((0), dtype=np.bool_)
+    for info in infos:
+        pc_info = info['point_cloud']
+        sample_idx = pc_info['sample_idx']
+        ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
+        ground_mask_all = np.concatenate([ground_mask_all, ground_mask])
+    
+    xyz = xyzi_last_vehicle[:,:3]
+    above_plane_mask = np.logical_not(ground_mask_all)
+    
+
+    # labels = cluster(xyz, above_plane_mask, eps=0.2)
+    # print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
+    
+    # # if show_plots:
+    # #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    # # Filter big volumes/smears of moving objects
+    # new_labels, rejection_tag  = filter_labels(xyz, labels,
+    #                                 max_volume=80, min_volume=0.1, 
+    #                                 max_height_for_lowest_point=1, 
+    #                                 min_height_for_highest_point=0.5,
+    #                                 ground_mask = ground_mask_all)
+    
+    # if show_plots:
+    #     for key, val in REJECT.items():
+    #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+    #         if len(rejected_labels):
+    #             print(f'rejected_labels: {rejected_labels}')
+    #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+    #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+    
+    # # save_labels_path = save_seq_path / 'all.npy'
+    # # # save_labels(new_labels, save_labels_path.__str__())
+    # # labels = load_labels(save_labels_path.__str__())
+    
+    # labels = remove_outliers_cluster(xyz, labels.flatten())
+    # labels = get_continuous_labels(labels)
+    # print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
+
+    # if show_plots:
+    #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+    
+
+    save_labels_path = save_seq_path / 'all.npy'
+    #save_labels(labels, save_labels_path.__str__())
+    labels = load_labels(save_labels_path.__str__())
+
+    labels_above_plane = fill_in_clusters_with_bbox_knn(labels[above_plane_mask], xyz[above_plane_mask], show_plots=show_plots)
+    labels[above_plane_mask] = labels_above_plane
+
+    if show_plots:
+        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    # Save cluster to frame idx map
+    cluster2frame_id_dict = {}
+    pc_start = 0
+    for frame_idx, info in enumerate(infos):
+        for cluster_id in np.unique(labels[pc_start:pc_start+pc_lens[frame_idx]]):
+            if cluster_id == -1:
+                continue
+            if cluster_id not in cluster2frame_id_dict:
+                cluster2frame_id_dict[cluster_id] = []
+
+            cluster2frame_id_dict[cluster_id].append(frame_idx)
+
+        pc_start += pc_lens[frame_idx]
+
+    save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(cluster2frame_id_dict, f)
+    
+    max_cluster_id_dict = {'max_cluster_id_aggregated' : labels.max()}
+    save_path = save_seq_path / 'max_cluster_id.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(max_cluster_id_dict, f)
+
+    # Separate labels pc wise and save
+    infos = dataset.infos_dict[seq_name]
+    i=0
+    labels = labels.astype(np.float16)
+    for info, pc_len in zip(infos, pc_lens):
+        sample_idx = info['point_cloud']['sample_idx']
+        save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
+
+        label_this_pc = labels[i:i+pc_len]
+        i+=pc_len
+
+        label_this_pc.tofile(save_label_path.__str__())
+    
+             
 
 def cluster_seq(seq_name, dataset, show_plots=False):
     save_seq_path = dataset.label_root_path / seq_name
@@ -838,6 +1213,10 @@ def main():
     dataset = WaymoDataset()
 
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
+    #dataset.estimate_ground_seq(seq_name)
+    #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
+    cluster_seq_each_pc(seq_name, dataset, show_plots=True)
+
     #seq_name = 'segment-10061305430875486848_1080_000_1100_000_with_camera_labels' #Good
     #cluster_seq(seq_name, dataset=dataset, show_plots=True)
     # fit_approx_boxes(seq_name, dataset, show_plots=False)
@@ -857,7 +1236,7 @@ def main():
     #cluster_seq_each_pc(seq_name, dataset=dataset, show_plots=False)
     #fit_approx_boxes_seq(seq_name, dataset, show_plots=False)
     #track_boxes_seq(seq_name, dataset)
-    visualize_tracks(seq_name, dataset)
+    #visualize_tracks(seq_name, dataset)
 
     #visualize_all(dataset)
     
