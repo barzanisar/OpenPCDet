@@ -75,6 +75,11 @@ class WaymoDataset():
         ground_mask = np.fromfile(path, dtype=np.bool_)
         return ground_mask
     
+    def get_rejection_tag(self, seq_name, sample_idx):
+        path = self.label_root_path / seq_name / 'rejection_tag' /('%04d.npy' % sample_idx)
+        pt_wise_rejection_tag = np.fromfile(path, dtype=np.uint8)
+        return pt_wise_rejection_tag
+    
     def save_updated_infos(self):
         infos_list = []
         for seq_name, seq_infos in self.infos_dict.items():
@@ -331,13 +336,110 @@ def fill_in_clusters_with_bbox(labels, pc, show_plots=False):
         visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
 
     return labels
+
+def cluster_in_aggregated(seq_name, dataset, show_plots=False):
+    save_seq_path = dataset.label_root_path / seq_name
+    os.makedirs(save_seq_path.__str__(), exist_ok=True)
+    infos = dataset.infos_dict[seq_name]
+
+    print(f'Clustering of sequence: {seq_name} started!')
+    xyzi_last_vehicle, pc_lens = dataset.aggregate_pcd_in_frame_i(seq_name, -1)
+
+    ground_mask_all = np.empty((0), dtype=np.bool_)
+    for info in infos:
+        pc_info = info['point_cloud']
+        sample_idx = pc_info['sample_idx']
+        ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
+        ground_mask_all = np.concatenate([ground_mask_all, ground_mask])
     
+    xyz = xyzi_last_vehicle[:,:3]
+    above_plane_mask = np.logical_not(ground_mask_all)
+    
+
+    # labels = cluster(xyz, above_plane_mask, eps=0.2)
+    # print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
+    
+    # # if show_plots:
+    # #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    # # Filter big volumes/smears of moving objects
+    # new_labels, rejection_tag  = filter_labels(xyz, labels,
+    #                                 max_volume=80, min_volume=0.1, 
+    #                                 max_height_for_lowest_point=1, 
+    #                                 min_height_for_highest_point=0.5,
+    #                                 ground_mask = ground_mask_all)
+    
+    # if show_plots:
+    #     for key, val in REJECT.items():
+    #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+    #         if len(rejected_labels):
+    #             print(f'rejected_labels: {rejected_labels}')
+    #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+    #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+    
+    # # save_labels_path = save_seq_path / 'all.npy'
+    # # # save_labels(new_labels, save_labels_path.__str__())
+    # # labels = load_labels(save_labels_path.__str__())
+    
+    # labels = remove_outliers_cluster(xyz, labels.flatten())
+    # labels = get_continuous_labels(labels)
+    # print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
+
+    # if show_plots:
+    #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+    
+
+    save_labels_path = save_seq_path / 'all.npy'
+    #save_labels(labels, save_labels_path.__str__())
+    labels = load_labels(save_labels_path.__str__())
+
+    labels_above_plane = fill_in_clusters_with_bbox_knn(labels[above_plane_mask], xyz[above_plane_mask], show_plots=show_plots)
+    labels[above_plane_mask] = labels_above_plane
+
+    if show_plots:
+        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    # Save cluster to frame idx map
+    cluster2frame_id_dict = {}
+    pc_start = 0
+    for frame_idx, info in enumerate(infos):
+        for cluster_id in np.unique(labels[pc_start:pc_start+pc_lens[frame_idx]]):
+            if cluster_id == -1:
+                continue
+            if cluster_id not in cluster2frame_id_dict:
+                cluster2frame_id_dict[cluster_id] = []
+
+            cluster2frame_id_dict[cluster_id].append(frame_idx)
+
+        pc_start += pc_lens[frame_idx]
+
+    save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(cluster2frame_id_dict, f)
+    
+    max_cluster_id_dict = {'max_cluster_id_aggregated' : labels.max()}
+    save_path = save_seq_path / 'max_cluster_id.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(max_cluster_id_dict, f)
+
+    # Separate labels pc wise and save
+    infos = dataset.infos_dict[seq_name]
+    i=0
+    labels = labels.astype(np.float16)
+    for info, pc_len in zip(infos, pc_lens):
+        sample_idx = info['point_cloud']['sample_idx']
+        save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
+
+        label_this_pc = labels[i:i+pc_len]
+        i+=pc_len
+
+        label_this_pc.tofile(save_label_path.__str__())
 
 def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
     save_seq_path = dataset.label_root_path / seq_name
     os.makedirs(save_seq_path.__str__(), exist_ok=True)
+    os.makedirs((save_seq_path / 'rejection_tag').__str__(), exist_ok=True)
     cluster_files = [] #glob.glob(f'{save_seq_path.__str__()}/*.npy') #[]
-    #save_labels_path = save_seq_path / 'all.npy'
 
     print(f'Clustering of sequence: {seq_name} started!')
     path = save_seq_path / 'max_cluster_id.pkl'
@@ -370,14 +472,22 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
                 visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
             
 
-            new_labels, rejection_tag  = filter_labels(xyz, labels,
+            new_labels, label_wise_rejection_tag  = filter_labels(xyz, labels,
                                       max_volume=160, min_volume=0.1, 
                                       max_height_for_lowest_point=1, 
                                       min_height_for_highest_point=0.5,
                                       ground_mask = ground_mask)
+            
+            pt_wise_rejection_tag = np.zeros(xyz.shape[0], dtype=np.uint8) #zero means not rejected
+            for i in np.unique(labels):
+                if i == -1:
+                    continue
+                pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[i]
+
+
             # if show_plots:
             #     for key, val in REJECT.items():
-            #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+            #         rejected_labels = np.where(label_wise_rejection_tag == REJECT[key])[0]
             #         if len(rejected_labels):
             #             print(f'rejected_labels: {rejected_labels}')
             #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
@@ -448,65 +558,11 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
             save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
             save_labels(new_labels, save_label_path.__str__())
 
+            # Save rejection tag for each pt
+            save_path = save_seq_path / 'rejection_tag'/ ('%04d.npy' % sample_idx)
+            pt_wise_rejection_tag.astype(np.uint8)
+            pt_wise_rejection_tag.tofile(save_path.__str__())
 
-
-            # flag_pts_labelled_in_frame_view_but_not_in_agg_view = (labels>-1) & (labels_from_aggregated_clustering == -1)
-
-            # if flag_pts_labelled_in_frame_view_but_not_in_agg_view.sum():
-            #     new_labels = -1 * np.ones(labels.shape[0])
-            #     new_labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view] = labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view]
-
-            #     if show_plots:
-            #         # visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
-            #         visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
-
-            #     # Points labelled in this frame view but unlabelled in aggregated view
-            #     # Assign them a new cluster id -> max+1
-            #     # (Assign them to cluster label in aggregated view if 90% of them fit in the aggregated view boxes. 
-            #     # If they don't fit in any boxes, assign them a new cluster label i.e. max + 1)
-            #     #labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view==0] = -1
-                
-            #     # fill in labels_from_aggregated_clustering with pts from new_labels found close to the labels_from_aggregated_clustering
-            #     flag_pts_labelled_aggr =  labels_from_aggregated_clustering>-1
-            #     pc_labelled_aggr = xyz[flag_pts_labelled_aggr]
-            #     labels_for_pc_labelled_aggr = labels_from_aggregated_clustering[flag_pts_labelled_aggr]
-                
-            #     pcd_labelled_aggr = o3d.geometry.PointCloud()
-            #     pcd_labelled_aggr.points = o3d.utility.Vector3dVector(pc_labelled_aggr)
-            #     tree = o3d.geometry.KDTreeFlann(pcd_labelled_aggr)
-                
-            #     for i in np.unique(new_labels):
-            #         if i == -1:
-            #             continue
-            #         cluster_pt_indices = (new_labels==i).nonzero()[0]
-            #         for new_pt_idx in cluster_pt_indices:
-            #             [_, idx, _] = tree.search_radius_vector_3d(xyz[new_pt_idx], 0.25)
-            #             if len(idx):
-            #                 nearest_labels = labels_for_pc_labelled_aggr[np.asarray(idx)]
-            #                 label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
-            #                 #Transfer aggregated view cluster label to these unlabelled pts in aggregated view
-            #                 labels_from_aggregated_clustering[cluster_pt_indices] = label_of_majority
-
-            #                 # so that new_labels only contains completely new clusters
-            #                 new_labels[cluster_pt_indices] = -1
-            #                 break
-                        
-            #     if show_plots:
-            #         visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
-            #         visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)), boxes=gt_boxes, mode='')
-                
-            #     labels = get_continuous_labels(new_labels)
-            #     labels[labels>-1] += max_label
-            #     max_label = labels.max()
-
-                #update the cluster2frameid by adding new clusters_id: this frame idx
-            
-
-             # Save labels with new clusters
-            # flag_pts_labelled_in_frame_view_but_not_in_agg_view = (labels>-1) & (labels_from_aggregated_clustering == -1)
-            # labels_from_aggregated_clustering[flag_pts_labelled_in_frame_view_but_not_in_agg_view] = labels[flag_pts_labelled_in_frame_view_but_not_in_agg_view]
-            # save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
-            # save_labels(labels_from_aggregated_clustering, save_label_path.__str__())    
 
 def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
     infos= dataset.infos_dict[seq_name]
@@ -551,6 +607,69 @@ def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
     save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
     with open(save_path, 'wb') as f:
         pickle.dump(infos, f)
+
+def refine_boxes_seq(seq_name, dataset, show_plots=False):
+    
+    #Load approx boxes
+    approx_boxes_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
+    with open(approx_boxes_path, 'rb') as f:
+        infos = pickle.load(f)
+    
+    approx_boxes = np.empty((0, 18))
+    num_boxes_per_pc = np.zeros(len(infos), dtype=int)
+    for i, info in enumerate(infos):
+        num_boxes_per_pc[i] = info['approx_boxes'].shape[0]
+        approx_boxes= np.vstack([approx_boxes, info['approx_boxes']])
+    
+    #Refine boxes
+    refined_boxes = refine_boxes(approx_boxes, approx_boxes_labels=approx_boxes[:,-1])
+    print(f'Refining boxes Done.')
+
+    if show_plots:
+        ind = 0
+        for i, info in enumerate(infos):
+            pc_info = info['point_cloud']
+            sample_idx = pc_info['sample_idx']
+            gt_boxes = info['annos']['gt_boxes_lidar']
+
+            #points in current vehicle frame
+            pc = dataset.get_lidar(seq_name, sample_idx)
+            labels = dataset.get_cluster_labels(seq_name, sample_idx).flatten()
+            num_boxes_this_pc = int(num_boxes_per_pc[i])
+            approx_boxes_this_pc = approx_boxes[ind:ind+num_boxes_this_pc]
+            refined_boxes_this_pc = refined_boxes[ind:ind+num_boxes_this_pc]
+            ind += num_boxes_this_pc
+
+            gt_boxes_corners = np.zeros((gt_boxes.shape[0], 8))
+        
+            for i in range(gt_boxes.shape[0]):
+                corners = get_box_corners(gt_boxes[i, :3], gt_boxes[i, 3:6], gt_boxes[i, 6])
+                gt_boxes_corners[i, :] = corners.flatten()
+
+            gt_boxes = np.hstack([gt_boxes, gt_boxes_corners])
+            
+            savefig_path = dataset.label_root_path / seq_name/ ('%04d.png' % sample_idx)
+            savefig_path = savefig_path.__str__() #None
+            # show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'approx_boxes', \
+            #                refined_boxes_this_pc, 'refined_boxes', gt_boxes, 'gt_boxes',\
+            #                 savefig_path=savefig_path)
+            # V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
+            #                     ref_boxes=refined_boxes_this_pc[:,:7]) #gt_boxes=blue, ref_boxes=green
+            V.draw_scenes(pc, gt_boxes=gt_boxes, 
+                                ref_boxes=refined_boxes_this_pc[:,:7])
+    
+    #save sequence boxes
+    ind = 0
+    for i, info in enumerate(infos):
+        num_boxes = num_boxes_per_pc[i]
+        boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
+        info['refined_boxes'] = boxes_this_pc
+        ind += num_boxes
+    
+    save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(infos, f)
+
 
 def transform_box(box, pose):
     """Transforms 3d upright boxes from one frame to another.
@@ -733,105 +852,6 @@ def remove_outliers_cluster(xyz, labels):
         labels[cluster_indices] = cluster_labels
     
     return labels
-
-def cluster_in_aggregated(seq_name, dataset, show_plots=False):
-    save_seq_path = dataset.label_root_path / seq_name
-    os.makedirs(save_seq_path.__str__(), exist_ok=True)
-    infos = dataset.infos_dict[seq_name]
-
-    print(f'Clustering of sequence: {seq_name} started!')
-    xyzi_last_vehicle, pc_lens = dataset.aggregate_pcd_in_frame_i(seq_name, -1)
-
-    ground_mask_all = np.empty((0), dtype=np.bool_)
-    for info in infos:
-        pc_info = info['point_cloud']
-        sample_idx = pc_info['sample_idx']
-        ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
-        ground_mask_all = np.concatenate([ground_mask_all, ground_mask])
-    
-    xyz = xyzi_last_vehicle[:,:3]
-    above_plane_mask = np.logical_not(ground_mask_all)
-    
-
-    # labels = cluster(xyz, above_plane_mask, eps=0.2)
-    # print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
-    
-    # # if show_plots:
-    # #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
-
-    # # Filter big volumes/smears of moving objects
-    # new_labels, rejection_tag  = filter_labels(xyz, labels,
-    #                                 max_volume=80, min_volume=0.1, 
-    #                                 max_height_for_lowest_point=1, 
-    #                                 min_height_for_highest_point=0.5,
-    #                                 ground_mask = ground_mask_all)
-    
-    # if show_plots:
-    #     for key, val in REJECT.items():
-    #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
-    #         if len(rejected_labels):
-    #             print(f'rejected_labels: {rejected_labels}')
-    #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
-    #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
-    
-    # # save_labels_path = save_seq_path / 'all.npy'
-    # # # save_labels(new_labels, save_labels_path.__str__())
-    # # labels = load_labels(save_labels_path.__str__())
-    
-    # labels = remove_outliers_cluster(xyz, labels.flatten())
-    # labels = get_continuous_labels(labels)
-    # print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
-
-    # if show_plots:
-    #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
-    
-
-    save_labels_path = save_seq_path / 'all.npy'
-    #save_labels(labels, save_labels_path.__str__())
-    labels = load_labels(save_labels_path.__str__())
-
-    labels_above_plane = fill_in_clusters_with_bbox_knn(labels[above_plane_mask], xyz[above_plane_mask], show_plots=show_plots)
-    labels[above_plane_mask] = labels_above_plane
-
-    if show_plots:
-        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
-
-    # Save cluster to frame idx map
-    cluster2frame_id_dict = {}
-    pc_start = 0
-    for frame_idx, info in enumerate(infos):
-        for cluster_id in np.unique(labels[pc_start:pc_start+pc_lens[frame_idx]]):
-            if cluster_id == -1:
-                continue
-            if cluster_id not in cluster2frame_id_dict:
-                cluster2frame_id_dict[cluster_id] = []
-
-            cluster2frame_id_dict[cluster_id].append(frame_idx)
-
-        pc_start += pc_lens[frame_idx]
-
-    save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
-    with open(save_path, 'wb') as f:
-        pickle.dump(cluster2frame_id_dict, f)
-    
-    max_cluster_id_dict = {'max_cluster_id_aggregated' : labels.max()}
-    save_path = save_seq_path / 'max_cluster_id.pkl'
-    with open(save_path, 'wb') as f:
-        pickle.dump(max_cluster_id_dict, f)
-
-    # Separate labels pc wise and save
-    infos = dataset.infos_dict[seq_name]
-    i=0
-    labels = labels.astype(np.float16)
-    for info, pc_len in zip(infos, pc_lens):
-        sample_idx = info['point_cloud']['sample_idx']
-        save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
-
-        label_this_pc = labels[i:i+pc_len]
-        i+=pc_len
-
-        label_this_pc.tofile(save_label_path.__str__())
-    
              
 
 def cluster_seq(seq_name, dataset, show_plots=False):
@@ -970,69 +990,6 @@ def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None, boxes3=None, la
         plt.savefig(savefig_path)
     else:
         plt.show()
-
-
-def refine_boxes_seq(seq_name, dataset, show_plots=False):
-    
-    #Load approx boxes
-    approx_boxes_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
-    with open(approx_boxes_path, 'rb') as f:
-        infos = pickle.load(f)
-    
-    approx_boxes = np.empty((0, 18))
-    num_boxes_per_pc = np.zeros(len(infos), dtype=int)
-    for i, info in enumerate(infos):
-        num_boxes_per_pc[i] = info['approx_boxes'].shape[0]
-        approx_boxes= np.vstack([approx_boxes, info['approx_boxes']])
-    
-    #Refine boxes
-    refined_boxes = refine_boxes(approx_boxes, approx_boxes_labels=approx_boxes[:,-1])
-    print(f'Refining boxes Done.')
-
-    if show_plots:
-        ind = 0
-        for i, info in enumerate(infos):
-            pc_info = info['point_cloud']
-            sample_idx = pc_info['sample_idx']
-            gt_boxes = info['annos']['gt_boxes_lidar']
-
-            #points in current vehicle frame
-            pc = dataset.get_lidar(seq_name, sample_idx)
-            labels = dataset.get_cluster_labels(seq_name, sample_idx).flatten()
-            num_boxes_this_pc = int(num_boxes_per_pc[i])
-            approx_boxes_this_pc = approx_boxes[ind:ind+num_boxes_this_pc]
-            refined_boxes_this_pc = refined_boxes[ind:ind+num_boxes_this_pc]
-            ind += num_boxes_this_pc
-
-            gt_boxes_corners = np.zeros((gt_boxes.shape[0], 8))
-        
-            for i in range(gt_boxes.shape[0]):
-                corners = get_box_corners(gt_boxes[i, :3], gt_boxes[i, 3:6], gt_boxes[i, 6])
-                gt_boxes_corners[i, :] = corners.flatten()
-
-            gt_boxes = np.hstack([gt_boxes, gt_boxes_corners])
-            
-            savefig_path = dataset.label_root_path / seq_name/ ('%04d.png' % sample_idx)
-            savefig_path = savefig_path.__str__() #None
-            # show_bev_boxes(pc[labels>-1], approx_boxes_this_pc, 'approx_boxes', \
-            #                refined_boxes_this_pc, 'refined_boxes', gt_boxes, 'gt_boxes',\
-            #                 savefig_path=savefig_path)
-            # V.draw_scenes(pc, gt_boxes=approx_boxes_this_pc[:,:7], 
-            #                     ref_boxes=refined_boxes_this_pc[:,:7]) #gt_boxes=blue, ref_boxes=green
-            V.draw_scenes(pc, gt_boxes=gt_boxes, 
-                                ref_boxes=refined_boxes_this_pc[:,:7])
-    
-    #save sequence boxes
-    ind = 0
-    for i, info in enumerate(infos):
-        num_boxes = num_boxes_per_pc[i]
-        boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
-        info['refined_boxes'] = boxes_this_pc
-        ind += num_boxes
-    
-    save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
-    with open(save_path, 'wb') as f:
-        pickle.dump(infos, f)
 
 def fit_boxes_all(dataset, show_plots=False):
     num_workers = mp.cpu_count() - 2
@@ -1209,13 +1166,73 @@ def visualize_all(dataset):
     for seq_name in dataset.infos_dict:
         visualize_seq(seq_name, dataset)
 
+def eval_clustering(seq_name, dataset):
+    infos = dataset.infos_dict[seq_name]
+    for frame_idx, info in enumerate(infos):
+        pc_info = info['point_cloud']
+        sample_idx = pc_info['sample_idx']
+        gt_boxes = info['annos']['gt_boxes_lidar']
+        gt_boxes = gt_boxes[info['annos']['num_points_in_gt'] > 5]
+        num_gt = gt_boxes.shape[0]
+        
+        xyzi = dataset.get_lidar(seq_name, sample_idx)
+        labels = dataset.get_cluster_labels(seq_name, sample_idx)
+        rejection_tags = dataset.get_rejection_tag(seq_name, sample_idx)
+
+        box_wise_point_mask = roiaware_pool3d_utils.points_in_boxes_cpu(
+            torch.from_numpy(xyzi[:,:3]), torch.from_numpy(gt_boxes[:, 0:7])).numpy() #(m boxes, n points)
+        
+        tp = 0
+        fn = 0
+        fn_dict = {} # count num gt rejected due to different reasons
+        for key, val in REJECT.items():
+            fn_dict[val] = 0
+        for i in range(num_gt):
+            pt_indices = (box_wise_point_mask > 0).nonzero()[0]
+            if (labels[pt_indices] > -1).any():
+                tp += 1
+            else:
+                fn += 1
+                tag_of_majority_pts = np.bincount(rejection_tags[pt_indices].astype(int)).argmax()
+                fn_dict[tag_of_majority_pts] += 1
+                
+        print(seq_name)
+        print(f'sample_idx: {sample_idx}, \ttp: {tp}, fn: {fn}, recall: {tp/(num_gt)}')
+        fn_dict_str=''
+        for key, count in fn_dict.items():
+            key_name = REJECT[fn_dict[key]]
+            fn_dict_str += f'{key_name}: {count} '
+        print(fn_dict_str)
+
+
+
+
+
+
+        
+
+
+    pass
+    
+
 def main():
     dataset = WaymoDataset()
 
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
-    #dataset.estimate_ground_seq(seq_name)
-    #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
-    cluster_seq_each_pc(seq_name, dataset, show_plots=True)
+    dataset.estimate_ground_seq(seq_name)
+    cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
+    cluster_seq_each_pc(seq_name, dataset, show_plots=False)
+    
+    #from gtboxes containing atleast 5 pts
+    #get al points labeled and see how many boxes have these points -> Count tp and fn and calculate recall, count fn due to different rejections tags, not clustered
+    eval_clustering(seq_name, dataset) 
+    fit_approx_boxes_seq(seq_name, dataset, show_plots=False) #fit using closeness or min max?
+    refine_boxes_seq(seq_name, dataset, show_plots=False)
+    
+    
+
+
+
 
     #seq_name = 'segment-10061305430875486848_1080_000_1100_000_with_camera_labels' #Good
     #cluster_seq(seq_name, dataset=dataset, show_plots=True)
