@@ -95,7 +95,7 @@ def filter_labels(
     
     labels = labels.flatten().copy()
     num_obj_labels = int(labels.max()+1)
-    rejection_tag = np.zeros((int(num_obj_labels), 1)) #rejection tag for labels 0,1, ... (exclude label -1)
+    rejection_tag = np.zeros(int(num_obj_labels)) #rejection tag for labels 0,1, ... (exclude label -1)
 
     ground_o3d = None 
     ground_tree = None
@@ -130,9 +130,9 @@ def cluster(xyz, non_ground_mask, eps=0.2):
     
     labels_non_ground = clusters_hdbscan(xyz[non_ground_mask], n_clusters=-1, eps=eps)[...,np.newaxis] #np.ones((non_ground_mask.sum(), 1))
 
-    labels = np.ones((xyz.shape[0], 1)) * -1
+    labels = np.ones(xyz.shape[0]) * -1
 
-    labels[non_ground_mask] = labels_non_ground #(N all points, 1)
+    labels[non_ground_mask] = labels_non_ground.flatten() #(N all points, 1)
     assert (labels.max() < np.finfo('float16').max), 'max segment id overflow float16 number'
 
     return labels

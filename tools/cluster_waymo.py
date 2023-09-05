@@ -162,6 +162,23 @@ class WaymoDataset():
         
         print('Estimating ground Done!')
 
+def transform_pc_to_world(xyz, pose_world_from_vehicle):
+    xyz = np.concatenate([xyz, np.ones([xyz.shape[0], 1])], axis=-1) #(N, xyz1)
+    xyz = np.matmul(pose_world_from_vehicle, xyz.T).T[:,:3] #(N, xyz)
+
+    return xyz
+
+def transform_pc_to_frame_i(xyz, pose_world_from_vehicle, pose_world_from_frame_i):
+    xyz_world = transform_pc_to_world(xyz, pose_world_from_vehicle)
+    pose_frame_i_from_world = inv_pose(pose_world_from_frame_i)
+
+    # diff=(pose_vehicle_from_world - np.linalg.inv(pose_world_from_vehicle)).sum()
+    # Transform the points from the world frame to the last frame in the sequence
+    xyz_world =  np.concatenate([xyz_world, np.ones([xyz_world.shape[0], 1])], axis=-1)
+    xyz_frame_i = np.matmul(pose_frame_i_from_world, xyz_world.T).T[:,:3] #(N, xyz)
+
+    return xyz_frame_i
+
 def fill_in_clusters_with_knn(labels, xyz, show_plots):
     # labels and xyz are of nonground pts
     unlabeled_pts_mask = labels == -1
@@ -356,42 +373,42 @@ def cluster_in_aggregated(seq_name, dataset, show_plots=False):
     above_plane_mask = np.logical_not(ground_mask_all)
     
 
-    # labels = cluster(xyz, above_plane_mask, eps=0.2)
-    # print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
+    labels = cluster(xyz, above_plane_mask, eps=0.2)
+    print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
     
-    # # if show_plots:
-    # #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
-
-    # # Filter big volumes/smears of moving objects
-    # new_labels, rejection_tag  = filter_labels(xyz, labels,
-    #                                 max_volume=80, min_volume=0.1, 
-    #                                 max_height_for_lowest_point=1, 
-    #                                 min_height_for_highest_point=0.5,
-    #                                 ground_mask = ground_mask_all)
-    
-    # if show_plots:
-    #     for key, val in REJECT.items():
-    #         rejected_labels = np.where(rejection_tag == REJECT[key])[0]
-    #         if len(rejected_labels):
-    #             print(f'rejected_labels: {rejected_labels}')
-    #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
-    #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
-    
-    # # save_labels_path = save_seq_path / 'all.npy'
-    # # # save_labels(new_labels, save_labels_path.__str__())
-    # # labels = load_labels(save_labels_path.__str__())
-    
-    # labels = remove_outliers_cluster(xyz, labels.flatten())
-    # labels = get_continuous_labels(labels)
-    # print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
-
     # if show_plots:
     #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+
+    # Filter big volumes/smears of moving objects
+    new_labels, rejection_tag  = filter_labels(xyz, labels,
+                                    max_volume=80, min_volume=0.1, 
+                                    max_height_for_lowest_point=1, 
+                                    min_height_for_highest_point=0.5,
+                                    ground_mask = ground_mask_all)
+    
+    if show_plots:
+        for key, val in REJECT.items():
+            rejected_labels = np.where(rejection_tag == REJECT[key])[0]
+            if len(rejected_labels):
+                print(f'rejected_labels: {rejected_labels}')
+                print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+                visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+    
+    # save_labels_path = save_seq_path / 'all.npy'
+    # # save_labels(new_labels, save_labels_path.__str__())
+    # labels = load_labels(save_labels_path.__str__())
+    
+    labels = remove_outliers_cluster(xyz, new_labels.flatten())
+    labels = get_continuous_labels(labels)
+    print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
+
+    if show_plots:
+        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
     
 
-    save_labels_path = save_seq_path / 'all.npy'
+    #save_labels_path = save_seq_path / 'all.npy'
     #save_labels(labels, save_labels_path.__str__())
-    labels = load_labels(save_labels_path.__str__())
+    #labels = load_labels(save_labels_path.__str__())
 
     labels_above_plane = fill_in_clusters_with_bbox_knn(labels[above_plane_mask], xyz[above_plane_mask], show_plots=show_plots)
     labels[above_plane_mask] = labels_above_plane
@@ -482,7 +499,7 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
             for i in np.unique(labels):
                 if i == -1:
                     continue
-                pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[i]
+                pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[int(i)]
 
 
             # if show_plots:
@@ -664,6 +681,7 @@ def refine_boxes_seq(seq_name, dataset, show_plots=False):
         num_boxes = num_boxes_per_pc[i]
         boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
         info['refined_boxes'] = boxes_this_pc
+        info['cluster_labels_refined_boxes'] = refined_boxes[ind:ind+num_boxes, -1]
         ind += num_boxes
     
     save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
@@ -689,7 +707,7 @@ def transform_box(box, pose):
 
     return np.concatenate([center, box[..., 3:6], heading[..., np.newaxis]], axis=-1)
 
-def convert_detection_to_global_box(det_key, infos):
+def convert_detection_to_global_box(det_key, infos, cluster2frame_id_dict=None):
     for info in infos:
         pose_v_to_w = info['pose']
         box3d_in_v = info[det_key]
@@ -698,28 +716,57 @@ def convert_detection_to_global_box(det_key, infos):
         num_box = len(box3d_in_w)
 
         anno_list =[] # detection list for this pc
+        corners3d = box_utils.boxes_to_corners_3d(box3d_in_w[:, :7])
         for i in range(num_box):
+            cluster_id = box3d_in_w[i, -1]
+            bev_corners = get_box_corners(box3d_in_w[i, :3])
             anno = {
                 'translation': box3d_in_w[i, :3],
-                'box_id': i 
+                'dxdydz': box3d_in_w[i, 3:6],
+                'heading': box3d_in_w[i, -1],
+                'corners3d': corners3d[i, 3*8],
+                'bev_corners': bev_corners,
+                'box_id': i,
+                'cluster_id': box3d_in_w[i, -1],
+
             }
 
-            anno_list.append(anno)
-        info[f'{det_key}_in_w'] = anno_list #(M, 18)
+            # Only track boxes ocurring in single frames only
+            if cluster2frame_id_dict is not None and cluster2frame_id_dict[cluster_id].len() > 1:
+                anno_list.append(anno)
+            else:
+                anno_list.append(anno)
+        
+        info[f'{det_key}_to_track_in_w'] = anno_list #(M, 18)
     
     return infos
 
-def track(infos, direction='forward', det_key='approx_boxes'):
-    last_time_stamp = 1e-6 * infos[0]['metadata']['timestamp_micros']
+def track(infos, dataset, direction='forward', det_key='approx_boxes'):
+    last_time_stamp = 1e-6 * infos[0]['metadata']['timestamp_micros'] #first frame time
 
     tracker = Tracker(max_age=3, max_dist=1, matcher='greedy')
     
-    for info in infos:
+    for i, info in enumerate(infos):
         cur_timestamp = 1e-6 * info['metadata']['timestamp_micros']
         time_lag = cur_timestamp - last_time_stamp if direction == 'forward' else last_time_stamp - cur_timestamp
         last_time_stamp = cur_timestamp
 
-        outputs = tracker.step_centertrack(info[f'{det_key}_in_w'], time_lag)
+        ############### For visualization ##################
+        seq_name = info['point_cloud']['sequence_name']
+        sample_idx = info['point_cloud']['sample_idx']
+        curr_pc = dataset.get_lidar(seq_name, sample_idx)
+        curr_pc[:,:3] = transform_pc_to_world(curr_pc[:,:3], info['pose'])
+        if i > 0:
+            last_pc = dataset.get_lidar(infos[i-1]['point_cloud']['sequence_name'], 
+                                        infos[i-1]['point_cloud']['sample_idx'])
+            last_pc[:,:3] = transform_pc_to_world(last_pc[:,:3], infos[i-1]['pose'])
+        else:
+            last_pc = curr_pc
+        visualize = {'curr_pc': curr_pc, 'last_pc': last_pc}
+        ####################################################
+
+
+        outputs = tracker.step_centertrack(info[f'{det_key}_to_track_in_w'], time_lag)
         tracking_ids = []
         box_ids = []
         active = [] 
@@ -735,14 +782,24 @@ def track(infos, direction='forward', det_key='approx_boxes'):
 
     return infos
 
-def track_boxes_seq(seq_name, dataset):
+def track_boxes_seq(seq_name, dataset, track_single_occurance_clusters=False):
     approx_boxes_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
     with open(approx_boxes_path, 'rb') as f:
         infos = pickle.load(f) #seq_infos
+    
+    cluster2frame_id_dict = None
+    # if track_single_occurance_clusters:
+    #     path = dataset.label_root_path / seq_name / 'cluster2frame_id_dict.pkl'
+    #     with open(path, 'rb') as f:
+    #         cluster2frame_id_dict = pickle.load(f) #seq_infos
+    
+    # path = dataset.label_root_path / seq_name / 'max_cluster_id.pkl'
+    # with open(path, 'rb') as f:
+    #     max_cluster_id = pickle.load(f) #seq_infos
 
     det_key = 'approx_boxes'
-    infos = convert_detection_to_global_box(det_key, infos)
-    infos = track(infos, direction='forward', det_key=det_key)
+    infos = convert_detection_to_global_box(det_key, infos, cluster2frame_id_dict=cluster2frame_id_dict)
+    infos = track(infos, dataset, direction='forward', det_key=det_key)
     infos = track(infos[::-1], direction='backward', det_key=det_key)
 
     with open(approx_boxes_path, 'wb') as f:
@@ -1184,11 +1241,12 @@ def eval_clustering(seq_name, dataset):
         
         tp = 0
         fn = 0
-        fn_dict = {} # count num gt rejected due to different reasons
+        fn_dict = {0: 0} # count num gt rejected due to different reasons, 0is the tag for clusters not found by dbscan
+
         for key, val in REJECT.items():
             fn_dict[val] = 0
         for i in range(num_gt):
-            pt_indices = (box_wise_point_mask > 0).nonzero()[0]
+            pt_indices = (box_wise_point_mask[i] > 0).nonzero()[0]
             if (labels[pt_indices] > -1).any():
                 tp += 1
             else:
@@ -1198,37 +1256,34 @@ def eval_clustering(seq_name, dataset):
                 
         print(seq_name)
         print(f'sample_idx: {sample_idx}, \ttp: {tp}, fn: {fn}, recall: {tp/(num_gt)}')
-        fn_dict_str=''
-        for key, count in fn_dict.items():
-            key_name = REJECT[fn_dict[key]]
-            fn_dict_str += f'{key_name}: {count} '
+        fn_dict_str=f'dbscan_fn: {fn_dict[0]}, '
+        for key, val in REJECT.items():
+            count = fn_dict[val]
+            fn_dict_str += f'{key}: {count} ,'
         print(fn_dict_str)
-
-
-
-
-
-
-        
-
-
-    pass
     
 
 def main():
     dataset = WaymoDataset()
 
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
-    dataset.estimate_ground_seq(seq_name)
-    cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
-    cluster_seq_each_pc(seq_name, dataset, show_plots=False)
+    # dataset.estimate_ground_seq(seq_name)
+    # cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
+    #cluster_seq_each_pc(seq_name, dataset, show_plots=False)
     
     #from gtboxes containing atleast 5 pts
     #get al points labeled and see how many boxes have these points -> Count tp and fn and calculate recall, count fn due to different rejections tags, not clustered
-    eval_clustering(seq_name, dataset) 
-    fit_approx_boxes_seq(seq_name, dataset, show_plots=False) #fit using closeness or min max?
-    refine_boxes_seq(seq_name, dataset, show_plots=False)
-    
+    # eval_clustering(seq_name, dataset) 
+
+    #
+    #     segment-10023947602400723454_1120_000_1140_000_with_camera_labels
+    # sample_idx: 50, 180, 120         tp: 59, fn: 5, recall: 0.921875
+    # dbscan_fn: 2, too_few_pts: 0 ,vol_too_big: 2 ,vol_too_small: 0 ,floating: 1 ,below_ground
+
+    # fit_approx_boxes_seq(seq_name, dataset, show_plots=False) #fit using closeness or min max?
+    # refine_boxes_seq(seq_name, dataset, show_plots=False)
+
+    track_boxes_seq(seq_name, dataset)
     
 
 

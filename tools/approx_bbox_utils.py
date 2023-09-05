@@ -6,14 +6,50 @@ import matplotlib.pyplot as plt
 #https://logicatcore.github.io/scratchpad/lidar/sensor-fusion/jupyter/2021/04/20/3D-Oriented-Bounding-Box.html
 #https://github.com/logicatcore/scratchpad/blob/master/_notebooks/2021-04-20-2D-Oriented-Bounding-Box.ipynb
 #https://colab.research.google.com/github/logicatcore/scratchpad/blob/master/_notebooks/2021-04-20-3D-Oriented-Bounding-Box.ipynb
+
+def draw3Dbox(ax, corners3d, color, label=None):
+    """
+        7 -------- 4
+       /|         /|
+      6 -------- 5 .
+      | |        | |
+      . 3 -------- 0
+      |/         |/
+      2 -------- 1
+
+        rrc=[[x0, ...,x7],
+            [y0, ...,y7],
+            [z0, ...,z7]]
+    """
+    # z1 plane boundary
+    ax.plot(corners3d[0, 0:2], corners3d[1, 0:2], corners3d[2, 0:2], color=color, label=label)
+    ax.plot(corners3d[0, 1:3], corners3d[1, 1:3], corners3d[2, 1:3], color=color)
+    ax.plot(corners3d[0, 2:4], corners3d[1, 2:4], corners3d[2, 2:4], color=color)
+    ax.plot(corners3d[0, [3,0]], corners3d[1, [3,0]], corners3d[2, [3,0]], color=color)
+
+    # z2 plane boundary
+    ax.plot(corners3d[0, 4:6], corners3d[1, 4:6], corners3d[2, 4:6], color=color)
+    ax.plot(corners3d[0, 5:7], corners3d[1, 5:7], corners3d[2, 5:7], color=color)
+    ax.plot(corners3d[0, 6:], corners3d[1, 6:], corners3d[2, 6:], color=color)
+    ax.plot(corners3d[0, [7, 4]], corners3d[1, [7, 4]], corners3d[2, [7, 4]], color=color)
+
+    # z1 and z2 connecting boundaries
+    ax.plot(corners3d[0, [0, 4]], corners3d[1, [0, 4]], corners3d[2, [0, 4]], color=color)
+    ax.plot(corners3d[0, [1, 5]], corners3d[1, [1, 5]], corners3d[2, [1, 5]], color=color)
+    ax.plot(corners3d[0, [2, 6]], corners3d[1, [2, 6]], corners3d[2, [2, 6]], color=color)
+    ax.plot(corners3d[0, [3, 7]], corners3d[1, [3, 7]], corners3d[2, [3, 7]], color=color)
+
 def draw2DRectangle(ax, rectangleCoordinates, color, label=None):
     # diagonal line
     # plt.plot([x1, x2], [y1, y2], linestyle='dashed')
-    # four sides of the rectangle
-    ax.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color=color, label=label) # | (up)
-    ax.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color=color) # -->
-    ax.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color=color)    # | (down)
-    ax.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color=color)    # <--
+    # rectangleCoordinates(2=xy, 4 corners):
+    #[[x0, x1, x2, x3],
+    # [y0, y1, y2, y3]
+    # four sides of the rectangle 
+    ax.plot(rectangleCoordinates[0, 0:2], rectangleCoordinates[1, 0:2], color=color, label=label) # line from c0->c1
+    ax.plot(rectangleCoordinates[0, 1:3], rectangleCoordinates[1, 1:3], color=color) # c1->c2
+    ax.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color=color) # c2->c3
+    ax.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color=color) # c3->c0
 
 def get_box_corners(cxyz, lwh, heading):
     #box: [xyz,lwh,rz]
@@ -79,7 +115,7 @@ def refine_box(anchor, cx, cy, cz, l,w,h, heading, max_l, max_w):
     return cxyz, lwh, heading, bev_corners
 
 def refine_boxes(approx_boxes, approx_boxes_labels):
-    refined_boxes = np.zeros((approx_boxes.shape[0],15))
+    refined_boxes = np.zeros((approx_boxes.shape[0],16))
     #poses_inv = np.array(poses_inv) # (M infos, 4, 4)
 
     for label in np.unique(approx_boxes_labels):
@@ -112,6 +148,8 @@ def refine_boxes(approx_boxes, approx_boxes_labels):
         # ry_box_v = ry_maxhbox_vm + ry_vm_v #(m)
         
         boxes_this_label = refine_boxes_this_label(boxes_this_label, max_l, max_w, max_h=max_h) #, cz_max_h=cz_in_v, rys=ry_box_v
+        labels = label * np.ones((boxes_this_label.shape[0], 1))
+        boxes_this_label = np.concatenate((boxes_this_label, labels), axis = -1)
         refined_boxes[boxes_this_label_mask,:]= boxes_this_label
     
     refined_boxes = np.array(refined_boxes)

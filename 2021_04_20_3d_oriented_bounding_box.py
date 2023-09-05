@@ -250,6 +250,19 @@ ax = fig.add_subplot(111, projection='3d')
 ax.scatter(realigned_coords[0,:], realigned_coords[1,:], realigned_coords[2,:], label="rotation and translation undone")
 ax.legend()
 
+"""
+        7 -------- 4
+       /|         /|
+      6 -------- 5 .
+      | |        | |
+      . 3 -------- 0
+      |/         |/
+      2 -------- 1
+
+        rrc=[[x0, ...,x7],
+            [y0, ...,y7],
+            [z0, ...,z7]]
+"""
 # z1 plane boundary
 ax.plot(rrc[0, 0:2], rrc[1, 0:2], rrc[2, 0:2], color='b')
 ax.plot(rrc[0, 1:3], rrc[1, 1:3], rrc[2, 1:3], color='b')
