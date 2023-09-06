@@ -14,6 +14,7 @@ from third_party.OpenPCDet.tools.estimate_ground import estimate_ground
 from third_party.OpenPCDet.pcdet.utils import box_utils
 import multiprocessing as mp
 from functools import partial
+from matplotlib.lines import Line2D
 
 # import open3d as o3d
 import os
@@ -544,11 +545,11 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
 
             #Add labels_only_in_frame_view
             if len(labels_only_in_frame_view):
-                label_mapping_frame_view = {old_label:i+max_label for i, old_label in enumerate(sorted(labels_only_in_frame_view))}
+                label_mapping_frame_view = {old_label:i+max_label+1 for i, old_label in enumerate(sorted(labels_only_in_frame_view))}
                 for old_lbl, new_lbl in label_mapping_frame_view.items():
                     new_labels[labels == old_lbl] = new_lbl
                     cluster2frame_id_dict[new_lbl] = [frame_idx]
-                max_label = np.max(labels_only_in_frame_view) + max_label
+                max_label = np.max(new_labels)
                 #save max cluster id
                 path = save_seq_path / 'max_cluster_id.pkl'
                 max_cluster_id_dict['max_cluster_id'] = max_label
@@ -593,7 +594,7 @@ def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
         pc = dataset.get_lidar(seq_name, sample_idx)
         labels = dataset.get_cluster_labels(seq_name, sample_idx)
 
-        approx_boxes_this_pc = np.empty((0, 18))
+        approx_boxes_this_pc = np.empty((0, 18)) #cxyz, lwh, heading, bev_corners.flatten(), frame_info_idx, num_points in this box, label
         for label in np.unique(labels):
             if label == -1:
                 continue
@@ -611,7 +612,8 @@ def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
             # corner0-3 are BEV box corners in lidar frame
         
         # Fitting boxes done for this pc
-        info['approx_boxes'] = approx_boxes_this_pc
+        assert np.unique(labels).shape[0] - 1 == approx_boxes_this_pc.shape[0]
+        info['approx_boxes'] = approx_boxes_this_pc.astype(np.float32)
 
         if show_plots:
             gt_boxes = info['annos']['gt_boxes_lidar']
@@ -638,7 +640,7 @@ def refine_boxes_seq(seq_name, dataset, show_plots=False):
         num_boxes_per_pc[i] = info['approx_boxes'].shape[0]
         approx_boxes= np.vstack([approx_boxes, info['approx_boxes']])
     
-    #Refine boxes
+    #Refine boxes cxyz, lwh, heading, bev_corners.flatten(), label
     refined_boxes = refine_boxes(approx_boxes, approx_boxes_labels=approx_boxes[:,-1])
     print(f'Refining boxes Done.')
 
@@ -659,9 +661,9 @@ def refine_boxes_seq(seq_name, dataset, show_plots=False):
 
             gt_boxes_corners = np.zeros((gt_boxes.shape[0], 8))
         
-            for i in range(gt_boxes.shape[0]):
-                corners = get_box_corners(gt_boxes[i, :3], gt_boxes[i, 3:6], gt_boxes[i, 6])
-                gt_boxes_corners[i, :] = corners.flatten()
+            for j in range(gt_boxes.shape[0]):
+                corners = get_box_corners(gt_boxes[j, :3], gt_boxes[j, 3:6], gt_boxes[j, 6])
+                gt_boxes_corners[j, :] = corners.flatten()
 
             gt_boxes = np.hstack([gt_boxes, gt_boxes_corners])
             
@@ -680,7 +682,7 @@ def refine_boxes_seq(seq_name, dataset, show_plots=False):
     for i, info in enumerate(infos):
         num_boxes = num_boxes_per_pc[i]
         boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
-        info['refined_boxes'] = boxes_this_pc
+        info['refined_boxes'] = boxes_this_pc.astype(np.float32)
         info['cluster_labels_refined_boxes'] = refined_boxes[ind:ind+num_boxes, -1]
         ind += num_boxes
     
@@ -699,7 +701,7 @@ def transform_box(box, pose):
     Transformed boxes of shape [..., N, 7] with the same type as box.
     """
     transform = pose 
-    heading = box[..., -1] + np.arctan2(transform[..., 1, 0], transform[..., 0,
+    heading = box[..., 6] + np.arctan2(transform[..., 1, 0], transform[..., 0,
                                                                     0]) # heading of obj x/front axis wrt world x axis = rz (angle b/w obj x and ego veh x) + angle between ego veh x and world x axis
     center = np.einsum('...ij,...nj->...ni', transform[..., 0:3, 0:3],
                     box[..., 0:3]) + np.expand_dims(
@@ -707,34 +709,36 @@ def transform_box(box, pose):
 
     return np.concatenate([center, box[..., 3:6], heading[..., np.newaxis]], axis=-1)
 
-def convert_detection_to_global_box(det_key, infos, cluster2frame_id_dict=None):
+def convert_detection_to_global_box(det_key, infos, dataset, cluster2frame_id_dict=None):
     for info in infos:
         pose_v_to_w = info['pose']
         box3d_in_v = info[det_key]
         box3d_in_w = transform_box(box3d_in_v, pose_v_to_w)
+        cluster_labels = info['cluster_labels_refined_boxes']
 
         num_box = len(box3d_in_w)
 
         anno_list =[] # detection list for this pc
-        corners3d = box_utils.boxes_to_corners_3d(box3d_in_w[:, :7])
+        corners3d = box_utils.boxes_to_corners_3d(box3d_in_w[:, :7]) #(num boxes, 8 corners, 3 xyz)
         for i in range(num_box):
-            cluster_id = box3d_in_w[i, -1]
-            bev_corners = get_box_corners(box3d_in_w[i, :3])
+            cluster_id = cluster_labels[i]
+            bev_corners = get_box_corners(box3d_in_w[i, :3], box3d_in_w[i, 3:6], box3d_in_w[i, -1]) # (4 corners, 2 xy)
             anno = {
                 'translation': box3d_in_w[i, :3],
-                'dxdydz': box3d_in_w[i, 3:6],
+                'lwh': box3d_in_w[i, 3:6],
                 'heading': box3d_in_w[i, -1],
-                'corners3d': corners3d[i, 3*8],
+                'corners3d': corners3d[i, :, :],
                 'bev_corners': bev_corners,
                 'box_id': i,
-                'cluster_id': box3d_in_w[i, -1],
+                'cluster_id': cluster_labels[i],
 
             }
 
             # Only track boxes ocurring in single frames only
-            if cluster2frame_id_dict is not None and cluster2frame_id_dict[cluster_id].len() > 1:
+            if cluster2frame_id_dict is not None and len(cluster2frame_id_dict[cluster_id]) < 3:
                 anno_list.append(anno)
-            else:
+            
+            if cluster2frame_id_dict is None:
                 anno_list.append(anno)
         
         info[f'{det_key}_to_track_in_w'] = anno_list #(M, 18)
@@ -744,7 +748,7 @@ def convert_detection_to_global_box(det_key, infos, cluster2frame_id_dict=None):
 def track(infos, dataset, direction='forward', det_key='approx_boxes'):
     last_time_stamp = 1e-6 * infos[0]['metadata']['timestamp_micros'] #first frame time
 
-    tracker = Tracker(max_age=3, max_dist=1, matcher='greedy')
+    tracker = Tracker(max_age=3, max_dist=3, matcher='greedy')
     
     for i, info in enumerate(infos):
         cur_timestamp = 1e-6 * info['metadata']['timestamp_micros']
@@ -752,12 +756,12 @@ def track(infos, dataset, direction='forward', det_key='approx_boxes'):
         last_time_stamp = cur_timestamp
 
         ############### For visualization ##################
-        seq_name = info['point_cloud']['sequence_name']
+        seq_name = info['point_cloud']['lidar_sequence']
         sample_idx = info['point_cloud']['sample_idx']
         curr_pc = dataset.get_lidar(seq_name, sample_idx)
         curr_pc[:,:3] = transform_pc_to_world(curr_pc[:,:3], info['pose'])
         if i > 0:
-            last_pc = dataset.get_lidar(infos[i-1]['point_cloud']['sequence_name'], 
+            last_pc = dataset.get_lidar(infos[i-1]['point_cloud']['lidar_sequence'], 
                                         infos[i-1]['point_cloud']['sample_idx'])
             last_pc[:,:3] = transform_pc_to_world(last_pc[:,:3], infos[i-1]['pose'])
         else:
@@ -766,7 +770,7 @@ def track(infos, dataset, direction='forward', det_key='approx_boxes'):
         ####################################################
 
 
-        outputs = tracker.step_centertrack(info[f'{det_key}_to_track_in_w'], time_lag)
+        outputs = tracker.step_centertrack(info[f'{det_key}_to_track_in_w'], time_lag, visualize)
         tracking_ids = []
         box_ids = []
         active = [] 
@@ -788,25 +792,25 @@ def track_boxes_seq(seq_name, dataset, track_single_occurance_clusters=False):
         infos = pickle.load(f) #seq_infos
     
     cluster2frame_id_dict = None
-    # if track_single_occurance_clusters:
-    #     path = dataset.label_root_path / seq_name / 'cluster2frame_id_dict.pkl'
-    #     with open(path, 'rb') as f:
-    #         cluster2frame_id_dict = pickle.load(f) #seq_infos
+    if track_single_occurance_clusters:
+        path = dataset.label_root_path / seq_name / 'cluster2frame_id_dict.pkl'
+        with open(path, 'rb') as f:
+            cluster2frame_id_dict = pickle.load(f) #seq_infos
     
     # path = dataset.label_root_path / seq_name / 'max_cluster_id.pkl'
     # with open(path, 'rb') as f:
     #     max_cluster_id = pickle.load(f) #seq_infos
 
-    det_key = 'approx_boxes'
-    infos = convert_detection_to_global_box(det_key, infos, cluster2frame_id_dict=cluster2frame_id_dict)
+    det_key = 'refined_boxes'
+    infos = convert_detection_to_global_box(det_key, infos, dataset, cluster2frame_id_dict=cluster2frame_id_dict)
     infos = track(infos, dataset, direction='forward', det_key=det_key)
-    infos = track(infos[::-1], direction='backward', det_key=det_key)
+    infos = track(infos[::-1], dataset, direction='backward', det_key=det_key)
 
     with open(approx_boxes_path, 'wb') as f:
         pickle.dump(infos, f)
 
 def get_all_labels(dataset, infos):
-    labels = np.empty((0,1))
+    labels = np.empty(0)
     for info in infos:
         pc_info = info['point_cloud']
         seq_name = pc_info['lidar_sequence']
@@ -814,7 +818,7 @@ def get_all_labels(dataset, infos):
 
         #points in current vehicle frame
         labels_this_pc = dataset.get_cluster_labels(seq_name, sample_idx)
-        labels = np.vstack([labels, labels_this_pc])
+        labels = np.hstack([labels, labels_this_pc])
     
     return labels.flatten()
 
@@ -1015,7 +1019,7 @@ def cluster_all(dataset, show_plots=False):
     with mp.Pool(num_workers) as p:
         list(tqdm(p.imap(cluster_single_seq, seq_name_list), total=len(seq_name_list)))
 
-def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None, boxes3=None, label3=None, savefig_path=None):
+def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None, boxes3=None, label3=None, savefig_path=None, show_rot=False):
     fig=plt.figure(figsize=(20,20))
     ax = fig.add_subplot(111)
     ax.set_xlabel('x')
@@ -1023,26 +1027,32 @@ def show_bev_boxes(pc, boxes1, label1, boxes2=None, label2=None, boxes3=None, la
     ax.scatter(pc[:,0], pc[:,1], s=2)
     ax.arrow(0,0,2,0, facecolor='red', linewidth=1, width=0.5) #x-axis
     ax.arrow(0,0,0,2, facecolor='green', linewidth=1, width=0.5) #y-axis
+    handles =[]
 
     bev_corners1 = boxes1[:, 7:15].reshape((-1,4,2))
-    draw2DRectangle(ax, bev_corners1[0].T, color='k', label=label1)
+    handles.append(Line2D([0], [0], label=label1, color='k'))
     for i in range(bev_corners1.shape[0]):
         draw2DRectangle(ax, bev_corners1[i].T, color='k')
+        if show_rot:
+            ax.text(boxes1[i, 0], boxes1[i, 1],  "{:.2f}".format(np.rad2deg(boxes1[i, 6])), color='black', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
 
     if boxes2 is not None:
+        handles.append(Line2D([0], [0], label=label2, color='m'))
         bev_corners2 = boxes2[:, 7:15].reshape((-1,4,2))
-        draw2DRectangle(ax, bev_corners2[0].T, color='m', label=label2)
         for i in range(bev_corners2.shape[0]):   
             draw2DRectangle(ax, bev_corners2[i].T, color='m')
     
     if boxes3 is not None:
         bev_corners3 = boxes3[:, 7:15].reshape((-1,4,2))
-        draw2DRectangle(ax, bev_corners3[0].T, color='g', label=label3)
+        handles.append(Line2D([0], [0], label=label3, color='g'))
         for i in range(bev_corners3.shape[0]):   
             draw2DRectangle(ax, bev_corners3[i].T, color='g')
+            if show_rot:
+                ax.text(boxes3[i, 0]+0.3, boxes3[i, 1]+0.3,  "{:.2f}".format(np.rad2deg(boxes3[i, 6])), color='black', fontsize = 10, bbox=dict(facecolor='green', alpha=0.5))
 
+
+    ax.legend(handles=handles, fontsize='large', loc='upper right')
     ax.grid()
-    ax.legend()
     if savefig_path is not None:
         plt.savefig(savefig_path)
     else:
@@ -1180,7 +1190,7 @@ def visualize_aggregate_pcd_clusters_in_world(seq_name, dataset, approx_infos, i
 
 def visualize_aggregate_pcd_clusters_in_frame_i(seq_name, dataset, approx_infos, i=-1):
     xyzi_last_vehicle, _ = dataset.aggregate_pcd_in_frame_i(seq_name, i)
-    labels = get_all_labels(seq_name, dataset, approx_infos)
+    labels = get_all_labels(dataset, approx_infos)
     visualize_pcd_clusters(xyzi_last_vehicle[:,:3], labels.reshape((-1,1)))
 
 def visualize_seq(seq_name, dataset):
@@ -1190,20 +1200,22 @@ def visualize_seq(seq_name, dataset):
 
     print(f'Visualizing Sequence: {seq_name}')
 
-    print(f'Visualizing Clusters in last frame')
-    visualize_aggregate_pcd_clusters_in_frame_i(seq_name, dataset, approx_infos, i=-1)
+    #print(f'Visualizing Clusters in last frame')
+    #visualize_aggregate_pcd_clusters_in_frame_i(seq_name, dataset, approx_infos, i=-1)
     
-    for info in approx_infos:
+    for i, info in enumerate(approx_infos):
         gt_boxes = info['annos']['gt_boxes_lidar']
         approx_boxes = info['approx_boxes']
         det_boxes = info['refined_boxes']
 
         pc_info = info['point_cloud']
         sample_idx = pc_info['sample_idx']
-        print(f'Sample idx: {sample_idx}')
+
+        print(f'Visualizing Sample idx: {sample_idx}')
 
         pc = dataset.get_lidar(seq_name, sample_idx)
         labels = dataset.get_cluster_labels(seq_name, sample_idx).flatten()
+        visualize_pcd_clusters(pc[:,:3], labels.reshape((-1,1)))
         
         gt_boxes_corners = np.zeros((gt_boxes.shape[0], 8))
         
@@ -1213,7 +1225,7 @@ def visualize_seq(seq_name, dataset):
 
         gt_boxes = np.hstack([gt_boxes, gt_boxes_corners])
 
-        show_bev_boxes(pc[labels>-1], approx_boxes, 'approx_boxes', det_boxes, 'refined_boxes', gt_boxes, 'gt_boxes')
+        show_bev_boxes(pc[labels>-1], approx_boxes, 'approx_boxes', det_boxes, 'refined_boxes', gt_boxes, 'gt_boxes', show_rot=False)
 
         #V.draw_scenes(pc, gt_boxes=approx_boxes[:,:7], ref_boxes=det_boxes[:,:7])
 
@@ -1267,8 +1279,8 @@ def main():
     dataset = WaymoDataset()
 
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
-    # dataset.estimate_ground_seq(seq_name)
-    # cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
+    #dataset.estimate_ground_seq(seq_name)
+    #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
     #cluster_seq_each_pc(seq_name, dataset, show_plots=False)
     
     #from gtboxes containing atleast 5 pts
@@ -1279,11 +1291,13 @@ def main():
     #     segment-10023947602400723454_1120_000_1140_000_with_camera_labels
     # sample_idx: 50, 180, 120         tp: 59, fn: 5, recall: 0.921875
     # dbscan_fn: 2, too_few_pts: 0 ,vol_too_big: 2 ,vol_too_small: 0 ,floating: 1 ,below_ground
+    # TODO: save approx and refined boxes as float32
 
-    # fit_approx_boxes_seq(seq_name, dataset, show_plots=False) #fit using closeness or min max?
-    # refine_boxes_seq(seq_name, dataset, show_plots=False)
+    #fit_approx_boxes_seq(seq_name, dataset, show_plots=False) #fit using closeness or min max?
+    #refine_boxes_seq(seq_name, dataset, show_plots=False)
+    #visualize_seq(seq_name, dataset)
 
-    track_boxes_seq(seq_name, dataset)
+    track_boxes_seq(seq_name, dataset, track_single_occurance_clusters = True)
     
 
 

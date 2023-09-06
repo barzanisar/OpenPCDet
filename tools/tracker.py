@@ -2,6 +2,9 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib as mpl
+from matplotlib.patches import Rectangle
+from matplotlib.lines import Line2D
 from scipy.optimize import linear_sum_assignment
 from third_party.OpenPCDet.tools import approx_bbox_utils
 
@@ -30,57 +33,161 @@ def hungarian_assignment(dist):
 
 MATCHER = {'greedy': greedy_assignment, 'hungarian': hungarian_assignment}
 
+def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matches=[]):
+  pc_last = visualize['last_pc']
+  pc_curr = visualize['curr_pc']
+  fig = plt.figure()
+  DPI = fig.get_dpi()
+  fig.set_size_inches(2080.0/float(DPI),1080.0/float(DPI))
+  ax = fig.add_subplot(111)
+  gt_colors = {
+        'car': 'blue',
+        'pedestrian': 'brown',
+        'cyclist': 'cyan'
+    }
+  gray = [153/255, 153/255, 153/255]
+  
+  # Show point cloud
+  ax.scatter(pc_last[:,0], pc_last[:,1], s=1, color=np.tile(gray,(pc_last.shape[0], 1)), label="pc_last")#np.tile(gray,(pc_last.shape[0], 1))
+  ax.scatter(pc_curr[:,0], pc_curr[:,1], s=1, color='cyan', label="pc_curr")#np.tile(gray,(pc_curr.shape[0], 1))
 
+  # Draw tracked boxes and their predicted centers
+  for track in tracks:
+    # Plot prev bbox in tracks
+    # label='prev_tracked_boxes'
+    #box = np.hstack([track['translation'], track['lwh'], track['heading']])
+    #approx_bbox_utils.draw2DPatchRect(ax, box, color='black')
+    approx_bbox_utils.draw2DRectangle(ax, track['bev_corners'].T, color='black')
+    
+    # plot predicted ct of tracks
+    prev_ct = track['ct']
+    dxdy = track['velocity']*time_lag
+    ax.arrow(prev_ct[0], prev_ct[1], dxdy[0], dxdy[1], linewidth=1, color='black')
+    predicted_ct = prev_ct + dxdy
+    ax.plot(predicted_ct[0], predicted_ct[1], 'x', color='black')
+    # ax.plot([prev_ct[0], predicted_ct[0]], 
+    #         [prev_ct[1], predicted_ct[1]], '--k')
+  
+  for det in dets:
+    #Plot curr dets
+    ##box = np.hstack([det['translation'], det['lwh'], det['heading']])
+    ##approx_bbox_utils.draw2DPatchRect(ax, box, color='green')
+    approx_bbox_utils.draw2DRectangle(ax, det['bev_corners'].T, color='green')
+    ax.plot(det['ct'][0], det['ct'][1], 'x', color='green')
+  
+  #plot unmatched but valid distances between predicted ct of tracks and curr det's ct 
+  valid = np.logical_not(invalid)
+  for det_i in range(valid.shape[0]):
+    valid_tracks_idx_for_det_i = valid[det_i].nonzero()[0]
+    matching_track_j = matches[np.where(matches[:,0]==det_i)[0],1]
+    if len(matching_track_j) == 0:
+      matching_track_j = None
+
+    for track_j in valid_tracks_idx_for_det_i:
+      if track_j != matching_track_j:
+        track = tracks[track_j]
+        predicted_ct = track['ct'] + track['velocity']*time_lag
+        det = dets[det_i]
+
+        dxdy = det['ct'] - predicted_ct
+        ax.arrow(predicted_ct[0], predicted_ct[1], dxdy[0], dxdy[1], linewidth=1, color='yellow')
+        # ax.plot([predicted_ct[0], det['ct'][0]], 
+        #         [predicted_ct[1], det['ct'][1]], '--g')
+        text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
+        text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
+
+        ax.text(text_x-0.1, text_y-0.1,  "{:.2f}".format(dist[det_i, track_j]), color='gray', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
+
+  #arrow from predicted ct of track to matched det's ct
+  for m in matches:
+    det = dets[m[0]]
+    track = tracks[m[1]]
+    predicted_ct = track['ct'] + track['velocity']*time_lag
+
+    dxdy = det['ct'] - predicted_ct
+    ax.arrow(predicted_ct[0], predicted_ct[1], dxdy[0], dxdy[1], linewidth=1, color='green')
+    # ax.plot([predicted_ct[0], det['ct'][0]], 
+    #         [predicted_ct[1], det['ct'][1]],
+    #         '--r', linewidth = 4)
+    text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
+    text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
+    ax.text(text_x+0.1, text_y+0.1, "{:.2f}".format(dist[m[0], m[1]]), color='gray', fontsize = 10, bbox=dict(facecolor='pink', alpha=0.5))
+  
+  # ax.set_xlim(-100,100)
+  # ax.set_ylim(-100,100)
+  handles = [
+      Line2D([0], [0], label='tracks', color='black'),
+      Line2D([0], [0], label='detections', color='green'),
+      Line2D([0], [0], label='match', color='red'),
+      # Line2D([0], [0], label='car', color=gt_colors['car']),
+      # Line2D([0], [0], label='pedestrian', color=gt_colors['pedestrian']),
+      # Line2D([0], [0], label='cyclist', color=gt_colors['cyclist'])
+  ]
+  ax.legend(handles=handles, fontsize='large', loc='upper right')
+  ax.axis('off')
+  fig.subplots_adjust(bottom = 0)
+  fig.subplots_adjust(top = 1)
+  fig.subplots_adjust(right = 1)
+  fig.subplots_adjust(left = 0)
+  ax.axis('on')
+  plt.show()
+  b=1
+
+  
 def visualize_tracks_3d(visualize, tracks, dets, invalid, dist, time_lag, matches=[]):
   pc_last = visualize['last_pc']
   pc_curr = visualize['curr_pc']
   fig = plt.figure()
   ax = fig.add_subplot(111, projection='3d')
-  ax.scatter(pc_last[:,0], pc_last[:,1], pc_last[:,2], color='k', label="pc_last")
-  ax.scatter(pc_curr[:,0], pc_curr[:,1], pc_curr[:,2], color='r', label="pc_curr")
+  ax.scatter(pc_last[:,0], pc_last[:,1], pc_last[:,2], s=0.01, color='k', label="pc_last")
+  ax.scatter(pc_curr[:,0], pc_curr[:,1], pc_curr[:,2], s=0.01, color='r', label="pc_curr")
   for i, track in enumerate(tracks):
     #Plot prev bbox in tracks
-    approx_bbox_utils.draw3Dbox(ax, track['corners3d'], color='k', label='prev_tracked_boxes' if i == 0 else None)
+    approx_bbox_utils.draw3Dbox(ax, track['corners3d'].T, color='k', label='prev_tracked_boxes' if i == 0 else None)
     
     # plot predicted ct of tracks
     prev_ct = track['ct']
     predicted_ct = prev_ct + track['velocity']*time_lag
-    ax.plot([prev_ct[0], predicted_ct[0]], [prev_ct[1], predicted_ct[1]], '--k')
+    ax.plot([prev_ct[0], predicted_ct[0]], 
+            [prev_ct[1], predicted_ct[1]], 
+            [track['translation'][2], track['translation'][2]], '--k')
   
 
   for i, det in enumerate(dets):
     #Plot curr dets
-    approx_bbox_utils.draw3Dbox(ax, det['corners3d'], color='g', label='curr_dets' if i == 0 else None)
+    approx_bbox_utils.draw3Dbox(ax, det['corners3d'].T, color='g', label='curr_dets' if i == 0 else None)
     
   #plot valid distances between predicted ct of tracks and curr det's ct
+  valid = np.logical_not(invalid)
   for det_i in range(invalid.shape[0]):
-    valid_tracks_idx_for_det_i = np.logical_not(invalid).nonzero()[0]
-    # if matches is not None and det_i in matches[:, 0]:
-    #   idx, = np.where(matches[:, 0] == det_i)
-    #   matched_track_j = matches[idx, 1]
+    valid_tracks_idx_for_det_i = valid[det_i].nonzero()[0]
+
     for track_j in valid_tracks_idx_for_det_i:
       track = tracks[track_j]
       predicted_ct = track['ct'] + track['velocity']*time_lag
       det = dets[det_i]
 
-      # if matches is not None and track_j == matched_track_j:
-      #   ax.plot([predicted_ct[0], det['ct'][0]], [predicted_ct[1], det['ct'][1]], '--r', linewidth = 1)
-      # else:
-      ax.plot([predicted_ct[0], det['ct'][0]], [predicted_ct[1], det['ct'][1]], '--g')
+      ax.plot([predicted_ct[0], det['ct'][0]], 
+              [predicted_ct[1], det['ct'][1]], 
+              [track['translation'][2], det['translation'][2]], '--g')
       text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
       text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
       text_z = 0.5 * (track['translation'][2] + det['translation'][2])
-      ax.text(text_x, text_y, text_z, dist[det_i, track_j], color='k', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
+
+      #ax.text(text_x, text_y, text_z, "{:.2f}".format(dist[det_i, track_j]), color='k', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
 
   for m in matches:
     det = dets[m[0]]
     track = tracks[m[1]]
     predicted_ct = track['ct'] + track['velocity']*time_lag
-    ax.plot([predicted_ct[0], det['ct'][0]], [predicted_ct[1], det['ct'][1]], '--r', linewidth = 4)
+    ax.plot([predicted_ct[0], det['ct'][0]], 
+            [predicted_ct[1], det['ct'][1]], 
+            [track['translation'][2], det['translation'][2]],
+            '--r', linewidth = 4)
     text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
     text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
     text_z = 0.5 * (track['translation'][2] + det['translation'][2])
-    ax.text(text_x, text_y, text_z, dist[m[0], m[1]], color='k', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
+    #ax.text(text_x, text_y, text_z, "{:.2f}".format(dist[m[0], m[1]]), color='k', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
 
   ax.set_xlabel('x')
   ax.set_ylabel('y')
@@ -90,7 +197,7 @@ def visualize_tracks_3d(visualize, tracks, dets, invalid, dist, time_lag, matche
 
 
 class PubTracker(object):
-  def __init__(self, max_age=0, max_dist=1.5, matcher = 'greedy'):
+  def __init__(self, max_age=0, max_dist=3, matcher = 'greedy'):
     self.max_age = max_age
 
     #self.WAYMO_CLS_VELOCITY_ERROR = max_dist 
@@ -123,7 +230,7 @@ class PubTracker(object):
     # dets: N X 2 center xy of all curr frame dets (in world frame)
     dets = np.array([det['ct'] for det in dets_to_track], np.float32) 
 
-    max_diff = np.array([min(1.5, 3 * max(box['dxdydz'][0], box['dxdydz'][1])) for box in dets_to_track], np.float32) # N max acceptable diff for curr detections
+    #max_diff = np.array([max(1.5, 3 * max(box['lwh'][0], box['lwh'][1])) for box in dets_to_track], np.float32) # N max acceptable diff for curr detections
 
     # move tprev detections center xy forward to curr time t to match with curr det  
     tracks = np.array(
@@ -139,12 +246,12 @@ class PubTracker(object):
                 dets.reshape(-1, 1, 2)) ** 2).sum(axis=2))  # N=500 dets x M=19 tracks    (19 tracks ct - 500 det ct)**2 -> (500, 19, 2) -> sum -> (500, 19)
       dist = np.sqrt(dist) # absolute distance in meter (500, 19) distance matrix
 
-      invalid = dist > max_diff.reshape(N, 1) # dist > self.max_dist_thresh #dist (500 dets, 19 tracks) > (500 max dist, 1) -> (500, 19) matrix with true values if dist is bigger 
+      invalid = dist > self.max_dist_thresh #dist > max_diff.reshape(N, 1) #  dist (500 dets, 19 tracks) > (500 max dist, 1) -> (500, 19) matrix with true values if dist is bigger 
       dist = dist  + invalid * 1e18 # fill invalid matches with inf dist
-      if visualize is not None:
-        visualize_tracks_3d(visualize, self.tracks, dets_to_track)
       
       matched_indices = self.matcher_func(copy.deepcopy(dist)) #greedy_assignment(copy.deepcopy(dist))
+      if visualize is not None:
+        visualize_tracks_2d(visualize, self.tracks, dets_to_track, invalid, dist, time_lag, matches=matched_indices)
     else:  # first few frame
       assert M == 0
       matched_indices = np.array([], np.int32).reshape(-1, 2) #(0,2) matched index in curr dets, matched index in tracks
