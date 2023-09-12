@@ -53,25 +53,6 @@ def draw2DRectangle(ax, rectangleCoordinates, color, label=None):
     ax.plot(rectangleCoordinates[0, 2:], rectangleCoordinates[1, 2:], color=color) # c2->c3
     ax.plot([rectangleCoordinates[0, 3], rectangleCoordinates[0, 0]], [rectangleCoordinates[1, 3], rectangleCoordinates[1, 0]], color=color) # c3->c0
 
-def draw2DPatchRect(ax, box3d, color):
-    # Does not work
-    cx, cy = box3d[0], box3d[1]
-    heading = box3d[-1]
-    l,w = box3d[3], box3d[4]
-    transform = mpl.transforms.Affine2D().rotate_deg_around(cx, cy, heading) + ax.transData
-    bot_x, bot_y = cx - l/2, cy - w/2
-    rectangle = Rectangle(
-        [bot_x, bot_y],  # (x, y) coordinates of the bottom left corner   
-        l, # Width of the rectangle
-        w,  # Height of the rectangle,
-        linewidth=2,
-        edgecolor=color, #'blue',   # Color of the rectangle's border
-        facecolor='none'    # Transparent inside the rectangle
-    )
-    rectangle.set_transform(transform)
-    ax.add_patch(rectangle)
-    ax.plot(cx, cy, 'x', color=color)
-
 def get_box_corners(cxyz, lwh, heading):
     #box: [xyz,lwh,rz]
     rot = lambda theta: np.array([[np.cos(theta), -np.sin(theta), 0],

@@ -7,6 +7,10 @@ from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
 from scipy.optimize import linear_sum_assignment
 from third_party.OpenPCDet.tools import approx_bbox_utils
+from third_party.OpenPCDet.pcdet.ops.iou3d_nms import iou3d_nms_utils
+import torch
+
+
 
 def greedy_assignment(dist):
   matched_indices = []
@@ -54,9 +58,6 @@ def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matche
   # Draw tracked boxes and their predicted centers
   for track in tracks:
     # Plot prev bbox in tracks
-    # label='prev_tracked_boxes'
-    #box = np.hstack([track['translation'], track['lwh'], track['heading']])
-    #approx_bbox_utils.draw2DPatchRect(ax, box, color='black')
     approx_bbox_utils.draw2DRectangle(ax, track['bev_corners'].T, color='black')
     
     # plot predicted ct of tracks
@@ -64,14 +65,13 @@ def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matche
     dxdy = track['velocity']*time_lag
     ax.arrow(prev_ct[0], prev_ct[1], dxdy[0], dxdy[1], linewidth=1, color='black')
     predicted_ct = prev_ct + dxdy
+    # ax.plot(prev_ct[0], prev_ct[1], 'x', color='black')
     ax.plot(predicted_ct[0], predicted_ct[1], 'x', color='black')
     # ax.plot([prev_ct[0], predicted_ct[0]], 
     #         [prev_ct[1], predicted_ct[1]], '--k')
   
   for det in dets:
     #Plot curr dets
-    ##box = np.hstack([det['translation'], det['lwh'], det['heading']])
-    ##approx_bbox_utils.draw2DPatchRect(ax, box, color='green')
     approx_bbox_utils.draw2DRectangle(ax, det['bev_corners'].T, color='green')
     ax.plot(det['ct'][0], det['ct'][1], 'x', color='green')
   
@@ -202,6 +202,9 @@ class PubTracker(object):
 
     #self.WAYMO_CLS_VELOCITY_ERROR = max_dist 
     self.max_dist_thresh = max_dist # 1m
+    self.inv_iou3d_w = 1.0
+    self.dist_w = 0
+    self.min_iou3d_thresh = 0.25
 
     self.reset()
 
@@ -228,30 +231,63 @@ class PubTracker(object):
     M = len(self.tracks) # previous tracked detections
 
     # dets: N X 2 center xy of all curr frame dets (in world frame)
-    dets = np.array([det['ct'] for det in dets_to_track], np.float32) 
+    # dets = np.array([det['ct'] for det in dets_to_track], np.float32) 
+    dets = np.array([det['translation'] for det in dets_to_track], np.float32) 
 
-    #max_diff = np.array([max(1.5, 3 * max(box['lwh'][0], box['lwh'][1])) for box in dets_to_track], np.float32) # N max acceptable diff for curr detections
-
+    max_diff = [] #np.array([max(1.5, 3 * max(box['lwh'][0], box['lwh'][1])) for box in dets_to_track], np.float32) # N max acceptable diff for curr detections
+    for box in dets_to_track:
+      max_dim = max(box['lwh'][:2])
+      if max_dim <= 1:
+        max_diff.append(3)
+      elif max_dim < 5:
+        max_diff.append(3)
+      else:
+        max_diff.append(7)
+    
+    max_diff = np.array(max_diff, np.float32)
     # move tprev detections center xy forward to curr time t to match with curr det  
-    tracks = np.array(
-      [pre_det['ct'] + pre_det['velocity']*time_lag for pre_det in self.tracks], np.float32) # M x 2 previous detections cx and cy in the prev frame (at time t-1)
+    # tracks = np.array(
+    #   [pre_det['ct'] + pre_det['velocity']*time_lag for pre_det in self.tracks], np.float32) # M x 2 previous detections cx and cy in the prev frame (at time t-1)
 
+    tracks = np.array(
+      [pre_det['translation'] + pre_det['vxyz']*time_lag for pre_det in self.tracks], np.float32)
     if len(tracks) > 0:  # NOT FIRST FRAME
       # Visualize current and prev pc in world frame
       # visualize curr det boxes in w (dark green) and self.tracks boxes in world frame (black)
       # visualize projections of tracks in new frame (dotted black arrow from black box to pred cxyz)
       # Visualize valid det boxes for all tracks and colour invalid boxes with yellow
       # draw solid green line connecting valid dets and predicted cxcy location of tracks, with distance annotated
-      dist = (((tracks.reshape(1, -1, 2) - \
-                dets.reshape(-1, 1, 2)) ** 2).sum(axis=2))  # N=500 dets x M=19 tracks    (19 tracks ct - 500 det ct)**2 -> (500, 19, 2) -> sum -> (500, 19)
+      dist = (((tracks.reshape(1, -1, 3) - \
+                dets.reshape(-1, 1, 3)) ** 2).sum(axis=2))  # N=500 dets x M=19 tracks    (19 tracks ct - 500 det ct)**2 -> (500, 19, 2) -> sum -> (500, 19)
       dist = np.sqrt(dist) # absolute distance in meter (500, 19) distance matrix
 
-      invalid = dist > self.max_dist_thresh #dist > max_diff.reshape(N, 1) #  dist (500 dets, 19 tracks) > (500 max dist, 1) -> (500, 19) matrix with true values if dist is bigger 
-      dist = dist  + invalid * 1e18 # fill invalid matches with inf dist
+      dist_invalid = dist > max_diff.reshape(N, 1) # dist > self.max_dist_thresh # dist (500 dets, 19 tracks) > (500 max dist, 1) -> (500, 19) matrix with true values if dist is bigger 
       
-      matched_indices = self.matcher_func(copy.deepcopy(dist)) #greedy_assignment(copy.deepcopy(dist))
+      det_boxes = np.zeros((N,7), np.float32)
+      det_boxes[:,3:6] = np.array([det['lwh'] for det in dets_to_track], np.float32)
+      #det_boxes[:,-1] = np.array([det['heading'] for det in dets_to_track], np.float32) #TODO: do we want zero heading or the original heading?
+      track_boxes = np.zeros((M, 7))
+      track_boxes[:,3:6] = np.array([det['lwh'] for det in self.tracks], np.float32)
+      #track_boxes[:,-1] = np.array([det['heading'] for det in self.tracks], np.float32)
+
+      iou3d,_,_ = iou3d_nms_utils.boxes_iou3d_gpu(torch.from_numpy(det_boxes).float().cuda(), 
+                                      torch.from_numpy(track_boxes).float().cuda())
+      
+      iou3d = iou3d.cpu().numpy()
+      iou3d_invalid = iou3d < self.min_iou3d_thresh
+      
+      invalid = np.logical_or(dist_invalid, iou3d_invalid)
+      inv_iou3d = 1 - iou3d #np.exp(1-iou3d) #np.abs(-np.log(iou3d+1e-6))
+
+      #Filtering
+      dist += invalid * 1e18 #fill invalid matches with inf dist
+      inv_iou3d += invalid * 1e18
+
+      affinity_matrix = self.dist_w * dist + self.inv_iou3d_w * inv_iou3d
+      
+      matched_indices = self.matcher_func(copy.deepcopy(affinity_matrix)) #greedy_assignment(copy.deepcopy(dist))
       if visualize is not None:
-        visualize_tracks_2d(visualize, self.tracks, dets_to_track, invalid, dist, time_lag, matches=matched_indices)
+        visualize_tracks_2d(visualize, self.tracks, dets_to_track, invalid, affinity_matrix, time_lag, matches=matched_indices)
     else:  # first few frame
       assert M == 0
       matched_indices = np.array([], np.int32).reshape(-1, 2) #(0,2) matched index in curr dets, matched index in tracks
@@ -271,6 +307,8 @@ class PubTracker(object):
       track['age'] = 1 
       track['active'] = self.tracks[m[1]]['active'] + 1 # number of frames this obj has been consecutively seen so far
       track['velocity'] = (dets_to_track[m[0]]['ct'] - self.tracks[m[1]]['ct'])/time_lag
+      track['vxyz'] = (dets_to_track[m[0]]['translation'] - self.tracks[m[1]]['translation'])/time_lag
+
       ret.append(track)
 
     for i in unmatched_dets: # Add unmatched high conf dets as new tracks using new tracking id 
@@ -281,6 +319,7 @@ class PubTracker(object):
       track['age'] = 1
       track['active'] =  1
       track['velocity'] = np.zeros(2)
+      track['vxyz'] = np.zeros(3)
       ret.append(track)
 
     # still store unmatched tracks if its age doesn't exceed max_age, however, we shouldn't output 
@@ -294,7 +333,8 @@ class PubTracker(object):
 
         # movement in the last second
         # move forward  (i.e. predict ct in curr frame t so that detections in frame t+1 can match with these tracks )
-        track['ct'] = ct + track['velocity']*time_lag 
+        track['ct'] = ct + track['velocity']*time_lag
+        track['translation'] = track['translation'] +  track['vxyz']*time_lag
         ret.append(track)
 
     self.tracks = ret

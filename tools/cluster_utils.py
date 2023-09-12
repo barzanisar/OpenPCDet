@@ -42,7 +42,7 @@ def is_valid_cluster(
     if ptc.shape[0] < min_points:
         return False, REJECT['too_few_pts']
     volume = np.prod(ptc.max(axis=0) - ptc.min(axis=0))
-    if volume > max_volume: # volume too big 
+    if max_volume is not None and volume > max_volume: # volume too big 
         return False, REJECT['vol_too_big']
     if volume < min_volume: # volume too small
         return False, REJECT['vol_too_small']

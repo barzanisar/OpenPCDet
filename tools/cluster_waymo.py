@@ -377,8 +377,8 @@ def cluster_in_aggregated(seq_name, dataset, show_plots=False):
     labels = cluster(xyz, above_plane_mask, eps=0.2)
     print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
     
-    # if show_plots:
-    #     visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
+    if show_plots:
+        visualize_pcd_clusters(xyz, labels.reshape((-1,1)))
 
     # Filter big volumes/smears of moving objects
     new_labels, rejection_tag  = filter_labels(xyz, labels,
@@ -453,11 +453,203 @@ def cluster_in_aggregated(seq_name, dataset, show_plots=False):
 
         label_this_pc.tofile(save_label_path.__str__())
 
+def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False):
+    save_seq_path = dataset.label_root_path / seq_name
+    os.makedirs(save_seq_path.__str__(), exist_ok=True)
+    os.makedirs((save_seq_path / 'rejection_tag').__str__(), exist_ok=True)
+    print(f'Clustering of sequence: {seq_name} started!')
+    
+    path = save_seq_path / 'max_cluster_id.pkl'
+    with open(path, 'rb') as f:
+        max_cluster_id_dict = pickle.load(f)
+    max_label = max_cluster_id_dict['max_cluster_id_aggregated']
+
+    # path = save_seq_path / 'cluster2frame_id_dict.pkl'
+    # with open(path, 'rb') as f:
+    #     cluster2frame_id_dict = pickle.load(f)
+
+    infos = dataset.infos_dict[seq_name]
+    start_info_indices = np.arange(0, len(infos)-num_frames_to_aggr+1)
+
+    for start_idx in start_info_indices:
+        
+        aggr_infos = infos[start_idx:start_idx+num_frames_to_aggr]
+        aggr_pcs_in_world = np.zeros((0,3))
+        aggr_ground_mask = np.zeros(0, dtype=np.bool_)
+        old_labels = np.zeros(0)
+        pc_lens = [] 
+        for i, info in enumerate(aggr_infos):
+            pc_info = info['point_cloud']
+            sample_idx = pc_info['sample_idx']
+            print(f'sample idx: {sample_idx}')
+            
+            xyzi = dataset.get_lidar(seq_name, sample_idx)
+            # if start_idx == start_info_indices[0] or i == len(aggr_infos)-1:
+            #     labels = -1. * np.ones(xyzi.shape[0], dtype=np.float16)
+            # else:
+            labels = dataset.get_cluster_labels(seq_name, sample_idx)
+            ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
+            xyzi[:,:3] = transform_pc_to_world(xyzi[:,:3], info['pose'])
+            pc_lens.append(xyzi.shape[0])
+            
+            
+            aggr_ground_mask = np.hstack([aggr_ground_mask, ground_mask])
+            if start_idx != start_info_indices[0] and i == len(aggr_infos)-1:
+                
+                old_labeled_pcd = o3d.geometry.PointCloud()
+                old_labeled_pcd.points = o3d.utility.Vector3dVector(aggr_pcs_in_world[old_labels>-1])
+
+                old_labeled_tree = o3d.geometry.KDTreeFlann(old_labeled_pcd)
+                new_labels = -1* np.ones_like(labels)
+                for l in np.unique(labels):
+                    if l == -1:
+                        continue
+                    points_new_lbl = xyzi[labels == l]
+                    for i in range(points_new_lbl.shape[0]):
+                        pt = points_new_lbl[i,:3]
+                        #Find its neighbors with distance less than 0.2
+                        [_, idx, _] = old_labeled_tree.search_radius_vector_3d(pt, 0.2)
+                        if len(idx):
+                            nearest_labels = old_labels[old_labels>-1][np.asarray(idx)]
+                            label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
+                            new_labels[labels == l] = label_of_majority
+                            break
+                
+                labels = new_labels
+            aggr_pcs_in_world = np.vstack([aggr_pcs_in_world, xyzi[:,:3]])
+            old_labels = np.hstack([old_labels, labels])
+
+        # Get new labels
+        labels = cluster(aggr_pcs_in_world, np.logical_not(aggr_ground_mask), eps=0.2)
+        print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
+        # if show_plots:
+        #     visualize_pcd_clusters(aggr_pcs_in_world, old_labels.reshape((-1,1)))
+        #     visualize_pcd_clusters(aggr_pcs_in_world, labels.reshape((-1,1)))
+
+        new_labels, label_wise_rejection_tag  = filter_labels(aggr_pcs_in_world, labels,
+                                    max_volume=None, min_volume=0.1, 
+                                    max_height_for_lowest_point=1, 
+                                    min_height_for_highest_point=0.5,
+                                    ground_mask = aggr_ground_mask)
+        
+        pt_wise_rejection_tag = np.zeros(aggr_pcs_in_world.shape[0], dtype=np.uint8) #zero means not rejected
+        for i in np.unique(labels):
+            if i == -1:
+                continue
+            pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[int(i)]
+
+
+        # if show_plots:
+        #     for key, val in REJECT.items():
+        #         rejected_labels = np.where(label_wise_rejection_tag == REJECT[key])[0]
+        #         if len(rejected_labels):
+        #             print(f'rejected_labels: {rejected_labels}')
+        #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+        #             visualize_selected_labels(aggr_pcs_in_world, labels.flatten(), rejected_labels)
+        
+        labels = remove_outliers_cluster(aggr_pcs_in_world, new_labels.flatten())
+        labels = get_continuous_labels(labels)
+        print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
+        # if show_plots:
+        #     #visualize_pcd_clusters(aggr_pcs_in_world, old_labels.reshape((-1,1)))
+        #     visualize_pcd_clusters(aggr_pcs_in_world, labels.reshape((-1,1)))
+
+        lbls_only_in_new_labels = []
+        label_new2old_dict = {}
+        label_majorityold2new_dict={}
+
+        for i in np.unique(labels):
+            if i == -1:
+                continue
+            old_lbls_for_lbl_i = old_labels[labels==i]
+            if old_lbls_for_lbl_i.max() == -1:
+                lbls_only_in_new_labels.append(i)
+            else:
+                obj_old_labels = old_lbls_for_lbl_i[old_lbls_for_lbl_i>-1]
+                label_new2old_dict[i] = {'majority_old_label': -1,
+                                         'old_labels': [],
+                                         'old_labels_count': []}
+                # old_labels_count = []
+                for old_lbl in np.unique(obj_old_labels):
+                    label_new2old_dict[i]['old_labels'].append(old_lbl)
+                    label_new2old_dict[i]['old_labels_count'].append((old_labels == old_lbl).sum())
+                
+                label_new2old_dict[i]['majority_old_label'] = label_new2old_dict[i]['old_labels'][np.argmax(label_new2old_dict[i]['old_labels_count'])]
+                if label_new2old_dict[i]['majority_old_label'] not in label_majorityold2new_dict:
+                    label_majorityold2new_dict[label_new2old_dict[i]['majority_old_label']] = [i]
+                else:
+                    label_majorityold2new_dict[label_new2old_dict[i]['majority_old_label']] += [i]
+        
+        for new_lbl, val in label_new2old_dict.items():
+            if len(val['old_labels']) > 1:
+                majority_old_label = val['majority_old_label']
+                for old_lbl in val['old_labels']:
+                    if old_lbl in label_majorityold2new_dict and new_lbl not in label_majorityold2new_dict[old_lbl]:
+                        new_ls = label_majorityold2new_dict[old_lbl]
+                        for new_l in new_ls:
+                            label_new2old_dict[new_l]['majority_old_label'] = majority_old_label
+                        label_majorityold2new_dict.pop(old_lbl)
+                        label_majorityold2new_dict[majority_old_label] +=new_ls
+                        label_majorityold2new_dict[majority_old_label] = np.unique(label_majorityold2new_dict[majority_old_label]).tolist()
+
+            
+        # Start fusing aggregated view and new frame view labels
+        new_labels = old_labels.copy()
+        
+        #Add labels only in new labels
+        if len(lbls_only_in_new_labels):
+            label_mapping = {lbl:i+max_label+1 for i, lbl in enumerate(sorted(lbls_only_in_new_labels))}
+            for lbl, new_lbl in label_mapping.items():
+                new_labels[labels == lbl] = new_lbl
+                #cluster2frame_id_dict[new_lbl] = [frame_idx]
+            max_label = np.max(new_labels)
+            #save max cluster id
+            path = save_seq_path / 'max_cluster_id.pkl'
+            max_cluster_id_dict['max_cluster_id'] = max_label
+            with open(path, 'wb') as f:
+                pickle.dump(max_cluster_id_dict,f)
+            
+            # # save new cluster2frame_id_dict
+            # save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
+            # with open(save_path, 'wb') as f:
+            #     pickle.dump(cluster2frame_id_dict, f)
+
+        # if show_plots:
+        #     visualize_pcd_clusters(aggr_pcs_in_world, new_labels.reshape((-1,1)))
+        # Keep old labels if old2new label connection exists
+        for new_lbl, value in label_new2old_dict.items():
+            new_labels[labels == new_lbl] = value['majority_old_label']
+            for old_lbl in value['old_labels']:
+                if old_lbl == 172.0:
+                    b=1
+                new_labels[old_labels == old_lbl] = value['majority_old_label']
+
+        if show_plots:
+            #visualize_pcd_clusters(aggr_pcs_in_world, old_labels.reshape((-1,1)))
+            visualize_pcd_clusters(aggr_pcs_in_world, new_labels.reshape((-1,1)))
+
+        i=0
+        labels = labels.astype(np.float16)
+        pt_wise_rejection_tag[new_labels>-1] = 0
+        pt_wise_rejection_tag.astype(np.uint8)
+        for info, pc_len in zip(aggr_infos, pc_lens):
+            sample_idx = info['point_cloud']['sample_idx']
+            save_path = save_seq_path / ('%04d.npy' % sample_idx)
+
+            label_this_pc = labels[i:i+pc_len]
+            label_this_pc.tofile(save_path.__str__())
+
+            # Save rejection tag for each pt
+            save_path = save_seq_path / 'rejection_tag'/ ('%04d.npy' % sample_idx)
+            rej_tag_this_pc = pt_wise_rejection_tag[i:i+pc_len]
+            rej_tag_this_pc.tofile(save_path.__str__())
+
+            i+=pc_len
+
 def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
     save_seq_path = dataset.label_root_path / seq_name
     os.makedirs(save_seq_path.__str__(), exist_ok=True)
     os.makedirs((save_seq_path / 'rejection_tag').__str__(), exist_ok=True)
-    cluster_files = [] #glob.glob(f'{save_seq_path.__str__()}/*.npy') #[]
 
     print(f'Clustering of sequence: {seq_name} started!')
     path = save_seq_path / 'max_cluster_id.pkl'
@@ -469,117 +661,116 @@ def cluster_seq_each_pc(seq_name, dataset, show_plots=False):
     with open(path, 'rb') as f:
         cluster2frame_id_dict = pickle.load(f)
 
-    if len(cluster_files) < len(dataset.infos_dict[seq_name]):
-        infos = dataset.infos_dict[seq_name]
-        for frame_idx, info in enumerate(infos):
-            pc_info = info['point_cloud']
-            sample_idx = pc_info['sample_idx']
-            gt_boxes = info['annos']['gt_boxes_lidar']
-            
-            xyzi = dataset.get_lidar(seq_name, sample_idx)
-            labels_from_aggregated_clustering = dataset.get_cluster_labels(seq_name, sample_idx)
-            ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
-            
-
-            # cluster points that are not ground
-            xyz = xyzi[:,:3]
-            labels = cluster(xyz, np.logical_not(ground_mask))
-            print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
-            if show_plots:
-                visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
-                visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
-            
-
-            new_labels, label_wise_rejection_tag  = filter_labels(xyz, labels,
-                                      max_volume=160, min_volume=0.1, 
-                                      max_height_for_lowest_point=1, 
-                                      min_height_for_highest_point=0.5,
-                                      ground_mask = ground_mask)
-            
-            pt_wise_rejection_tag = np.zeros(xyz.shape[0], dtype=np.uint8) #zero means not rejected
-            for i in np.unique(labels):
-                if i == -1:
-                    continue
-                pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[int(i)]
-
-
-            # if show_plots:
-            #     for key, val in REJECT.items():
-            #         rejected_labels = np.where(label_wise_rejection_tag == REJECT[key])[0]
-            #         if len(rejected_labels):
-            #             print(f'rejected_labels: {rejected_labels}')
-            #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
-            #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
-            
-            labels = get_continuous_labels(new_labels)
-            print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
-            if show_plots:
-                visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
-                visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
-            labels_only_in_frame_view = []
-            labels_frame2aggr_map = {}
-            labels_only_in_aggr_view = []
-            
-            for i in np.unique(labels):
-                if i == -1:
-                    continue
-                pt_indices_for_new_label = (labels==i).nonzero()[0]
-                labels_in_aggr_view = labels_from_aggregated_clustering[pt_indices_for_new_label]
-                if labels_in_aggr_view.max() == -1:
-                    labels_only_in_frame_view.append(i)
-                else:
-                    obj_labels_in_aggr_view = labels_in_aggr_view[labels_in_aggr_view>-1]
-                    label_of_majority_aggr = np.bincount(obj_labels_in_aggr_view.astype(int)).argmax()
-                    labels_frame2aggr_map[i] = label_of_majority_aggr
-            
-            for i in np.unique(labels_from_aggregated_clustering):
-                if i == -1:
-                    continue
-                pt_indices_aggr_label = (labels_from_aggregated_clustering == i).nonzero()[0]
-                labels_in_frame_view = labels[pt_indices_aggr_label]
-                if labels_in_frame_view.max() == -1:
-                    labels_only_in_aggr_view.append(i)
-            
-            # Start fusing aggregated view and new frame view labels
-            new_labels = -1 * np.ones(labels.shape[0])
-
-            #Add labels_only_in_frame_view
-            if len(labels_only_in_frame_view):
-                label_mapping_frame_view = {old_label:i+max_label+1 for i, old_label in enumerate(sorted(labels_only_in_frame_view))}
-                for old_lbl, new_lbl in label_mapping_frame_view.items():
-                    new_labels[labels == old_lbl] = new_lbl
-                    cluster2frame_id_dict[new_lbl] = [frame_idx]
-                max_label = np.max(new_labels)
-                #save max cluster id
-                path = save_seq_path / 'max_cluster_id.pkl'
-                max_cluster_id_dict['max_cluster_id'] = max_label
-                with open(path, 'wb') as f:
-                    pickle.dump(max_cluster_id_dict,f)
-                
-                # save new cluster2frame_id_dict
-                save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
-                with open(save_path, 'wb') as f:
-                    pickle.dump(cluster2frame_id_dict, f)
-
-
-            for frame_view_lbl, aggr_view_lbl in labels_frame2aggr_map.items():
-                pt_indices_this_label = (labels == frame_view_lbl) | (labels_from_aggregated_clustering == aggr_view_lbl)
-                new_labels[pt_indices_this_label] = aggr_view_lbl
-            
-            for aggr_view_lbl in labels_only_in_aggr_view:
-                new_labels[labels_from_aggregated_clustering == aggr_view_lbl] = aggr_view_lbl
-            
-            if show_plots:
-                visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
+    infos = dataset.infos_dict[seq_name]
+    for frame_idx, info in enumerate(infos):
+        pc_info = info['point_cloud']
+        sample_idx = pc_info['sample_idx']
+        gt_boxes = info['annos']['gt_boxes_lidar']
         
-            # Save labels with new clusters
-            save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
-            save_labels(new_labels, save_label_path.__str__())
+        xyzi = dataset.get_lidar(seq_name, sample_idx)
+        labels_from_aggregated_clustering = dataset.get_cluster_labels(seq_name, sample_idx)
+        ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
+        
 
-            # Save rejection tag for each pt
-            save_path = save_seq_path / 'rejection_tag'/ ('%04d.npy' % sample_idx)
-            pt_wise_rejection_tag.astype(np.uint8)
-            pt_wise_rejection_tag.tofile(save_path.__str__())
+        # cluster points that are not ground
+        xyz = xyzi[:,:3]
+        labels = cluster(xyz, np.logical_not(ground_mask))
+        print(f'1st Step Clustering Done. Labels found: {np.unique(labels).shape[0]}')
+        if show_plots:
+            visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
+            visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
+        
+
+        new_labels, label_wise_rejection_tag  = filter_labels(xyz, labels,
+                                    max_volume=460, min_volume=0.1, 
+                                    max_height_for_lowest_point=1, 
+                                    min_height_for_highest_point=0.5,
+                                    ground_mask = ground_mask)
+        
+        pt_wise_rejection_tag = np.zeros(xyz.shape[0], dtype=np.uint8) #zero means not rejected
+        for i in np.unique(labels):
+            if i == -1:
+                continue
+            pt_wise_rejection_tag[labels == i] = label_wise_rejection_tag[int(i)]
+
+
+        # if show_plots:
+        #     for key, val in REJECT.items():
+        #         rejected_labels = np.where(label_wise_rejection_tag == REJECT[key])[0]
+        #         if len(rejected_labels):
+        #             print(f'rejected_labels: {rejected_labels}')
+        #             print(f'Showing {rejected_labels.shape[0]} rejected labels due to: {key}')
+        #             visualize_selected_labels(xyz, labels.flatten(), rejected_labels)
+        
+        labels = get_continuous_labels(new_labels)
+        print(f'2nd Step Filtering Done. Labels: {np.unique(labels).shape[0]}')
+        if show_plots:
+            visualize_pcd_clusters(xyz, labels_from_aggregated_clustering.reshape((-1,1)))
+            visualize_pcd_clusters(xyz, labels.reshape((-1,1)), boxes=gt_boxes, mode='')
+        labels_only_in_frame_view = []
+        labels_frame2aggr_map = {}
+        labels_only_in_aggr_view = []
+        
+        for i in np.unique(labels):
+            if i == -1:
+                continue
+            pt_indices_for_new_label = (labels==i).nonzero()[0]
+            labels_in_aggr_view = labels_from_aggregated_clustering[pt_indices_for_new_label]
+            if labels_in_aggr_view.max() == -1:
+                labels_only_in_frame_view.append(i)
+            else:
+                obj_labels_in_aggr_view = labels_in_aggr_view[labels_in_aggr_view>-1]
+                label_of_majority_aggr = np.bincount(obj_labels_in_aggr_view.astype(int)).argmax()
+                labels_frame2aggr_map[i] = label_of_majority_aggr
+        
+        for i in np.unique(labels_from_aggregated_clustering):
+            if i == -1:
+                continue
+            pt_indices_aggr_label = (labels_from_aggregated_clustering == i).nonzero()[0]
+            labels_in_frame_view = labels[pt_indices_aggr_label]
+            if labels_in_frame_view.max() == -1:
+                labels_only_in_aggr_view.append(i)
+        
+        # Start fusing aggregated view and new frame view labels
+        new_labels = -1 * np.ones(labels.shape[0])
+
+        #Add labels_only_in_frame_view
+        if len(labels_only_in_frame_view):
+            label_mapping_frame_view = {old_label:i+max_label+1 for i, old_label in enumerate(sorted(labels_only_in_frame_view))}
+            for old_lbl, new_lbl in label_mapping_frame_view.items():
+                new_labels[labels == old_lbl] = new_lbl
+                cluster2frame_id_dict[new_lbl] = [frame_idx]
+            max_label = np.max(new_labels)
+            #save max cluster id
+            path = save_seq_path / 'max_cluster_id.pkl'
+            max_cluster_id_dict['max_cluster_id'] = max_label
+            with open(path, 'wb') as f:
+                pickle.dump(max_cluster_id_dict,f)
+            
+            # save new cluster2frame_id_dict
+            save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
+            with open(save_path, 'wb') as f:
+                pickle.dump(cluster2frame_id_dict, f)
+
+
+        for frame_view_lbl, aggr_view_lbl in labels_frame2aggr_map.items():
+            pt_indices_this_label = (labels == frame_view_lbl) | (labels_from_aggregated_clustering == aggr_view_lbl)
+            new_labels[pt_indices_this_label] = aggr_view_lbl
+        
+        for aggr_view_lbl in labels_only_in_aggr_view:
+            new_labels[labels_from_aggregated_clustering == aggr_view_lbl] = aggr_view_lbl
+        
+        if show_plots:
+            visualize_pcd_clusters(xyz, new_labels.reshape((-1,1)))
+    
+        # Save labels with new clusters
+        save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
+        save_labels(new_labels, save_label_path.__str__())
+
+        # Save rejection tag for each pt
+        save_path = save_seq_path / 'rejection_tag'/ ('%04d.npy' % sample_idx)
+        pt_wise_rejection_tag.astype(np.uint8)
+        pt_wise_rejection_tag.tofile(save_path.__str__())
 
 
 def fit_approx_boxes_seq(seq_name, dataset, show_plots=False):
@@ -748,7 +939,7 @@ def convert_detection_to_global_box(det_key, infos, dataset, cluster2frame_id_di
 def track(infos, dataset, direction='forward', det_key='approx_boxes'):
     last_time_stamp = 1e-6 * infos[0]['metadata']['timestamp_micros'] #first frame time
 
-    tracker = Tracker(max_age=3, max_dist=3, matcher='greedy')
+    tracker = Tracker(max_age=3, max_dist=[3, 5, 8], matcher='greedy')
     
     for i, info in enumerate(infos):
         cur_timestamp = 1e-6 * info['metadata']['timestamp_micros']
@@ -1281,6 +1472,7 @@ def main():
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
     #dataset.estimate_ground_seq(seq_name)
     #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
+    cluster_tracking(seq_name, dataset, show_plots=True)
     #cluster_seq_each_pc(seq_name, dataset, show_plots=False)
     
     #from gtboxes containing atleast 5 pts
@@ -1297,7 +1489,7 @@ def main():
     #refine_boxes_seq(seq_name, dataset, show_plots=False)
     #visualize_seq(seq_name, dataset)
 
-    track_boxes_seq(seq_name, dataset, track_single_occurance_clusters = True)
+    #track_boxes_seq(seq_name, dataset, track_single_occurance_clusters = True)
     
 
 
