@@ -453,17 +453,19 @@ def cluster_in_aggregated(seq_name, dataset, show_plots=False):
 
         label_this_pc.tofile(save_label_path.__str__())
 
-def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False):
+def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, initial_guess=True, show_plots=False):
     save_seq_path = dataset.label_root_path / seq_name
     os.makedirs(save_seq_path.__str__(), exist_ok=True)
     os.makedirs((save_seq_path / 'rejection_tag').__str__(), exist_ok=True)
     print(f'Clustering of sequence: {seq_name} started!')
     
-    # path = save_seq_path / 'max_cluster_id.pkl'
-    # with open(path, 'rb') as f:
-    #     max_cluster_id_dict = pickle.load(f)
-    # max_label = max_cluster_id_dict['max_cluster_id_aggregated']
-    max_label = -1
+    if initial_guess:
+        path = save_seq_path / 'max_cluster_id.pkl'
+        with open(path, 'rb') as f:
+            max_cluster_id_dict = pickle.load(f)
+        max_label = max_cluster_id_dict['max_cluster_id_aggregated']
+    else:
+        max_label = -1
 
     # path = save_seq_path / 'cluster2frame_id_dict.pkl'
     # with open(path, 'rb') as f:
@@ -485,38 +487,41 @@ def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False
             print(f'sample idx: {sample_idx}')
             
             xyzi = dataset.get_lidar(seq_name, sample_idx)
-            if start_idx == start_info_indices[0] or i == len(aggr_infos)-1:
-                labels = -1. * np.ones(xyzi.shape[0], dtype=np.float16)
-            else:
+            if initial_guess:
                 labels = dataset.get_cluster_labels(seq_name, sample_idx)
+            else:
+                if start_idx == start_info_indices[0] or i == len(aggr_infos)-1:
+                    labels = -1. * np.ones(xyzi.shape[0], dtype=np.float16)
+                else:
+                    labels = dataset.get_cluster_labels(seq_name, sample_idx)
             ground_mask = dataset.get_ground_mask(seq_name, sample_idx)
             xyzi[:,:3] = transform_pc_to_world(xyzi[:,:3], info['pose'])
             pc_lens.append(xyzi.shape[0])
             
             
             aggr_ground_mask = np.hstack([aggr_ground_mask, ground_mask])
-            # if start_idx != start_info_indices[0] and i == len(aggr_infos)-1:
+            if initial_guess and start_idx != start_info_indices[0] and i == len(aggr_infos)-1:
                 
-            #     old_labeled_pcd = o3d.geometry.PointCloud()
-            #     old_labeled_pcd.points = o3d.utility.Vector3dVector(aggr_pcs_in_world[old_labels>-1])
+                old_labeled_pcd = o3d.geometry.PointCloud()
+                old_labeled_pcd.points = o3d.utility.Vector3dVector(aggr_pcs_in_world[old_labels>-1])
 
-            #     old_labeled_tree = o3d.geometry.KDTreeFlann(old_labeled_pcd)
-            #     new_labels = -1* np.ones_like(labels)
-            #     for l in np.unique(labels):
-            #         if l == -1:
-            #             continue
-            #         points_new_lbl = xyzi[labels == l]
-            #         for i in range(points_new_lbl.shape[0]):
-            #             pt = points_new_lbl[i,:3]
-            #             #Find its neighbors with distance less than 0.2
-            #             [_, idx, _] = old_labeled_tree.search_radius_vector_3d(pt, 0.2)
-            #             if len(idx):
-            #                 nearest_labels = old_labels[old_labels>-1][np.asarray(idx)]
-            #                 label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
-            #                 new_labels[labels == l] = label_of_majority
-            #                 break
+                old_labeled_tree = o3d.geometry.KDTreeFlann(old_labeled_pcd)
+                new_labels = -1* np.ones_like(labels)
+                for l in np.unique(labels):
+                    if l == -1:
+                        continue
+                    points_new_lbl = xyzi[labels == l]
+                    for i in range(points_new_lbl.shape[0]):
+                        pt = points_new_lbl[i,:3]
+                        #Find its neighbors with distance less than 0.2
+                        [_, idx, _] = old_labeled_tree.search_radius_vector_3d(pt, 0.2)
+                        if len(idx):
+                            nearest_labels = old_labels[old_labels>-1][np.asarray(idx)]
+                            label_of_majority = np.bincount(nearest_labels.astype(int)).argmax()
+                            new_labels[labels == l] = label_of_majority
+                            break
                 
-            #     labels = new_labels
+                labels = new_labels
             aggr_pcs_in_world = np.vstack([aggr_pcs_in_world, xyzi[:,:3]])
             old_labels = np.hstack([old_labels, labels])
 
@@ -560,7 +565,6 @@ def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False
 
         lbls_only_in_new_labels = []
         label_new2old_dict = {}
-        # label_majorityold2new_dict={}
 
         for i in np.unique(labels):
             if i == -1:
@@ -579,24 +583,7 @@ def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False
                     label_new2old_dict[i]['old_labels_count'].append((obj_old_labels == old_lbl).sum()) #old_labels == old_lbl
                 
                 label_new2old_dict[i]['majority_old_label'] = label_new2old_dict[i]['old_labels'][np.argmax(label_new2old_dict[i]['old_labels_count'])]
-                # if label_new2old_dict[i]['majority_old_label'] not in label_majorityold2new_dict:
-                #     label_majorityold2new_dict[label_new2old_dict[i]['majority_old_label']] = [i]
-                # else:
-                #     label_majorityold2new_dict[label_new2old_dict[i]['majority_old_label']] += [i]
-        
-        # for new_lbl, val in label_new2old_dict.items():
-        #     if len(val['old_labels']) > 1:
-        #         majority_old_label = val['majority_old_label']
-        #         for old_lbl in val['old_labels']:
-        #             if old_lbl in label_majorityold2new_dict and new_lbl not in label_majorityold2new_dict[old_lbl]:
-        #                 new_ls = label_majorityold2new_dict[old_lbl]
-        #                 for new_l in new_ls:
-        #                     label_new2old_dict[new_l]['majority_old_label'] = majority_old_label
-        #                 label_majorityold2new_dict.pop(old_lbl)
-        #                 label_majorityold2new_dict[majority_old_label] +=new_ls
-        #                 label_majorityold2new_dict[majority_old_label] = np.unique(label_majorityold2new_dict[majority_old_label]).tolist()
 
-            
         # Start fusing aggregated view and new frame view labels
         new_labels = old_labels.copy()
         
@@ -608,10 +595,11 @@ def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False
                 #cluster2frame_id_dict[new_lbl] = [frame_idx]
             max_label = np.max(new_labels)
             #save max cluster id
-            # path = save_seq_path / 'max_cluster_id.pkl'
-            # max_cluster_id_dict['max_cluster_id'] = max_label
-            # with open(path, 'wb') as f:
-            #     pickle.dump(max_cluster_id_dict,f)
+            if initial_guess:
+                path = save_seq_path / 'max_cluster_id.pkl'
+                max_cluster_id_dict['max_cluster_id'] = max_label
+                with open(path, 'wb') as f:
+                    pickle.dump(max_cluster_id_dict,f)
             
             # # save new cluster2frame_id_dict
             # save_path = save_seq_path / 'cluster2frame_id_dict.pkl'
@@ -623,11 +611,12 @@ def cluster_tracking(seq_name, dataset, num_frames_to_aggr = 3, show_plots=False
         # Keep old labels if old2new label connection exists
         for new_lbl, value in label_new2old_dict.items():
             new_labels[labels == new_lbl] = value['majority_old_label']
-            # for old_lbl in value['old_labels']:
-            #     new_labels[old_labels == old_lbl] = value['majority_old_label']
 
         if show_plots:
-            #visualize_pcd_clusters(aggr_pcs_in_world, old_labels.reshape((-1,1)))
+            # print('showing old labels')
+            # visualize_pcd_clusters(aggr_pcs_in_world, old_labels.reshape((-1,1)))
+            # print('showing new_filtered labels')
+            # visualize_pcd_clusters(aggr_pcs_in_world, labels.reshape((-1,1)))
             print('showing final labels')
             visualize_pcd_clusters(aggr_pcs_in_world, new_labels.reshape((-1,1)))
 
@@ -1476,7 +1465,7 @@ def main():
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
     #dataset.estimate_ground_seq(seq_name)
     #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
-    cluster_tracking(seq_name, dataset, show_plots=False)
+    cluster_tracking(seq_name, dataset, initial_guess=True, show_plots=False)
     #cluster_seq_each_pc(seq_name, dataset, show_plots=False)
     
     #from gtboxes containing atleast 5 pts
