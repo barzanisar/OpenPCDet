@@ -37,7 +37,7 @@ def hungarian_assignment(dist):
 
 MATCHER = {'greedy': greedy_assignment, 'hungarian': hungarian_assignment}
 
-def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matches=[]):
+def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, iou3d, time_lag, matches=[]):
   pc_last = visualize['last_pc']
   pc_curr = visualize['curr_pc']
   fig = plt.figure()
@@ -51,7 +51,7 @@ def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matche
     }
   gray = [153/255, 153/255, 153/255]
   
-  # Show point cloud
+  # Show point clouds curr and last in world frame
   ax.scatter(pc_last[:,0], pc_last[:,1], s=1, color=np.tile(gray,(pc_last.shape[0], 1)), label="pc_last")#np.tile(gray,(pc_last.shape[0], 1))
   ax.scatter(pc_curr[:,0], pc_curr[:,1], s=1, color='cyan', label="pc_curr")#np.tile(gray,(pc_curr.shape[0], 1))
 
@@ -90,13 +90,13 @@ def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matche
         det = dets[det_i]
 
         dxdy = det['ct'] - predicted_ct
-        ax.arrow(predicted_ct[0], predicted_ct[1], dxdy[0], dxdy[1], linewidth=1, color='yellow')
+        ax.arrow(predicted_ct[0], predicted_ct[1], dxdy[0], dxdy[1], linewidth=1, color='gray')
         # ax.plot([predicted_ct[0], det['ct'][0]], 
         #         [predicted_ct[1], det['ct'][1]], '--g')
         text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
         text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
 
-        ax.text(text_x-0.1, text_y-0.1,  "{:.2f}".format(dist[det_i, track_j]), color='gray', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
+        ax.text(text_x-0.1, text_y-0.1,  "{:.2f}, {:.2f}".format(dist[det_i, track_j], iou3d[det_i, track_j]), color='gray', fontsize = 10, bbox=dict(facecolor='yellow', alpha=0.5))
 
   #arrow from predicted ct of track to matched det's ct
   for m in matches:
@@ -111,14 +111,18 @@ def visualize_tracks_2d(visualize, tracks, dets, invalid, dist, time_lag, matche
     #         '--r', linewidth = 4)
     text_x = 0.5 * (predicted_ct[0] + det['ct'][0])
     text_y = 0.5 * (predicted_ct[1] + det['ct'][1])
-    ax.text(text_x+0.1, text_y+0.1, "{:.2f}".format(dist[m[0], m[1]]), color='gray', fontsize = 10, bbox=dict(facecolor='pink', alpha=0.5))
+    ax.text(text_x+0.1, text_y+0.1, "{:.2f}, {:.2f}".format(dist[m[0], m[1]], iou3d[m[0], m[1]]), color='gray', fontsize = 10, bbox=dict(facecolor='pink', alpha=0.5))
   
   # ax.set_xlim(-100,100)
   # ax.set_ylim(-100,100)
   handles = [
       Line2D([0], [0], label='tracks', color='black'),
+      Line2D([0], [0], label='track_to_predtrack', color='black'),
+
       Line2D([0], [0], label='detections', color='green'),
-      Line2D([0], [0], label='match', color='red'),
+      Line2D([0], [0], label='predtrack_to_matcheddet(pink box)', color='green'),
+
+      Line2D([0], [0], label='predtrack_to_valid_unmatched_det(yellow box)', color='gray'),
       # Line2D([0], [0], label='car', color=gt_colors['car']),
       # Line2D([0], [0], label='pedestrian', color=gt_colors['pedestrian']),
       # Line2D([0], [0], label='cyclist', color=gt_colors['cyclist'])
@@ -237,12 +241,13 @@ class PubTracker(object):
     max_diff = [] #np.array([max(1.5, 3 * max(box['lwh'][0], box['lwh'][1])) for box in dets_to_track], np.float32) # N max acceptable diff for curr detections
     for box in dets_to_track:
       max_dim = max(box['lwh'][:2])
-      if max_dim <= 1:
-        max_diff.append(3)
-      elif max_dim < 5:
-        max_diff.append(3)
-      else:
-        max_diff.append(7)
+      max_diff.append(max(3, 0.8*max_dim))
+      # if max_dim <= 1:
+      #   max_diff.append(3)
+      # elif max_dim < 5:
+      #   max_diff.append(3)
+      # else:
+      #   max_diff.append(10)
     
     max_diff = np.array(max_diff, np.float32)
     # move tprev detections center xy forward to curr time t to match with curr det  
@@ -287,7 +292,7 @@ class PubTracker(object):
       
       matched_indices = self.matcher_func(copy.deepcopy(affinity_matrix)) #greedy_assignment(copy.deepcopy(dist))
       if visualize is not None:
-        visualize_tracks_2d(visualize, self.tracks, dets_to_track, invalid, affinity_matrix, time_lag, matches=matched_indices)
+        visualize_tracks_2d(visualize, self.tracks, dets_to_track, invalid, dist, iou3d, time_lag, matches=matched_indices)
     else:  # first few frame
       assert M == 0
       matched_indices = np.array([], np.int32).reshape(-1, 2) #(0,2) matched index in curr dets, matched index in tracks
