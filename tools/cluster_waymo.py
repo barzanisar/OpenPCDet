@@ -888,8 +888,8 @@ def merge_overlapping_boxes(seq_name, dataset, iou_thresh, method, show_plots=Fa
         aggr_pcs_in_world = np.vstack([aggr_pcs_in_world, xyzi[:,:3]])
         aggr_labels =  np.hstack([aggr_labels, labels])
 
-        det_boxes_in_v = info[f'refined_boxes_{method}']
-        cluster_labels_boxes = info['cluster_labels_refined_boxes']
+        det_boxes_in_v = info[f'approx_boxes_{method}']
+        cluster_labels_boxes = info['cluster_labels_boxes']
         # for i in range(det_boxes.shape[0]):
         #     box_label = cluster_labels_boxes[i]
         #     if box_label not in unique_cluster_boxes:
@@ -956,7 +956,9 @@ def merge_overlapping_boxes(seq_name, dataset, iou_thresh, method, show_plots=Fa
     print(len(box_lbls_with_multiple_matches))
     f = np.concatenate(final_map_)
     mm =  np.concatenate(box_lbls_with_multiple_matches)
-    visualize_selected_labels(aggr_pcs_in_world, aggr_labels, np.concatenate([f, mm]))    
+
+    if show_plots:
+        visualize_selected_labels(aggr_pcs_in_world, aggr_labels, np.concatenate([f, mm]))    
     # visualize_selected_labels(aggr_pcs_in_world, aggr_labels, f)
     # visualize_selected_labels(aggr_pcs_in_world, aggr_labels, mm)
     # print(len(box_lbls_with_multiple_matches))
@@ -973,13 +975,37 @@ def merge_overlapping_boxes(seq_name, dataset, iou_thresh, method, show_plots=Fa
         for i in m:
             aggr_labels[aggr_labels==i] = lbl
 
-    visualize_pcd_clusters(aggr_pcs_in_world, aggr_labels.reshape(-1,1))
+    aggr_labels = get_continuous_labels(aggr_labels)
+    if show_plots:
+        visualize_pcd_clusters(aggr_pcs_in_world, aggr_labels.reshape(-1,1))
+    
+    save_seq_path = dataset.label_root_path / seq_name
+    i=0
+    aggr_labels = aggr_labels.astype(np.float16)
+    for info, pc_len in zip(infos, pc_lens):
+        sample_idx = info['point_cloud']['sample_idx']
+        save_label_path = save_seq_path / ('%04d.npy' % sample_idx)
+        print(f'Saving labels: {sample_idx}')
+
+        label_this_pc = aggr_labels[i:i+pc_len]
+        i+=pc_len
+
+        label_this_pc.tofile(save_label_path.__str__())
 
 
 
 
 def fit_approx_boxes_seq(seq_name, dataset, show_plots=False, method = 'closeness_to_edge'):
-    infos= dataset.infos_dict[seq_name]
+    #Load approx boxes
+    approx_boxes_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
+
+    try:
+        with open(approx_boxes_path, 'rb') as f:
+            infos = pickle.load(f)
+    except:
+        infos= dataset.infos_dict[seq_name]
+
+    
 
     print(f'Fitting boxes for sequence: {seq_name}')
     for i, info in enumerate(infos):
@@ -1012,6 +1038,8 @@ def fit_approx_boxes_seq(seq_name, dataset, show_plots=False, method = 'closenes
         # Fitting boxes done for this pc
         #assert np.unique(labels).shape[0] - 1 == approx_boxes_this_pc.shape[0]
         info[f'approx_boxes_{method}'] = approx_boxes_this_pc.astype(np.float32)
+        info['cluster_labels_boxes'] = approx_boxes_this_pc[:, -1]
+
 
         if show_plots:
             gt_boxes = info['annos']['gt_boxes_lidar']
@@ -1081,7 +1109,7 @@ def refine_boxes_seq(seq_name, dataset, method, show_plots=False):
         num_boxes = num_boxes_per_pc[i]
         boxes_this_pc = refined_boxes[ind:ind+num_boxes, :]
         info[f'refined_boxes_{method}'] = boxes_this_pc.astype(np.float32)
-        info['cluster_labels_refined_boxes'] = refined_boxes[ind:ind+num_boxes, -1]
+        # info['cluster_labels_boxes'] = refined_boxes[ind:ind+num_boxes, -1]
         ind += num_boxes
     
     save_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
@@ -1143,7 +1171,7 @@ def convert_detection_to_global_box(det_key, infos, dataset, cluster2frame_id_di
     
     return infos
 
-def track(infos, dataset, direction='forward', det_key=f'approx_boxes_{method}'):
+def track(infos, dataset, direction='forward', det_key='approx_boxes'):
     last_time_stamp = 1e-6 * infos[0]['metadata']['timestamp_micros'] #first frame time
 
     tracker = Tracker(max_age=3, max_dist=[3, 5, 8], matcher='greedy')
@@ -1190,7 +1218,7 @@ def track(infos, dataset, direction='forward', det_key=f'approx_boxes_{method}')
 
     return infos
 
-def track_boxes_seq(seq_name, dataset, track_single_occurance_clusters=False):
+def track_boxes_seq(seq_name, dataset, method, track_single_occurance_clusters=False):
     approx_boxes_path = dataset.label_root_path / seq_name / 'approx_boxes.pkl'
     with open(approx_boxes_path, 'rb') as f:
         infos = pickle.load(f) #seq_infos
@@ -1801,20 +1829,21 @@ def main():
     dataset = WaymoDataset()
 
     seq_name = 'segment-10023947602400723454_1120_000_1140_000_with_camera_labels' #Bad
-    dataset.estimate_ground_seq(seq_name)
-    cluster_tracking(seq_name, dataset, initial_guess=False, show_plots=False)
-    fit_approx_boxes_seq(seq_name, dataset, method='naive_min_max', show_plots=False) #fit using closeness or min max?
-    refine_boxes_seq(seq_name, dataset, method='naive_min_max', show_plots=False)
+    #dataset.estimate_ground_seq(seq_name)
+    # cluster_tracking(seq_name, dataset, initial_guess=False, show_plots=False)
+    # fit_approx_boxes_seq(seq_name, dataset, method='naive_min_max', show_plots=False) #fit using closeness or min max?
+    # merge_overlapping_boxes(seq_name, dataset, iou_thresh=0.5,method='naive_min_max', show_p   lots=False) # for some clusters it does not work, maybe try just using fitted boxes?
 
     # TODO: Some clusters have different/colourful ids although they belong to the same object. If you want all points of the same object to have one cluster id.
     # boxes of different cluster ids but high iou-> make all their cluster points the same id and then refit naive min max and refine
-    # merge_overlapping_boxes(seq_name, dataset, iou_thresh=0.5,method='naive_min_max', show_plots=False) # for some clusters it does not work, maybe try just using fitted boxes?
+    fit_approx_boxes_seq(seq_name, dataset, method='naive_min_max', show_plots=False) #fit using closeness or min max?
+    refine_boxes_seq(seq_name, dataset, method='naive_min_max', show_plots=False)
     fit_approx_boxes_seq(seq_name, dataset, method='closeness_to_edge', show_plots=False) #fit using closeness or min max?
     refine_boxes_seq(seq_name, dataset, method='closeness_to_edge', show_plots=False)
 
     #visualize_aggregate_pcd_clusters_in_world(seq_name, dataset)
     #eval_sequence(seq_name, dataset, only_close_range=False, only_class_names=False)
-    #visualize_seq(seq_name, dataset)
+    visualize_seq(seq_name, dataset, method='naive_min_max')
     
     #cluster_in_aggregated(seq_name, dataset, show_plots=False) #TODO: floating volumes filter signs and small volumes filter fire hydrant
     #cluster_tracking(seq_name, dataset, initial_guess=True, show_plots=False) Above step is not needed if initial guess is false
