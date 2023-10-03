@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 from ...utils import common_utils, loss_utils
+import numpy as np
 
 
 class PointHeadTemplate(nn.Module):
@@ -48,7 +49,9 @@ class PointHeadTemplate(nn.Module):
 
     def assign_stack_targets(self, points, gt_boxes, extend_gt_boxes=None,
                              ret_box_labels=False, ret_part_labels=False,
-                             set_ignore_flag=True, use_ball_constraint=False, central_radius=2.0):
+                             set_ignore_flag=True, use_ball_constraint=False, 
+                             central_radius=2.0, 
+                             pt_cluster_ids=None, gt_box_cluster_ids=None):
         """
         Args:
             points: (N1 + N2 + N3 + ..., 4) [bs_idx, x, y, z]
@@ -73,7 +76,8 @@ class PointHeadTemplate(nn.Module):
         assert len(gt_boxes.shape) == 3 and gt_boxes.shape[2] == 8, 'gt_boxes.shape=%s' % str(gt_boxes.shape)
         assert extend_gt_boxes is None or len(extend_gt_boxes.shape) == 3 and extend_gt_boxes.shape[2] == 8, \
             'extend_gt_boxes.shape=%s' % str(extend_gt_boxes.shape)
-        assert set_ignore_flag != use_ball_constraint, 'Choose one only!'
+        if set_ignore_flag:
+            assert set_ignore_flag != use_ball_constraint, 'Choose one only!'
         batch_size = gt_boxes.shape[0]
         bs_idx = points[:, 0] #(N)
         point_cls_labels = points.new_zeros(points.shape[0]).long() #(N)
@@ -85,10 +89,24 @@ class PointHeadTemplate(nn.Module):
 
             # Assign point_cls_labels
             point_cls_labels_single = point_cls_labels.new_zeros(bs_mask.sum()) #(N1)
-            box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
-                points_single.unsqueeze(dim=0), gt_boxes[k:k + 1, :, 0:7].contiguous()
-            ).long().squeeze(dim=0) # (N1) assigns box ids 0,...,M for each point and -1 for background 
+
+            if pt_cluster_ids is not None:
+                cluster_ids_this_pc = pt_cluster_ids[k] #these are cluster ids NOT box idxs TODO: torch.from_numpy().long().cuda() needed?
+                box_cluster_ids_this_pc = gt_box_cluster_ids[k]
+                box_idxs_of_pts = points.new_zeros(points_single.shape[0], dtype=torch.int).fill_(-1)
+                for cluster_id in np.unique(cluster_ids_this_pc):
+                    if cluster_id == -1:
+                        continue
+                    corresponding_box_idx = np.where(box_cluster_ids_this_pc==cluster_id)[0][0]
+                    box_idxs_of_pts[cluster_ids_this_pc == cluster_id] = corresponding_box_idx
+                box_idxs_of_pts = box_idxs_of_pts.long()
+            else:
+                box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
+                    points_single.unsqueeze(dim=0), gt_boxes[k:k + 1, :, 0:7].contiguous()
+                ).long().squeeze(dim=0) # (N1) assigns box ids 0,...,M for each point and -1 for background 
             box_fg_flag = (box_idxs_of_pts >= 0) #True for foreground points
+            fg_flag = box_fg_flag
+
             if set_ignore_flag:
                 extend_box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
                     points_single.unsqueeze(dim=0), extend_gt_boxes[k:k+1, :, 0:7].contiguous()
@@ -101,8 +119,8 @@ class PointHeadTemplate(nn.Module):
                 box_centers[:, 2] += gt_boxes[k][box_idxs_of_pts][:, 5] / 2
                 ball_flag = ((box_centers - points_single).norm(dim=1) < central_radius)
                 fg_flag = box_fg_flag & ball_flag
-            else:
-                raise NotImplementedError
+            # else:
+            #     raise NotImplementedError
 
             gt_box_of_fg_points = gt_boxes[k][box_idxs_of_pts[fg_flag]] #(fg_flag.sum(), 8) gt box for every fg point
             point_cls_labels_single[fg_flag] = 1 if self.num_class == 1 else gt_box_of_fg_points[:, -1].long()

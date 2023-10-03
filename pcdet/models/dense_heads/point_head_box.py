@@ -16,7 +16,7 @@ class PointHeadBox(PointHeadTemplate):
         #cin = 128, 2 hidden layers = [[linear = 256 (bias=False), batchnorm1d, relu], 
         #                       [linear=256 (bias=False), batchnorm1, relu],
         #                        [linear=3 (bias=true)]] 
-        #cout = 3 = num_class
+        #cout = 3 = num_class if not class agnostic else cout=1=numclass i.e. fg/bg prediction
         self.cls_layers = self.make_fc_layers(
             fc_cfg=self.model_cfg.CLS_FC,
             input_channels=input_channels,
@@ -65,10 +65,13 @@ class PointHeadBox(PointHeadTemplate):
         # point_cls_labels: For each pt: Use gt boxes to assign gt class labels to all points i.e. 0 for background, -1 for pts just around the gt boxes, 1:car, 2: pedestrian etc
         # point_box_labels: For each foreground point: compute groundtruth box residuals between anchors centered at each foregorund point and the gt box
         # we use gt boxes to assign labels to each point and assume an anchor (at the center of fg pts) of mean size == to the mean size of the gt class that fg pt lies in
+        set_ignore_flag = False if 'cluster_ids' in input_dict else True
         targets_dict = self.assign_stack_targets(
             points=point_coords, gt_boxes=gt_boxes, extend_gt_boxes=extend_gt_boxes,
-            set_ignore_flag=True, use_ball_constraint=False,
-            ret_part_labels=False, ret_box_labels=True
+            set_ignore_flag=set_ignore_flag, use_ball_constraint=False,
+            ret_part_labels=False, ret_box_labels=True, 
+            pt_cluster_ids=input_dict.get('cluster_ids', None), 
+            gt_box_cluster_ids=input_dict.get('gt_boxes_cluster_ids', None)
         )
         
         return targets_dict
@@ -122,6 +125,9 @@ class PointHeadBox(PointHeadTemplate):
                     'point_box_preds': point_box_preds}
         if self.training:
             targets_dict = self.assign_targets(batch_dict)
+            # point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
+            # point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
+
             ret_dict['point_cls_labels'] = targets_dict['point_cls_labels']
             ret_dict['point_box_labels'] = targets_dict['point_box_labels']
 

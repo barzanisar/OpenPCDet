@@ -27,7 +27,7 @@ class SegHead(nn.Module):
             self.use_mlp = True
             self.head = MLP(model_cfg.mlp_dim) # projection head
 
-        self.dout=nn.Dropout(p=0.3)
+        #self.dout=nn.Dropout(p=0.3)
     
     @torch.no_grad()
     def _batch_unshuffle_ddp(self, batch_dict, idx_unshuffle):
@@ -37,9 +37,9 @@ class SegHead(nn.Module):
         """
         # gather from all gpus
 
-        points = batch_dict['points'] # unshuffle this (Bx20000, 4) needed to create 'point_coords'
+        points = batch_dict['points'] # unshuffle this (B=2, 20000, 4) needed to create 'point_coords'
         point_features = batch_dict['point_features'] #  unshuffle this (B=2, C=128, N num points = 20000)    
-        batch_size_this = batch_dict['batch_size'] #  unshuffle this
+        batch_size_this = point_features.shape[0] #batch_dict['batch_size'] #  unshuffle this
 
         # # gather all pcs
         all_pcs = concat_all_gather(points) # (2, 20000, 4) -> (8, 20000, 4)
@@ -75,7 +75,7 @@ class SegHead(nn.Module):
                 point_features: (N, C)
         """
 
-        cluster_ids = batch_dict['box_ids_of_pts'] #original (B=2, 20000)
+        cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
 
         # unshuffle point features, points (not needed), batch size bcz no BN in projection layers
         idx_unshuffle = batch_dict.get('idx_unshuffle', None)
@@ -89,10 +89,12 @@ class SegHead(nn.Module):
         for pc_idx in range(batch_size):
             pc_feats = point_features[pc_idx] #(128, 20000)
             cluster_labels_this_pc = cluster_ids[pc_idx] # (20000,)
+            common_cluster_labels_this_pc = batch_dict['common_cluster_ids'][pc_idx]
             
-            for segment_lbl in np.unique(cluster_labels_this_pc):
-                if segment_lbl == -1:
-                    continue
+            for segment_lbl in common_cluster_labels_this_pc: #np.unique(cluster_labels_this_pc):
+                assert segment_lbl != -1
+                # if segment_lbl == -1:
+                #     continue
                 
                 seg_feats = pc_feats[:,cluster_labels_this_pc == segment_lbl] #(128, npoints in this seg)
                 #seg_feats = self.dout(seg_feats) #zero some values in [128, num points in this cluster]
@@ -117,7 +119,7 @@ class SegHead(nn.Module):
         batch_ids = batch_ids.to(batch_dict['points'], non_blocking=True).unsqueeze(-1)
         point_coords = torch.cat([batch_ids, batch_dict['points'][:,:,:3]], dim=2) #batch_idx, xyz
         batch_dict['point_coords'] = point_coords.view(-1, 4) # (B, 20K, 4) -> #(BxN, 4) batch_idx, xyz
-        points_feature_dim = batch_dict['points'].shape[-1]
+        points_feature_dim = batch_dict['points'].shape[-1] # 4
         batch_dict['points'] = batch_dict['points'].view(-1, points_feature_dim) # (BxN, 4) xyzi
 
         return batch_dict        

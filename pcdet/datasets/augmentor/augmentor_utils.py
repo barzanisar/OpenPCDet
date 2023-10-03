@@ -175,7 +175,7 @@ def random_translation_along_z(gt_boxes, points, offset_std):
     return gt_boxes, points
 
 
-def random_local_translation_along_x(gt_boxes, points, offset_range):
+def random_local_translation_along_x(gt_boxes, points, offset_range, gt_box_cluster_ids=None):
     """
     Args:
         gt_boxes: (N, 7), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
@@ -187,7 +187,12 @@ def random_local_translation_along_x(gt_boxes, points, offset_range):
     for idx, box in enumerate(gt_boxes):
         offset = np.random.uniform(offset_range[0], offset_range[1])
         # augs[f'object_{idx}'] = offset
-        points_in_box, mask = get_points_in_box(points, box)
+        if gt_box_cluster_ids is not None:
+            cluster_id = gt_box_cluster_ids[idx]
+            mask = points[:,-1] == cluster_id
+        else:
+            _, mask = get_points_in_box(points, box)
+
         points[mask, 0] += offset
         
         gt_boxes[idx, 0] += offset
@@ -198,7 +203,7 @@ def random_local_translation_along_x(gt_boxes, points, offset_range):
     return gt_boxes, points
 
 
-def random_local_translation_along_y(gt_boxes, points, offset_range):
+def random_local_translation_along_y(gt_boxes, points, offset_range, gt_box_cluster_ids=None):
     """
     Args:
         gt_boxes: (N, 7), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
@@ -210,7 +215,12 @@ def random_local_translation_along_y(gt_boxes, points, offset_range):
     for idx, box in enumerate(gt_boxes):
         offset = np.random.uniform(offset_range[0], offset_range[1])
         # augs[f'object_{idx}'] = offset
-        points_in_box, mask = get_points_in_box(points, box)
+        if gt_box_cluster_ids is not None:
+            cluster_id = gt_box_cluster_ids[idx]
+            mask = points[:,-1] == cluster_id
+        else:
+            _, mask = get_points_in_box(points, box)
+
         points[mask, 1] += offset
         
         gt_boxes[idx, 1] += offset
@@ -309,7 +319,7 @@ def global_frustum_dropout_right(gt_boxes, points, intensity_range):
     return gt_boxes, points
 
 
-def local_scaling(gt_boxes, points, scale_range):
+def local_scaling(gt_boxes, points, scale_range, gt_box_cluster_ids=None):
     """
     Args:
         gt_boxes: (N, 7), [x, y, z, dx, dy, dz, heading]
@@ -324,7 +334,11 @@ def local_scaling(gt_boxes, points, scale_range):
     for idx, box in enumerate(gt_boxes):
         noise_scale = np.random.uniform(scale_range[0], scale_range[1])
         # augs[f'object_{idx}'] = noise_scale
-        points_in_box, mask = get_points_in_box(points, box)
+        if gt_box_cluster_ids is not None:
+            cluster_id = gt_box_cluster_ids[idx]
+            mask = points[:,-1] == cluster_id
+        else:
+            _, mask = get_points_in_box(points, box)
         
         # tranlation to axis center
         points[mask, 0] -= box[0]
@@ -343,7 +357,7 @@ def local_scaling(gt_boxes, points, scale_range):
     return gt_boxes, points
 
 
-def local_rotation(gt_boxes, points, rot_range):
+def local_rotation(gt_boxes, points, rot_range, gt_box_cluster_ids=None):
     """
     Args:
         gt_boxes: (N, 7), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
@@ -355,7 +369,11 @@ def local_rotation(gt_boxes, points, rot_range):
     for idx, box in enumerate(gt_boxes):
         noise_rotation = np.random.uniform(rot_range[0], rot_range[1])
         # augs[f'object_{idx}'] = noise_rotation
-        points_in_box, mask = get_points_in_box(points, box)
+        if gt_box_cluster_ids is not None:
+            cluster_id = gt_box_cluster_ids[idx]
+            mask = points[:,-1] == cluster_id
+        else:
+            _, mask = get_points_in_box(points, box)
         
         centroid_x = box[0]
         centroid_y = box[1]
@@ -371,7 +389,7 @@ def local_rotation(gt_boxes, points, rot_range):
         
         # apply rotation
         points[mask, :] = common_utils.rotate_points_along_z(points[np.newaxis, mask, :], np.array([noise_rotation]))[0]
-        box[0:3] = common_utils.rotate_points_along_z(box[np.newaxis, np.newaxis, 0:3], np.array([noise_rotation]))[0][0]
+        #box[0:3] = common_utils.rotate_points_along_z(box[np.newaxis, np.newaxis, 0:3], np.array([noise_rotation]))[0][0]
         
         # tranlation back to original position
         points[mask, 0] += centroid_x
@@ -382,7 +400,7 @@ def local_rotation(gt_boxes, points, rot_range):
         box[2] += centroid_z
         
         gt_boxes[idx, 6] += noise_rotation
-        if gt_boxes.shape[1] > 8:
+        if gt_boxes.shape[1] > 7:
             gt_boxes[idx, 7:9] = common_utils.rotate_points_along_z(
                 np.hstack((gt_boxes[idx, 7:9], np.zeros((gt_boxes.shape[0], 1))))[np.newaxis, :, :],
                 np.array([noise_rotation])
