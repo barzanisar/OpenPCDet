@@ -181,7 +181,7 @@ def save_lidar_points(frame, cur_save_path, use_two_returns=True):
     return num_points_of_each_lidar
 
 
-def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=True):
+def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=False):
     sequence_name = os.path.splitext(os.path.basename(sequence_file))[0]
 
     # print('Load record (sampled_interval=%d): %s' % (sampled_interval, sequence_name))
