@@ -300,8 +300,11 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/kitti_models/pointrcnn_object.yaml",
-                "--eval_all"
+                "cfgs/kitti_models/pointpillar.yaml",
+                "--ckpt",
+                "/home/barza/OpenPCDet/checkpoints/pointpillar_7728.pth",
+                "--disable_wandb",
+                "--save_to_file"
             ]
         },
         {
