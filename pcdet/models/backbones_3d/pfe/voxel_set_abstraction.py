@@ -176,31 +176,31 @@ class VoxelSetAbstraction(nn.Module):
     def interpolate_from_bev_features(self, keypoints, bev_features, batch_size, bev_stride):
         """
         Args:
-            keypoints: (N1 + N2 + ..., 4)
-            bev_features: (B, C, H, W)
+            keypoints: (N1 + N2 + ..., 4=b_id, xyz)
+            bev_features: (B, C=256, H=188, W=188)
             batch_size:
             bev_stride:
 
         Returns:
             point_bev_features: (N1 + N2 + ..., C)
         """
-        x_idxs = (keypoints[:, 1] - self.point_cloud_range[0]) / self.voxel_size[0]
+        x_idxs = (keypoints[:, 1] - self.point_cloud_range[0]) / self.voxel_size[0] # x coord in 1504x1504 grid
         y_idxs = (keypoints[:, 2] - self.point_cloud_range[1]) / self.voxel_size[1]
-
-        x_idxs = x_idxs / bev_stride
+        # Egtting keypoints xy bev grid coord
+        x_idxs = x_idxs / bev_stride # x coord in 188x188 BEV grid
         y_idxs = y_idxs / bev_stride
 
         point_bev_features_list = []
         for k in range(batch_size):
             bs_mask = (keypoints[:, 0] == k)
 
-            cur_x_idxs = x_idxs[bs_mask]
+            cur_x_idxs = x_idxs[bs_mask] #(4096)
             cur_y_idxs = y_idxs[bs_mask]
-            cur_bev_features = bev_features[k].permute(1, 2, 0)  # (H, W, C)
-            point_bev_features = bilinear_interpolate_torch(cur_bev_features, cur_x_idxs, cur_y_idxs)
+            cur_bev_features = bev_features[k].permute(1, 2, 0)  # (H=188, W=188, C=256)
+            point_bev_features = bilinear_interpolate_torch(cur_bev_features, cur_x_idxs, cur_y_idxs) #(4096 keypts, bevfeat_dim=256)
             point_bev_features_list.append(point_bev_features)
 
-        point_bev_features = torch.cat(point_bev_features_list, dim=0)  # (N1 + N2 + ..., C)
+        point_bev_features = torch.cat(point_bev_features_list, dim=0)  # (N1 + N2 + ..., C) (B x 4096, 256)
         return point_bev_features
 
     def sectorized_proposal_centric_sampling(self, roi_boxes, points):
@@ -234,7 +234,7 @@ class VoxelSetAbstraction(nn.Module):
         """
         batch_size = batch_dict['batch_size']
         if self.model_cfg.POINT_SOURCE == 'raw_points':
-            src_points = batch_dict['points'][:, 1:4]
+            src_points = batch_dict['points'][:, 1:4] #xyz
             batch_indices = batch_dict['points'][:, 0].long()
         elif self.model_cfg.POINT_SOURCE == 'voxel_centers':
             src_points = common_utils.get_voxel_centers(
@@ -253,7 +253,7 @@ class VoxelSetAbstraction(nn.Module):
             if self.model_cfg.SAMPLE_METHOD == 'FPS':
                 cur_pt_idxs = pointnet2_stack_utils.farthest_point_sample(
                     sampled_points[:, :, 0:3].contiguous(), self.model_cfg.NUM_KEYPOINTS
-                ).long()
+                ).long()# (1, 4096) sample 4096 points from this pc
 
                 if sampled_points.shape[1] < self.model_cfg.NUM_KEYPOINTS:
                     times = int(self.model_cfg.NUM_KEYPOINTS / sampled_points.shape[1]) + 1
@@ -271,12 +271,12 @@ class VoxelSetAbstraction(nn.Module):
             else:
                 raise NotImplementedError
 
-            keypoints_list.append(keypoints)
+            keypoints_list.append(keypoints) #(1, 4096, 3)
 
-        keypoints = torch.cat(keypoints_list, dim=0)  # (B, M, 3) or (N1 + N2 + ..., 4)
+        keypoints = torch.cat(keypoints_list, dim=0)  # (B=2, M=4096, 3) or (N1 + N2 + ..., 4)
         if len(keypoints.shape) == 3:
             batch_idx = torch.arange(batch_size, device=keypoints.device).view(-1, 1).repeat(1, keypoints.shape[1]).view(-1, 1)
-            keypoints = torch.cat((batch_idx.float(), keypoints.view(-1, 3)), dim=1)
+            keypoints = torch.cat((batch_idx.float(), keypoints.view(-1, 3)), dim=1) #(B=2 x 4096pts, 4) batch id, xyz
 
         return keypoints
 
@@ -302,7 +302,7 @@ class VoxelSetAbstraction(nn.Module):
         Returns:
 
         """
-        xyz_batch_cnt = xyz.new_zeros(batch_size).int()
+        xyz_batch_cnt = xyz.new_zeros(batch_size).int() #[num pts in pc1, num pts in pc2]
         if filter_neighbors_with_roi:
             point_features = torch.cat((xyz, xyz_features), dim=-1) if xyz_features is not None else xyz
             point_features_list = []
@@ -329,7 +329,7 @@ class VoxelSetAbstraction(nn.Module):
             new_xyz_batch_cnt=new_xyz_batch_cnt,
             features=xyz_features.contiguous(),
         )
-        return pooled_features
+        return pooled_features #(Bx4096 keypts, C=32) raw pt features xyzie around 4096 keypts are aggrgated into one feat vector per keypt 
 
     def forward(self, batch_dict):
         """
@@ -349,7 +349,7 @@ class VoxelSetAbstraction(nn.Module):
             point_coords: (N, 4)
 
         """
-        keypoints = self.get_sampled_points(batch_dict)
+        keypoints = self.get_sampled_points(batch_dict) #(B x 4096, 4=b_id,xyz)
 
         point_features_list = []
         if 'bev' in self.model_cfg.FEATURES_SOURCE:
@@ -357,18 +357,18 @@ class VoxelSetAbstraction(nn.Module):
                 keypoints, batch_dict['spatial_features'], batch_dict['batch_size'],
                 bev_stride=batch_dict['spatial_features_stride']
             )
-            point_features_list.append(point_bev_features)
+            point_features_list.append(point_bev_features) #(B x 4096 keypts from FPS, 256 bev feat dim)
 
         batch_size = batch_dict['batch_size']
 
         new_xyz = keypoints[:, 1:4].contiguous()
-        new_xyz_batch_cnt = new_xyz.new_zeros(batch_size).int()
+        new_xyz_batch_cnt = new_xyz.new_zeros(batch_size).int() #[4096, 4096]
         for k in range(batch_size):
             new_xyz_batch_cnt[k] = (keypoints[:, 0] == k).sum()
 
         if 'raw_points' in self.model_cfg.FEATURES_SOURCE:
-            raw_points = batch_dict['points']
-
+            raw_points = batch_dict['points'] #b_id, xyzie
+            #raw pt features xyzie around 4096 keypts are aggrgated into one 32 dim feat vector per keypt 
             pooled_features = self.aggregate_keypoint_features_from_one_source(
                 batch_size=batch_size, aggregate_func=self.SA_rawpoints,
                 xyz=raw_points[:, 1:4],
@@ -379,17 +379,17 @@ class VoxelSetAbstraction(nn.Module):
                 radius_of_neighbor=self.model_cfg.SA_LAYER['raw_points'].get('RADIUS_OF_NEIGHBOR_WITH_ROI', None),
                 rois=batch_dict.get('rois', None)
             )
-            point_features_list.append(pooled_features)
+            point_features_list.append(pooled_features) #(B x 4096, C=32)
 
         for k, src_name in enumerate(self.SA_layer_names):
-            cur_coords = batch_dict['multi_scale_3d_features'][src_name].indices
-            cur_features = batch_dict['multi_scale_3d_features'][src_name].features.contiguous()
+            cur_coords = batch_dict['multi_scale_3d_features'][src_name].indices #(num full voxels, 4) b_id, z, y, x coord in that feature grid xconv3 or 4
+            cur_features = batch_dict['multi_scale_3d_features'][src_name].features.contiguous() #(num full voxels, C=feat dim)
 
             xyz = common_utils.get_voxel_centers(
                 cur_coords[:, 1:4], downsample_times=self.downsample_times_map[src_name],
                 voxel_size=self.voxel_size, point_cloud_range=self.point_cloud_range
-            )
-
+            )#(num voxels, 3=xyz in meters)
+            #aggregate voxel center features at Bx4096 keypts
             pooled_features = self.aggregate_keypoint_features_from_one_source(
                 batch_size=batch_size, aggregate_func=self.SA_layers[k],
                 xyz=xyz.contiguous(), xyz_features=cur_features, xyz_bs_idxs=cur_coords[:, 0],
@@ -401,11 +401,11 @@ class VoxelSetAbstraction(nn.Module):
 
             point_features_list.append(pooled_features)
 
-        point_features = torch.cat(point_features_list, dim=-1)
+        point_features = torch.cat(point_features_list, dim=-1) #(B x 4096 keypts, 544 feat=raw+bev+xconv3+xconv4)
 
-        batch_dict['point_features_before_fusion'] = point_features.view(-1, point_features.shape[-1])
-        point_features = self.vsa_point_feature_fusion(point_features.view(-1, point_features.shape[-1]))
+        batch_dict['point_features_before_fusion'] = point_features.view(-1, point_features.shape[-1])  #(B x 4096 keypts, 544 feat=raw+bev+xconv3+xconv4)
+        point_features = self.vsa_point_feature_fusion(point_features.view(-1, point_features.shape[-1])) #linear layer(cin=544, cout=90), bn, relu
 
-        batch_dict['point_features'] = point_features  # (BxN, C)
-        batch_dict['point_coords'] = keypoints  # (BxN, 4)
+        batch_dict['point_features'] = point_features  # (BxN=4096, C=90)
+        batch_dict['point_coords'] = keypoints  # (BxN=4096 keypts from FPS, 4=b_id,xyz in meters)
         return batch_dict

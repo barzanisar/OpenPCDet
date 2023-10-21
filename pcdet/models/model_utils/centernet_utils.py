@@ -50,7 +50,7 @@ def draw_gaussian_to_heatmap(heatmap, center, radius, k=1, valid_mask=None):
 
     x, y = int(center[0]), int(center[1])
 
-    height, width = heatmap.shape[0:2]
+    height, width = heatmap.shape[0:2] #height=y, width=x
 
     left, right = min(x, radius), min(width - x, radius + 1)
     top, bottom = min(y, radius), min(height - y, radius + 1)
@@ -148,23 +148,23 @@ def _gather_feat(feat, ind, mask=None):
 def _transpose_and_gather_feat(feat, ind):
     feat = feat.permute(0, 2, 3, 1).contiguous()
     feat = feat.view(feat.size(0), -1, feat.size(3))
-    feat = _gather_feat(feat, ind)
+    feat = _gather_feat(feat, ind) #(bs=4, 188*188, dim) ind=(4, 500 obj) -> (4, 500, dim)
     return feat
 
 
 def _topk(scores, K=40):
-    batch, num_class, height, width = scores.size()
+    batch, num_class, height, width = scores.size() #scores = heatmap = (4,3,H=y=188,W=x=188)
 
-    topk_scores, topk_inds = torch.topk(scores.flatten(2, 3), K)
+    topk_scores, topk_inds = torch.topk(scores.flatten(2, 3), K) #(bs=4, classes=3, 500=top prob or indices)
 
-    topk_inds = topk_inds % (height * width)
-    topk_ys = (topk_inds // width).float()
-    topk_xs = (topk_inds % width).int().float()
+    topk_inds = topk_inds % (height * width) # 4,3,500
+    topk_ys = (topk_inds // width).float() # 4,3,500 y coord in 188x188 grid
+    topk_xs = (topk_inds % width).int().float() #4,3,500
 
-    topk_score, topk_ind = torch.topk(topk_scores.view(batch, -1), K)
-    topk_classes = (topk_ind // K).int()
-    topk_inds = _gather_feat(topk_inds.view(batch, -1, 1), topk_ind).view(batch, K)
-    topk_ys = _gather_feat(topk_ys.view(batch, -1, 1), topk_ind).view(batch, K)
+    topk_score, topk_ind = torch.topk(topk_scores.view(batch, -1), K) #(4, 3classes x 500) -choose top 500-> (4, 500)
+    topk_classes = (topk_ind // K).int() #class index for top 500 pred (4, 500)
+    topk_inds = _gather_feat(topk_inds.view(batch, -1, 1), topk_ind).view(batch, K) #(4, 500) indices in 188x188 grid for top 500 pred
+    topk_ys = _gather_feat(topk_ys.view(batch, -1, 1), topk_ind).view(batch, K) #(4, 500) y coord  of top k pred in 188x188 
     topk_xs = _gather_feat(topk_xs.view(batch, -1, 1), topk_ind).view(batch, K)
 
     return topk_score, topk_inds, topk_classes, topk_ys, topk_xs
@@ -180,18 +180,18 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
         assert False, 'not checked yet'
         heatmap = _nms(heatmap)
 
-    scores, inds, class_ids, ys, xs = _topk(heatmap, K=K)
-    center = _transpose_and_gather_feat(center, inds).view(batch_size, K, 2)
+    scores, inds, class_ids, ys, xs = _topk(heatmap, K=K) # (4,500) choose top 500 probs in the heatmap for each pc 
+    center = _transpose_and_gather_feat(center, inds).view(batch_size, K, 2) # (4, 500, 2) get the corresponding pred center
     rot_sin = _transpose_and_gather_feat(rot_sin, inds).view(batch_size, K, 1)
     rot_cos = _transpose_and_gather_feat(rot_cos, inds).view(batch_size, K, 1)
     center_z = _transpose_and_gather_feat(center_z, inds).view(batch_size, K, 1)
     dim = _transpose_and_gather_feat(dim, inds).view(batch_size, K, 3)
 
     angle = torch.atan2(rot_sin, rot_cos)
-    xs = xs.view(batch_size, K, 1) + center[:, :, 0:1]
+    xs = xs.view(batch_size, K, 1) + center[:, :, 0:1] #(4, 500, 1) x coord in 188x188 grid of the top 500 scores + pred offset x
     ys = ys.view(batch_size, K, 1) + center[:, :, 1:2]
 
-    xs = xs * feature_map_stride * voxel_size[0] + point_cloud_range[0]
+    xs = xs * feature_map_stride * voxel_size[0] + point_cloud_range[0] #(4, 500, 1) x coord in meters
     ys = ys * feature_map_stride * voxel_size[1] + point_cloud_range[1]
 
     box_part_list = [xs, ys, center_z, dim, angle]
@@ -202,16 +202,16 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
     if iou is not None:
         iou = _transpose_and_gather_feat(iou, inds).view(batch_size, K)
 
-    final_box_preds = torch.cat((box_part_list), dim=-1)
+    final_box_preds = torch.cat((box_part_list), dim=-1) #(4, 500, 7=x,y computed from pred offset and grid index of highconf score, pred z, lwh, rz)
     final_scores = scores.view(batch_size, K)
     final_class_ids = class_ids.view(batch_size, K)
 
     assert post_center_limit_range is not None
-    mask = (final_box_preds[..., :3] >= post_center_limit_range[:3]).all(2)
-    mask &= (final_box_preds[..., :3] <= post_center_limit_range[3:]).all(2)
+    mask = (final_box_preds[..., :3] >= post_center_limit_range[:3]).all(2) #(4, 500)choose predicted boxes that are within the range
+    mask &= (final_box_preds[..., :3] <= post_center_limit_range[3:]).all(2)#(4, 500)
 
     if score_thresh is not None:
-        mask &= (final_scores > score_thresh)
+        mask &= (final_scores > score_thresh) #(4, 500) mask to choose boxes with higher prob than 0.1
 
     ret_pred_dicts = []
     for k in range(batch_size):
@@ -234,7 +234,7 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
             'pred_boxes': cur_boxes,
             'pred_scores': cur_scores,
             'pred_labels': cur_labels
-        })
+        }) #(500, 7), (500), (500)
 
         if iou is not None:
             ret_pred_dicts[-1]['pred_iou'] = iou[k, cur_mask]

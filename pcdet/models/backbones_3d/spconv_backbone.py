@@ -155,7 +155,7 @@ class VoxelBackBone8x(nn.Module):
 
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
-        out = self.conv_out(x_conv4)
+        out = self.conv_out(x_conv4) #out = [2, 188, 188], cout=128
 
         batch_dict.update({
             'encoded_spconv_tensor': out,
@@ -183,18 +183,18 @@ class VoxelBackBone8x(nn.Module):
 
 class VoxelResBackBone8x(nn.Module):
     def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
-        super().__init__()
+        super().__init__() # input_channels = 5 xyzie for waymo, grid_size=40,1504,1504
         self.model_cfg = model_cfg
         use_bias = self.model_cfg.get('USE_BIAS', None)
         norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
-        self.sparse_shape = grid_size[::-1] + [1, 0, 0]
+        self.sparse_shape = grid_size[::-1] + [1, 0, 0] # z=41, y=1504, x=1504
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
             norm_fn(16),
             nn.ReLU(),
-        )
+        ) #cin=5, cout=16, kernel=3,3,3, padding=1,1,1, dilation=1,1,1, 
         block = post_act_block
 
         self.conv1 = spconv.SparseSequential(
@@ -245,7 +245,7 @@ class VoxelResBackBone8x(nn.Module):
         Args:
             batch_dict:
                 batch_size: int
-                vfe_features: (num_voxels, C)
+                voxel_features: (num_voxels, C=5=mean xyzie in Waymo)
                 voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
         Returns:
             batch_dict:
@@ -258,17 +258,17 @@ class VoxelResBackBone8x(nn.Module):
             indices=voxel_coords.int(),
             spatial_shape=self.sparse_shape,
             batch_size=batch_size
-        )
-        x = self.conv_input(input_sp_tensor)
+        ) #spatial_size = [z=41, y=1504, x=1504], voxel_features_dim = 5 = xyzie in Waymo 
+        x = self.conv_input(input_sp_tensor) # same spatial size, feature_dim=c_out = 16
 
-        x_conv1 = self.conv1(x)
-        x_conv2 = self.conv2(x_conv1)
-        x_conv3 = self.conv3(x_conv2)
-        x_conv4 = self.conv4(x_conv3)
+        x_conv1 = self.conv1(x) #xconv1= [z=41, y=1504, x=1504], cout=16
+        x_conv2 = self.conv2(x_conv1) #x_conv2 = [21, 752, 752], cout=32
+        x_conv3 = self.conv3(x_conv2)#x_conv3 = [11, 376, 376], cout=64
+        x_conv4 = self.conv4(x_conv3)#x_conv3 = [5, 188, 188], cout=128
 
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
-        out = self.conv_out(x_conv4)
+        out = self.conv_out(x_conv4) #out = [2, 188, 188], cout=128
 
         batch_dict.update({
             'encoded_spconv_tensor': out,

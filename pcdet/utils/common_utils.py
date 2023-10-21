@@ -93,11 +93,11 @@ def get_voxel_centers(voxel_coords, downsample_times, voxel_size, point_cloud_ra
 
     """
     assert voxel_coords.shape[1] == 3
-    voxel_centers = voxel_coords[:, [2, 1, 0]].float()  # (xyz)
+    voxel_centers = voxel_coords[:, [2, 1, 0]].float()  # (num voxels, 3=xyz coord in the 3d voxel feature map)
     voxel_size = torch.tensor(voxel_size, device=voxel_centers.device).float() * downsample_times
     pc_range = torch.tensor(point_cloud_range[0:3], device=voxel_centers.device).float()
     voxel_centers = (voxel_centers + 0.5) * voxel_size + pc_range
-    return voxel_centers
+    return voxel_centers #(num voxs, xyz in meters)
 
 
 def create_logger(log_file=None, rank=0, log_level=logging.INFO):

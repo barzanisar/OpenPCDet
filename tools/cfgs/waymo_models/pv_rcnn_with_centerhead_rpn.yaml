@@ -155,17 +155,17 @@ MODEL:
         TARGET_CONFIG:
             BOX_CODER: ResidualCoder
             ROI_PER_IMAGE: 128
-            FG_RATIO: 0.5
+            FG_RATIO: 0.5 #1) sample half of 128 rois from fg rois i.e. which max overlap with gt box of the same class with iou>0.55
 
             SAMPLE_ROI_BY_EACH_CLASS: True
             CLS_SCORE_TYPE: roi_iou
 
             CLS_FG_THRESH: 0.75
             CLS_BG_THRESH: 0.25
-            CLS_BG_THRESH_LO: 0.1
-            HARD_BG_RATIO: 0.8
+            CLS_BG_THRESH_LO: 0.1 # sample remaining 128 rois from easy bg i.e. iou with gt box of same class < 0.1
+            HARD_BG_RATIO: 0.8 # 2)sample 0.8 * 128 rois from hard bg rois i.e. which max overlap with gt box of the same class with 0.1<= iou <0.55
 
-            REG_FG_THRESH: 0.55
+            REG_FG_THRESH: 0.55 # if rois iou with any gt box of the same pred roi class is greater than 0.55 it is labelled as fg
 
         LOSS_CONFIG:
             CLS_LOSS: BinaryCrossEntropy

@@ -71,21 +71,21 @@ class PointHeadSimple(PointHeadTemplate):
                 point_part_offset: (N1 + N2 + N3 + ..., 3)
         """
         if self.model_cfg.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
-            point_features = batch_dict['point_features_before_fusion']
+            point_features = batch_dict['point_features_before_fusion'] #(Bx 4096 keypts, 544 feature dim aggregated around keypts from raw pts, bev, xconv3_3d, xconv4_3d)
         else:
             point_features = batch_dict['point_features']
-        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class)
+        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class=1 bcz class agnostic) # predict fg/bg (2 linear layers)
 
         ret_dict = {
             'point_cls_preds': point_cls_preds,
         }
 
         point_cls_scores = torch.sigmoid(point_cls_preds)
-        batch_dict['point_cls_scores'], _ = point_cls_scores.max(dim=-1)
+        batch_dict['point_cls_scores'], _ = point_cls_scores.max(dim=-1) #(B x 4096)
 
         if self.training:
             targets_dict = self.assign_targets(batch_dict)
-            ret_dict['point_cls_labels'] = targets_dict['point_cls_labels']
+            ret_dict['point_cls_labels'] = targets_dict['point_cls_labels'] # gt labels for each point i.e. 1 if fg, 0 if bg, -1 if ignore
         self.forward_ret_dict = ret_dict
 
         return batch_dict

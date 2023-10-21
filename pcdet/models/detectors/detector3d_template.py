@@ -77,7 +77,7 @@ class Detector3DTemplate(nn.Module):
             point_cloud_range=model_info_dict['point_cloud_range']
         )
         model_info_dict['module_list'].append(backbone_3d_module)
-        model_info_dict['num_point_features'] = backbone_3d_module.num_point_features
+        model_info_dict['num_point_features'] = backbone_3d_module.num_point_features #128
         model_info_dict['backbone_channels'] = backbone_3d_module.backbone_channels \
             if hasattr(backbone_3d_module, 'backbone_channels') else None
         return backbone_3d_module, model_info_dict
@@ -103,7 +103,7 @@ class Detector3DTemplate(nn.Module):
             input_channels=model_info_dict.get('num_bev_features', None)
         )
         model_info_dict['module_list'].append(backbone_2d_module)
-        model_info_dict['num_bev_features'] = backbone_2d_module.num_bev_features
+        model_info_dict['num_bev_features'] = backbone_2d_module.num_bev_features # 512
         return backbone_2d_module, model_info_dict
 
     def build_pfe(self, model_info_dict):

@@ -106,28 +106,28 @@ class RoIHeadTemplate(nn.Module):
         with torch.no_grad():
             targets_dict = self.proposal_target_layer.forward(batch_dict)
 
-        rois = targets_dict['rois']  # (B, N, 7 + C)
+        rois = targets_dict['rois']  # (B, N, 7 + C) C=0 in our case
         gt_of_rois = targets_dict['gt_of_rois']  # (B, N, 7 + C + 1)
         targets_dict['gt_of_rois_src'] = gt_of_rois.clone().detach()
 
         # canonical transformation
         roi_center = rois[:, :, 0:3]
-        roi_ry = rois[:, :, 6] % (2 * np.pi)
-        gt_of_rois[:, :, 0:3] = gt_of_rois[:, :, 0:3] - roi_center
+        roi_ry = rois[:, :, 6] % (2 * np.pi) #limits from 0 to 2pi
+        gt_of_rois[:, :, 0:3] = gt_of_rois[:, :, 0:3] - roi_center #vector from pred roi center to gt center expressed in lidar frame
         gt_of_rois[:, :, 6] = gt_of_rois[:, :, 6] - roi_ry
 
-        # transfer LiDAR coords to local coords
+        # transfer LiDAR coords to local coords i.e. vector from roi center to gt center is now expressed in roi frame
         gt_of_rois = common_utils.rotate_points_along_z(
             points=gt_of_rois.view(-1, 1, gt_of_rois.shape[-1]), angle=-roi_ry.view(-1)
         ).view(batch_size, -1, gt_of_rois.shape[-1])
 
         # flip orientation if rois have opposite orientation
         heading_label = gt_of_rois[:, :, 6] % (2 * np.pi)  # 0 ~ 2pi
-        opposite_flag = (heading_label > np.pi * 0.5) & (heading_label < np.pi * 1.5)
-        heading_label[opposite_flag] = (heading_label[opposite_flag] + np.pi) % (2 * np.pi)  # (0 ~ pi/2, 3pi/2 ~ 2pi)
-        flag = heading_label > np.pi
+        opposite_flag = (heading_label > np.pi * 0.5) & (heading_label < np.pi * 1.5) #if gt box rz is between 90 and 270 deg
+        heading_label[opposite_flag] = (heading_label[opposite_flag] + np.pi) % (2 * np.pi)  # (0 ~ pi/2, 3pi/2 ~ 2pi) i.e. (0 to 90, 270 to 360)
+        flag = heading_label > np.pi # all gt rz that are between 270 and 360 change them to -90 to 0
         heading_label[flag] = heading_label[flag] - np.pi * 2  # (-pi/2, pi/2)
-        heading_label = torch.clamp(heading_label, min=-np.pi / 2, max=np.pi / 2)
+        heading_label = torch.clamp(heading_label, min=-np.pi / 2, max=np.pi / 2) #gt heading label is now between -90 and 90 
 
         gt_of_rois[:, :, 6] = heading_label
         targets_dict['gt_of_rois'] = gt_of_rois

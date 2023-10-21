@@ -5,7 +5,7 @@ import torch.nn as nn
 
 class BaseBEVBackbone(nn.Module):
     def __init__(self, model_cfg, input_channels):
-        super().__init__()
+        super().__init__() # input_channels=256
         self.model_cfg = model_cfg
 
         if self.model_cfg.get('LAYER_NUMS', None) is not None:
@@ -23,8 +23,8 @@ class BaseBEVBackbone(nn.Module):
         else:
             upsample_strides = num_upsample_filters = []
 
-        num_levels = len(layer_nums)
-        c_in_list = [input_channels, *num_filters[:-1]]
+        num_levels = len(layer_nums) #2 =len([5, 5])
+        c_in_list = [input_channels, *num_filters[:-1]] #[256,128]
         self.blocks = nn.ModuleList()
         self.deblocks = nn.ModuleList()
         for idx in range(num_levels):
@@ -90,13 +90,13 @@ class BaseBEVBackbone(nn.Module):
         ret_dict = {}
         x = spatial_features
         for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+            x = self.blocks[i](x) # BEV features after backbone3d and height compression x=[bs=4, C=256, 188, 188] --conv2d block0--> x=[bs=4, C=128, 188, 188]--conv2d block1--> x=[bs=4, C=256, 94, 94]
 
             stride = int(spatial_features.shape[2] / x.shape[2])
             ret_dict['spatial_features_%dx' % stride] = x
             if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x))
-            else:
+                ups.append(self.deblocks[i](x)) # x from conv2d block 0 =[bs=4, C=128, 188, 188] --conv2dT deblock0--> x=[bs=4, C=256, 188, 188]
+            else: # x from conv2d block 1 =[bs=4, C=256, 94, 94] --conv2dT deblock1--> x=[bs=4, C=256, 188, 188]
                 ups.append(x)
 
         if len(ups) > 1:
@@ -107,7 +107,7 @@ class BaseBEVBackbone(nn.Module):
         if len(self.deblocks) > len(self.blocks):
             x = self.deblocks[-1](x)
 
-        data_dict['spatial_features_2d'] = x
+        data_dict['spatial_features_2d'] = x #(bs=4, C=512, H=188, W=188) BEV feature map after backbone 2d
 
         return data_dict
 

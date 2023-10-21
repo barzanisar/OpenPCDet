@@ -268,19 +268,19 @@ def neg_loss_cornernet(pred, gt, mask=None):
     Refer to https://github.com/tianweiy/CenterPoint.
     Modified focal loss. Exactly the same as CornerNet. Runs faster and costs a little bit more memory
     Args:
-        pred: (batch x c x h x w)
-        gt: (batch x c x h x w)
+        pred: (batch x c=3 x h=188 x w=188) # pred heat map
+        gt: (batch x c=3 x h=188 x w=188) heatmaps with gaussians around gt bboxes
         mask: (batch x h x w)
     Returns:
     """
-    pos_inds = gt.eq(1).float()
+    pos_inds = gt.eq(1).float() # mask of shape (4,3,H=y,W=x) where 1 is at gt box center and 0 elsewhere
     neg_inds = gt.lt(1).float()
 
-    neg_weights = torch.pow(1 - gt, 4)
+    neg_weights = torch.pow(1 - gt, 4) #edge voxels in gaussian gt box will have higher weight in neg loss
 
     loss = 0
 
-    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
+    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds #focal loss for fg boxes i.e. (1-prob of fg)^2 x log(prob of fg) x gt box mask
     neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
 
     if mask is not None:
@@ -354,18 +354,18 @@ def _reg_loss(regr, gt_regr, mask):
         mask (batch x max_objects)
     Returns:
     """
-    num = mask.float().sum()
-    mask = mask.unsqueeze(2).expand_as(gt_regr).float()
-    isnotnan = (~ torch.isnan(gt_regr)).float()
+    num = mask.float().sum() #num gt boxes
+    mask = mask.unsqueeze(2).expand_as(gt_regr).float() # (4,500,8)
+    isnotnan = (~ torch.isnan(gt_regr)).float() 
     mask *= isnotnan
     regr = regr * mask
     gt_regr = gt_regr * mask
 
-    loss = torch.abs(regr - gt_regr)
-    loss = loss.transpose(2, 0)
+    loss = torch.abs(regr - gt_regr) #(4,500,8)
+    loss = loss.transpose(2, 0) #(8,500,4)
 
-    loss = torch.sum(loss, dim=2)
-    loss = torch.sum(loss, dim=1)
+    loss = torch.sum(loss, dim=2)#(8,500)
+    loss = torch.sum(loss, dim=1) #8
     # else:
     #  # D x M x B
     #  loss = loss.reshape(loss.shape[0], -1)
@@ -377,9 +377,9 @@ def _reg_loss(regr, gt_regr, mask):
 
 
 def _gather_feat(feat, ind, mask=None):
-    dim  = feat.size(2)
-    ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
-    feat = feat.gather(1, ind)
+    dim  = feat.size(2)#8
+    ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim) # (4,500) -> (4,500,1)->(4, 500, 8) i.e. duplicates indices in 4,500,1 to 8 cols
+    feat = feat.gather(1, ind) # feat=pred boxes(4, 188*188, 8) -> pred_boxes gathered at ind =(4, 500, 8)
     if mask is not None:
         mask = mask.unsqueeze(2).expand_as(feat)
         feat = feat[mask]
@@ -388,8 +388,8 @@ def _gather_feat(feat, ind, mask=None):
 
 
 def _transpose_and_gather_feat(feat, ind):
-    feat = feat.permute(0, 2, 3, 1).contiguous()
-    feat = feat.view(feat.size(0), -1, feat.size(3))
+    feat = feat.permute(0, 2, 3, 1).contiguous() #(4,8,188,188) -> (4,188,188,8)
+    feat = feat.view(feat.size(0), -1, feat.size(3)) #(4, 188*188, 8)
     feat = _gather_feat(feat, ind)
     return feat
 
@@ -405,18 +405,18 @@ class RegLossCenterNet(nn.Module):
     def forward(self, output, mask, ind=None, target=None):
         """
         Args:
-            output: (batch x dim x h x w) or (batch x max_objects)
-            mask: (batch x max_objects)
-            ind: (batch x max_objects)
-            target: (batch x max_objects x dim)
+            output: (batch x dim x h x w) or (batch x max_objects) -> pred_boxes=4,8,H=y=188, W=x=188
+            mask: (batch x max_objects) --> 4,500 = 1 if target box is gt box else 0
+            ind: (batch x max_objects) ---> 4, 500 = abs index of gt box center location in 188x188 grid e.g. if gt box is at (y=4,x=5) in 188x188 grid then abs ind= 4*188 + 5
+            target: (batch x max_objects x dim)-> 4,500,8 --> offxy, gt_z, log(lwh), cos rz, sin rz 
         Returns:
         """
         if ind is None:
             pred = output
         else:
-            pred = _transpose_and_gather_feat(output, ind)
-        loss = _reg_loss(pred, target, mask)
-        return loss
+            pred = _transpose_and_gather_feat(output, ind) #get predicted boxes at the gt box center locations in 188x188 map --> 4,500,8
+        loss = _reg_loss(pred, target, mask) #pred=(4,500,8), target=(4,500,8), mask=(4,500)
+        return loss #(8)
 
 
 class FocalLossSparse(nn.Module):

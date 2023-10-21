@@ -6,7 +6,7 @@ from .vfe_template import VFETemplate
 class MeanVFE(VFETemplate):
     def __init__(self, model_cfg, num_point_features, **kwargs):
         super().__init__(model_cfg=model_cfg)
-        self.num_point_features = num_point_features
+        self.num_point_features = num_point_features # 5 for waymo xyzie
 
     def get_output_feature_dim(self):
         return self.num_point_features
@@ -25,7 +25,7 @@ class MeanVFE(VFETemplate):
         voxel_features, voxel_num_points = batch_dict['voxels'], batch_dict['voxel_num_points']
         points_mean = voxel_features[:, :, :].sum(dim=1, keepdim=False)
         normalizer = torch.clamp_min(voxel_num_points.view(-1, 1), min=1.0).type_as(voxel_features)
-        points_mean = points_mean / normalizer
-        batch_dict['voxel_features'] = points_mean.contiguous()
+        points_mean = points_mean / normalizer #(num_voxels, sum_xyzie of points in the voxel)/ num pts in the voxel
+        batch_dict['voxel_features'] = points_mean.contiguous() #(num_voxels, 5= mean_xyzie of points in the voxel)
 
         return batch_dict
