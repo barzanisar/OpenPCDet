@@ -28,6 +28,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         losses_m = common_utils.AverageMeter()
 
     end = time.time()
+    #with torch.autograd.detect_anomaly():
     for cur_it in range(start_it, total_it_each_epoch):
         try:
             batch = next(dataloader_iter)
@@ -62,7 +63,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         scaler.update()
 
         accumulated_iter += 1
- 
+
         cur_forward_time = time.time() - data_timer
         cur_batch_time = time.time() - end
         end = time.time()
@@ -141,7 +142,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                 )
                 logger.info(f'Save latest model to {ckpt_name}')
                 ckpt_save_cnt += 1
-                
+                    
     if rank == 0:
         pbar.close()
     return accumulated_iter

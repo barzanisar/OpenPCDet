@@ -11,7 +11,7 @@ MODEL:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: MinkUNet
+        NAME: MinkUNet #UNetV2
         RETURN_ENCODED_TENSOR: False
 
     POINT_HEAD:
