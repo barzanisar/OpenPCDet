@@ -1,4 +1,4 @@
-numpy
+numpy==1.19.4
 llvmlite
 numba
 torch>=1.1
@@ -11,3 +11,6 @@ torchvision
 SharedArray
 opencv-python
 pyquaternion
+# kornia
+waymo-open-dataset-tf-2-5-0
+# av2==0.2.0

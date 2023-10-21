@@ -701,12 +701,12 @@ class WaymoDataset(DatasetTemplate):
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
                        raw_data_tag='raw_data', processed_data_tag='waymo_processed_data',
-                       workers=min(16, multiprocessing.cpu_count()), update_info_only=False):
+                       workers=min(16, multiprocessing.cpu_count()), update_info_only=False): #
     dataset = WaymoDataset(
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
     )
-    train_split, val_split = 'train', 'val'
+    train_split, val_split = dataset_cfg.DATA_SPLIT['train'], dataset_cfg.DATA_SPLIT['test']#'train', 'val'
 
     train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
     val_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, val_split))
@@ -718,7 +718,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1, update_info_only=update_info_only
+        sampled_interval=10, update_info_only=update_info_only
     )
     with open(train_filename, 'wb') as f:
         pickle.dump(waymo_infos_train, f)
@@ -728,7 +728,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_val = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1, update_info_only=update_info_only
+        sampled_interval=10, update_info_only=update_info_only
     )
     with open(val_filename, 'wb') as f:
         pickle.dump(waymo_infos_val, f)
@@ -782,7 +782,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_v0_5_0', help='')
+    # parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_v0_5_0', help='')
     parser.add_argument('--update_info_only', action='store_true', default=False, help='')
     parser.add_argument('--use_parallel', action='store_true', default=False, help='')
     parser.add_argument('--wo_crop_gt_with_tail', action='store_true', default=False, help='')
@@ -797,14 +797,14 @@ if __name__ == '__main__':
         except:
             yaml_config = yaml.safe_load(open(args.cfg_file))
         dataset_cfg = EasyDict(yaml_config)
-        dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
+        # dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
         create_waymo_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
             raw_data_tag='raw_data',
-            processed_data_tag=args.processed_data_tag,
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
             update_info_only=args.update_info_only
         )
     elif args.func == 'create_waymo_gt_database':
@@ -813,13 +813,13 @@ if __name__ == '__main__':
         except:
             yaml_config = yaml.safe_load(open(args.cfg_file))
         dataset_cfg = EasyDict(yaml_config)
-        dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
+        #dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
         create_waymo_gt_database(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
-            processed_data_tag=args.processed_data_tag,
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
             use_parallel=args.use_parallel, 
             crop_gt_with_tail=not args.wo_crop_gt_with_tail
         )
