@@ -171,6 +171,13 @@ class PointHeadTemplate(nn.Module):
         one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1) # (16384 x 2, 3+1=4)
         one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0) #Create one hot vector of size (16384x2, 4) ->(point_cls_labels * (point_cls_labels >= 0).long()) gives (16384x2) vector which is 0: background and ignored points, 1: Car, 2: Ped, 3: Cyc
         one_hot_targets = one_hot_targets[..., 1:] # only take one hot vectors for car, ped, cyc (N=16384 x 2, 3), ignore background column
+        
+        # Class balancing:
+        cls_wise_wts = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['class_wise_cls_weights']
+        for i, wt in enumerate(cls_wise_wts):
+            cls_lbl = i+1
+            cls_weights[point_cls_labels == cls_lbl] *= wt
+
         cls_loss_src = self.cls_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights) #(N=16384 x 2, 3)
         point_loss_cls = cls_loss_src.sum() # (1): sum all elements
 
@@ -212,13 +219,26 @@ class PointHeadTemplate(nn.Module):
         # point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
         # point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
 
-        pos_mask = self.forward_ret_dict['point_cls_labels'] > 0 # (num points: 16382 x 2): true for gt object pts
+        # Classes to ignore for regression
+        # We dont want to regress big classes
+        cls_wise_wts = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['class_wise_reg_weights']
+        cls_to_ignore = np.where(np.array(cls_wise_wts) == 0)[0]+1
+        pos_mask = self.forward_ret_dict['point_cls_labels'] > 0 # (num points: 16382 x 2): true for gt object pts TODO: exclude 0 weight classes from here
+        
+        for cls in cls_to_ignore:
+            pos_mask[self.forward_ret_dict['point_cls_labels'] == cls] = False
+
         point_box_labels = self.forward_ret_dict['point_box_labels']
         point_box_preds = self.forward_ret_dict['point_box_preds']
 
         reg_weights = pos_mask.float() # (16384x2): 1 for gt object pt, 0 else
         pos_normalizer = pos_mask.sum().float() #num gt object pts
         reg_weights /= torch.clamp(pos_normalizer, min=1.0) # (16384x2): (1/num gt obj pts) for gt object pt, 0 else
+
+        # Class balancing:
+        for i, wt in enumerate(cls_wise_wts):
+            cls_lbl = i+1
+            reg_weights[self.forward_ret_dict['point_cls_labels'] == cls_lbl] *= wt
 
         point_loss_box_src = self.reg_loss_func(
             point_box_preds[None, ...], point_box_labels[None, ...], weights=reg_weights[None, ...]
