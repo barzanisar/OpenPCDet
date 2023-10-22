@@ -90,7 +90,7 @@ class BaseBEVBackbone(nn.Module):
         ret_dict = {}
         x = spatial_features
         for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+            x = self.blocks[i](x) # BEV features after backbone3d and height compression x=[bs=6, C=256, 188, 188] --conv2d block0--> x=[bs=6, C=128, 188, 188]--conv2d block1--> x=[bs=6, C=256, 94, 94]
 
             stride = int(spatial_features.shape[2] / x.shape[2])
             ret_dict['spatial_features_%dx' % stride] = x
@@ -107,6 +107,6 @@ class BaseBEVBackbone(nn.Module):
         if len(self.deblocks) > len(self.blocks):
             x = self.deblocks[-1](x)
 
-        data_dict['spatial_features_2d'] = x
+        data_dict['spatial_features_2d'] = x #(bs=6, C=512, H=188, W=188) BEV feature map after backbone 2d
 
         return data_dict

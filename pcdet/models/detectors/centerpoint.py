@@ -14,7 +14,8 @@ class CenterPoint(Detector3DTemplate):
             loss, tb_dict, disp_dict = self.get_training_loss()
 
             ret_dict = {
-                'loss': loss
+                'loss': loss,
+                'batch_dict': batch_dict
             }
             return ret_dict, tb_dict, disp_dict
         else:
@@ -24,13 +25,16 @@ class CenterPoint(Detector3DTemplate):
     def get_training_loss(self):
         disp_dict = {}
 
-        loss_rpn, tb_dict = self.dense_head.get_loss()
-        tb_dict = {
-            'loss_rpn': loss_rpn.item(),
-            **tb_dict
-        }
-
-        loss = loss_rpn
+        loss = 0
+        tb_dict=None
+        if self.dense_head is not None:
+            loss_rpn, tb_dict = self.dense_head.get_loss()
+            loss += loss_rpn
+        
+            tb_dict = {
+                'loss_rpn': loss.item(),
+                **tb_dict
+            }
         return loss, tb_dict, disp_dict
 
     def post_processing(self, batch_dict):
