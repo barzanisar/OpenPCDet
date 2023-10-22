@@ -187,7 +187,7 @@ class DatasetTemplate(torch_data.Dataset):
                     **data_dict,
                     'gt_boxes_mask': gt_boxes_mask
                 }
-            )
+            ) # gt sampling and augmentations
             if 'calib' in data_dict:
                 data_dict['calib'] = calib
         data_dict = self.set_lidar_aug_matrix(data_dict)
@@ -207,7 +207,7 @@ class DatasetTemplate(torch_data.Dataset):
 
         data_dict = self.data_processor.forward(
             data_dict=data_dict
-        )
+        ) #voxelize pc
 
         if self.training and len(data_dict['gt_boxes']) == 0:
             new_index = np.random.randint(self.__len__())
@@ -238,7 +238,7 @@ class DatasetTemplate(torch_data.Dataset):
                     coors = []
                     if isinstance(val[0], list):
                         val =  [i for item in val for i in item]
-                    for i, coor in enumerate(val):
+                    for i, coor in enumerate(val): # append batch_id in front so points: (Nxbs, 6=bxyzie) voxel_coords:(num voxelsx bs, 4=bzyx vox coord)
                         coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
                         coors.append(coor_pad)
                     ret[key] = np.concatenate(coors, axis=0)

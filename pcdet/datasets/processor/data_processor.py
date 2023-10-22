@@ -174,9 +174,9 @@ class DataProcessor(object):
             data_dict['voxel_coords'] = voxel_coords_list
             data_dict['voxel_num_points'] = voxel_num_points_list
         else:
-            data_dict['voxels'] = voxels
-            data_dict['voxel_coords'] = coordinates
-            data_dict['voxel_num_points'] = num_points
+            data_dict['voxels'] = voxels #numpy array (num voxels=5, 5=xyzie)
+            data_dict['voxel_coords'] = coordinates #numpy array (num voxels, 3=zyx vox coord)
+            data_dict['voxel_num_points'] = num_points #numpy array (num voxels)
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):
