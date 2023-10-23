@@ -70,7 +70,9 @@ class Detector3DTemplate(nn.Module):
             return None, model_info_dict
 
         pretext_head_module = pretext_heads.__all__[self.model_cfg.PRETEXT_HEAD.NAME](
-            model_cfg=self.model_cfg.PRETEXT_HEAD
+            model_cfg=self.model_cfg.PRETEXT_HEAD, 
+            point_cloud_range=model_info_dict['point_cloud_range'], 
+            voxel_size=model_info_dict['voxel_size']
         )
         model_info_dict['module_list'].append(pretext_head_module)
         return pretext_head_module, model_info_dict

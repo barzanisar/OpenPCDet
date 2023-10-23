@@ -20,7 +20,7 @@ def concat_all_gather(tensor):
 
 
 class SegHead(nn.Module):
-    def __init__(self, model_cfg):
+    def __init__(self, model_cfg, point_cloud_range, voxel_size):
         super().__init__()
         self.use_mlp = False
         if model_cfg.use_mlp:

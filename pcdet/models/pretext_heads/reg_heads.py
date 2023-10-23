@@ -17,7 +17,7 @@ def make_fc_layers(fc_cfg, input_channels, output_channels):
     return nn.Sequential(*fc_layers)
 
 class RegHead(nn.Module):
-    def __init__(self, model_cfg):
+    def __init__(self, model_cfg, point_cloud_range, voxel_size):
         super().__init__()
         self.loss_weight = model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['seg_reg_weight']
         self.reg_fc_layers = make_fc_layers(
