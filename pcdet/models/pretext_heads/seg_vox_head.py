@@ -39,17 +39,17 @@ class SegVoxHead(nn.Module):
 
 
     @torch.no_grad()
-    def gather_feats(self, vox_ind, vox_feats_or_ind, batch_size_this, num_voxels_batch, max_num_vox):
+    def gather_feats(self, batch_indices, feats_or_coords, batch_size_this, num_vox_or_pts_batch, max_num_vox_or_pts):
         shuffle_feats=[]
-        shuffle_feats_shape = list(vox_feats_or_ind.size())
-        shuffle_feats_shape[0] = max_num_vox.item()
+        shuffle_feats_shape = list(feats_or_coords.size())
+        shuffle_feats_shape[0] = max_num_vox_or_pts.item()
 
         for bidx in range(batch_size_this):
-            num_vox_this_pc = num_voxels_batch[bidx]
-            b_mask = vox_ind == bidx
+            num_vox_this_pc = num_vox_or_pts_batch[bidx]
+            b_mask = batch_indices == bidx
 
             shuffle_feats.append(torch.ones(shuffle_feats_shape).cuda())
-            shuffle_feats[bidx][:num_vox_this_pc] =  vox_feats_or_ind[b_mask]
+            shuffle_feats[bidx][:num_vox_this_pc] =  feats_or_coords[b_mask]
 
 
         shuffle_feats = torch.stack(shuffle_feats) #(bs_this, max num vox, C)
@@ -84,16 +84,34 @@ class SegVoxHead(nn.Module):
         # gather from all gpus
 
         #Not used in the future: voxels, voxel_num_points, encoded_spconv_tensor
-        #Used in the future: voxel_coords, points(used in in voxel set abstraction), multi_scale_3d_features (in voxel set abstraction and voxelrcnn head), spatial_features, spatial_features_2d
-
+        #Used in the future: voxel_coords, points(used is in voxel set abstraction in the past), multi_scale_3d_features (in voxel set abstraction and voxelrcnn head), spatial_features, spatial_features_2d
+        points = batch_dict['points']
         voxel_coords = batch_dict['voxel_coords']
-        #points = batch_dict['points']
         multi_scale_3d_features = batch_dict['multi_scale_3d_features']
         spatial_features = batch_dict['spatial_features']
         spatial_features_2d = batch_dict['spatial_features_2d']
         batch_size_this = batch_dict['batch_size']
 
+        ################################ Unshuffle Points ###########################3
+        num_pts_batch = np.unique(points[:,0].cpu().numpy(), return_counts=True)[1]
+        all_size = concat_all_gather(torch.tensor(num_pts_batch).cuda())
+        max_size = torch.max(all_size) #max num voxels in any pc
+        points_gather = self.gather_feats(batch_indices=points[:,0], 
+                                        feats_or_coords=points, 
+                                        batch_size_this=batch_size_this, 
+                                        num_vox_or_pts_batch=num_pts_batch, 
+                                        max_num_vox_or_pts=max_size)
 
+        batch_size_all = points_gather.shape[0]
+        num_gpus = batch_size_all // batch_size_this
+        # restored index for this gpu
+        gpu_idx = torch.distributed.get_rank()
+        idx_this = idx_unshuffle.view(num_gpus, -1)[gpu_idx] # indices of shuffled pc id [4,6,5,1,.,0,....] -> [[4,6,5,1,.,0,.],[ second 8 indices]] -> pick for this gpu [4,6,5,1,.,0,.,.]
+
+        batch_dict['batch_size'] = len(idx_this)
+        batch_dict['points'] = self.get_feats_this(idx_this, all_size, points_gather, is_ind=True) # (N1+..Nbs, bxyzi)
+   
+        ################################ Unshuffle voxels ###########################3
 
         # Each pc has diff num voxels at diff layers
         # num voxels in input layer for this batch
@@ -102,26 +120,16 @@ class SegVoxHead(nn.Module):
         all_size = concat_all_gather(torch.tensor(num_voxels_batch).cuda()) #[num voxels pc 1, ...., num voxels pc 16]
         max_size = torch.max(all_size) #max num voxels in any pc
 
-        voxel_coords_gather = self.gather_feats(vox_ind=voxel_coords[:,0], 
-                                        vox_feats_or_ind=voxel_coords, 
+        voxel_coords_gather = self.gather_feats(batch_indices=voxel_coords[:,0], 
+                                        feats_or_coords=voxel_coords, 
                                         batch_size_this=batch_size_this, 
-                                        num_voxels_batch=num_voxels_batch, 
-                                        max_num_vox=max_size)
+                                        num_vox_or_pts_batch=num_voxels_batch, 
+                                        max_num_vox_or_pts=max_size)
         
         spatial_features_gather = concat_all_gather(spatial_features)
         spatial_features_2d_gather = concat_all_gather(spatial_features_2d)
 
-
-        batch_size_all = voxel_coords_gather.shape[0] # 12 if 2 gpus bcz bs=6 is per gpu
-
-        num_gpus = batch_size_all // batch_size_this # 12/6=2
-        
-        # restored index for this gpu
-        gpu_idx = torch.distributed.get_rank()
-        idx_this = idx_unshuffle.view(num_gpus, -1)[gpu_idx] # indices of shuffled pc id [4,6,5,1,.,0,....] -> [[4,6,5,1,.,0,.],[ second 8 indices]] -> pick for this gpu [4,6,5,1,.,0,.,.]
-
         batch_dict['voxel_coords'] = self.get_feats_this(idx_this, all_size, voxel_coords_gather, is_ind=True)
-        batch_dict['batch_size'] = len(idx_this)
         batch_dict['spatial_features'] = spatial_features_gather[idx_this]
         batch_dict['spatial_features_2d'] = spatial_features_2d_gather[idx_this]
         
@@ -137,17 +145,17 @@ class SegVoxHead(nn.Module):
             all_size = concat_all_gather(torch.tensor(num_voxels_batch).cuda()) #[num voxels pc 1, ...., num voxels pc 16]
             max_size = torch.max(all_size) #max num voxels in any pc
 
-            vox_feats_gather = self.gather_feats(vox_ind=vox_ind[:,0], 
-                                            vox_feats_or_ind=vox_feats, 
+            vox_feats_gather = self.gather_feats(batch_indices=vox_ind[:,0], 
+                                            feats_or_coords=vox_feats, 
                                             batch_size_this=batch_size_this, 
-                                            num_voxels_batch=num_voxels_batch, 
-                                            max_num_vox=max_size)
+                                            num_vox_or_pts_batch=num_voxels_batch, 
+                                            max_num_vox_or_pts=max_size)
             
-            vox_ind_gather = self.gather_feats(vox_ind=vox_ind[:,0], 
-                                            vox_feats_or_ind=vox_ind, 
+            vox_ind_gather = self.gather_feats(batch_indices=vox_ind[:,0], 
+                                            feats_or_coords=vox_ind, 
                                             batch_size_this=batch_size_this, 
-                                            num_voxels_batch=num_voxels_batch, 
-                                            max_num_vox=max_size)
+                                            num_vox_or_pts_batch=num_voxels_batch, 
+                                            max_num_vox_or_pts=max_size)
             
             vox_feats_this = self.get_feats_this(idx_this, all_size, vox_feats_gather)
             vox_ind_this = self.get_feats_this(idx_this, all_size, vox_ind_gather, is_ind=True)
@@ -200,7 +208,7 @@ class SegVoxHead(nn.Module):
                 point_features: (N, C)
         """
 
-        cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
+        cluster_ids = batch_dict['cluster_ids'] #original (N1+...+Nbs)
 
         # unshuffle point features, points (not needed), batch size bcz no BN in projection layers
         idx_unshuffle = batch_dict.get('idx_unshuffle', None)
@@ -210,12 +218,13 @@ class SegVoxHead(nn.Module):
         backbone_3d_bev_feats = batch_dict['spatial_features'] # (6,256,188,188) # unshuffled (B=2, C=128, N num points = 20000)
         backbone_2d_bev_feats = batch_dict['spatial_features_2d'] # (6,512,188,188)
         bev_features = torch.cat([backbone_3d_bev_feats, backbone_2d_bev_feats], dim=1)  # (6,256+512,188,188)
-        points = batch_dict['points'] #xyzi
+        points = batch_dict['points'] #(N, bxyzi)
         batch_size = batch_dict["batch_size"] # unshuffled
 
         batch_seg_feats = []
         for pc_idx in range(batch_size):
-            pc = points[pc_idx]
+            b_mask = points[:,0] == pc_idx
+            pc = points[b_mask][:,1:4]
             cluster_labels_this_pc = cluster_ids[pc_idx] # (20000,)
             common_cluster_labels_this_pc = batch_dict['common_cluster_ids'][pc_idx]
             fg_pts_mask = cluster_labels_this_pc > -1

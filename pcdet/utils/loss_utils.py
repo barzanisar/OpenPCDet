@@ -294,33 +294,43 @@ def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device(
     return fg_mask
 
 
-def neg_loss_cornernet(pred, gt, mask=None):
+def neg_loss_cornernet(pred, gt, mask=None, cls_weights=None):
     """
     Refer to https://github.com/tianweiy/CenterPoint.
     Modified focal loss. Exactly the same as CornerNet. Runs faster and costs a little bit more memory
     Args:
-        pred: (batch x c x h x w)
-        gt: (batch x c x h x w)
+        pred: pred hm: (batch x classes=8 x h=188 x w=188)
+        gt: target hm: (batch x classes x h=188 x w=188)
         mask: (batch x h x w)
+        cls_weights: (batch, h, w) weights on gt boxes for their loss contribution (anchor-wise weights)
     Returns:
     """
-    pos_inds = gt.eq(1).float()
-    neg_inds = gt.lt(1).float()
+    pos_inds = gt.eq(1).float() #(bs, classes=8, 188, 188): mask of shape (b,classes,H=y,W=x) where 1 is at gt box center and 0 elsewhere
+    neg_inds = gt.lt(1).float() #(bs, classes=8, 188, 188): mask of shape (b, classes,H=y,W=x) where 0 is at gt box center and 1 elsewhere
 
-    neg_weights = torch.pow(1 - gt, 4)
+    neg_weights = torch.pow(1 - gt, 4) #(bs, classes=8, 188, 188) edge voxels in gaussian gt box will be penalized more than voxels close to the center if their pred prob for gt class is high 
 
     loss = 0
 
-    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
-    neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
+    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds # pred prob should be high at gt box centers for that gtclass
+    neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds # pred prob should be low everywhere else not gt box center, with edges more penalized if their pred prob of gt class is higher
 
     if mask is not None:
         mask = mask[:, None, :, :].float()
         pos_loss = pos_loss * mask
         neg_loss = neg_loss * mask
         num_pos = (pos_inds.float() * mask).sum()
+    # elif cls_weights is not None:
+    #     cls_weights = cls_weights[:, None, :,:]
+    #     pos_loss = pos_loss * cls_weights
+    #     neg_loss = neg_loss * cls_weights
+    #     num_pos = (pos_inds.float() * cls_weights.gt(0).float()).sum()
     else:
-        num_pos = pos_inds.float().sum()
+        num_pos = pos_inds.float().sum() # num gt boxes 
+    
+    if cls_weights is not None: 
+        pos_loss = pos_loss.permute(1,0,2,3).sum(dim=(1,2,3)) * cls_weights # we want to penalize less if there is a big building and detector cant find it
+    #     neg_loss = neg_loss.permute(1,0,2,3).sum(dim=(1,2,3)) * cls_weights
 
     pos_loss = pos_loss.sum()
     neg_loss = neg_loss.sum()
@@ -340,11 +350,11 @@ class FocalLossCenterNet(nn.Module):
         super(FocalLossCenterNet, self).__init__()
         self.neg_loss = neg_loss_cornernet
 
-    def forward(self, out, target, mask=None):
-        return self.neg_loss(out, target, mask=mask)
+    def forward(self, out, target, mask=None, cls_weights=None):
+        return self.neg_loss(out, target, mask=mask, cls_weights=cls_weights)
 
 
-def _reg_loss(regr, gt_regr, mask):
+def _reg_loss(regr, gt_regr, mask, anchor_weights=None):
     """
     Refer to https://github.com/tianweiy/CenterPoint
     L1 regression loss
@@ -355,13 +365,16 @@ def _reg_loss(regr, gt_regr, mask):
     Returns:
     """
     num = mask.float().sum()
-    mask = mask.unsqueeze(2).expand_as(gt_regr).float()
+    mask = mask.unsqueeze(2).expand_as(gt_regr).float() #(bs, 500) -> (bs, 500, 8)
     isnotnan = (~ torch.isnan(gt_regr)).float()
     mask *= isnotnan
     regr = regr * mask
     gt_regr = gt_regr * mask
 
     loss = torch.abs(regr - gt_regr)
+    if anchor_weights is not None:
+        anchor_weights = anchor_weights.unsqueeze(2).expand_as(gt_regr).float()
+        loss = loss * anchor_weights
     loss = loss.transpose(2, 0)
 
     loss = torch.sum(loss, dim=2)
@@ -402,7 +415,7 @@ class RegLossCenterNet(nn.Module):
     def __init__(self):
         super(RegLossCenterNet, self).__init__()
 
-    def forward(self, output, mask, ind=None, target=None):
+    def forward(self, output, mask, ind=None, target=None, anchor_weights=None):
         """
         Args:
             output: (batch x dim x h x w) or (batch x max_objects)
@@ -415,5 +428,5 @@ class RegLossCenterNet(nn.Module):
             pred = output
         else:
             pred = _transpose_and_gather_feat(output, ind)
-        loss = _reg_loss(pred, target, mask)
+        loss = _reg_loss(pred, target, mask, anchor_weights)
         return loss
