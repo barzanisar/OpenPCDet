@@ -1,0 +1,58 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: create waymo infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.waymo.waymo_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": [
+                "--func",
+                "create_waymo_infos",
+                "--cfg_file",
+                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
+            ]
+        },
+        {
+            "name": "train_waymo_centerpoint",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/centerpoint.yaml"
+            ]
+        },
+        {
+            "name": "train_waymo_pvrcnn",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/pv_rcnn_with_centerhead_rpn.yaml"
+            ]
+        },
+        {
+            "name": "train_kitti",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/kitti_models/pointrcnn_minkunet.yaml"
+            ]
+        },
+    ]
+}
