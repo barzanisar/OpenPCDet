@@ -227,6 +227,7 @@ class VoxelSetAbstraction(nn.Module):
     def get_sampled_points(self, batch_dict):
         """
         Args:
+        Sample points from point cloud or voxel centers with FPS 
             batch_dict:
 
         Returns:
@@ -249,7 +250,7 @@ class VoxelSetAbstraction(nn.Module):
         keypoints_list = []
         for bs_idx in range(batch_size):
             bs_mask = (batch_indices == bs_idx)
-            sampled_points = src_points[bs_mask].unsqueeze(dim=0)  # (1, N, 3)
+            sampled_points = src_points[bs_mask].unsqueeze(dim=0)  # (1, N pts this pc, 3)
             if self.model_cfg.SAMPLE_METHOD == 'FPS':
                 cur_pt_idxs = pointnet2_stack_utils.farthest_point_sample(
                     sampled_points[:, :, 0:3].contiguous(), self.model_cfg.NUM_KEYPOINTS
@@ -349,7 +350,7 @@ class VoxelSetAbstraction(nn.Module):
             point_coords: (N, 4)
 
         """
-        keypoints = self.get_sampled_points(batch_dict) #(B x 4096, 4=b_id,xyz)
+        keypoints = self.get_sampled_points(batch_dict) #(B x 4096, 4=b_id,xyz) sample pts from raw point cloud with FPS 
 
         point_features_list = []
         if 'bev' in self.model_cfg.FEATURES_SOURCE:

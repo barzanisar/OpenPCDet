@@ -28,7 +28,6 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         losses_m = common_utils.AverageMeter()
 
     end = time.time()
-    #with torch.autograd.detect_anomaly():
     for cur_it in range(start_it, total_it_each_epoch):
         try:
             batch = next(dataloader_iter)
@@ -50,17 +49,20 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         if tb_log is not None:
             tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
 
-        model.train()
-        optimizer.zero_grad()
+        with torch.autograd.detect_anomaly():
 
-        with torch.cuda.amp.autocast(enabled=use_amp):
-            loss, tb_dict, disp_dict = model_func(model, batch)
+            model.train()
+            optimizer.zero_grad()
 
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
-        scaler.step(optimizer)
-        scaler.update()
+
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                loss, tb_dict, disp_dict = model_func(model, batch)
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
+            scaler.step(optimizer)
+            scaler.update()
 
         accumulated_iter += 1
 
