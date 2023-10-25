@@ -3,20 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from third_party.OpenPCDet.pcdet.models.pretext_heads.mlp import MLP
-
-
-@torch.no_grad()
-def concat_all_gather(tensor):
-    """
-    Performs all_gather operation on the provided tensors.
-    *** Warning ***: torch.distributed.all_gather has no gradient.
-    """
-    tensors_gather = [torch.ones_like(tensor)
-                      for _ in range(torch.distributed.get_world_size())]
-    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
-
-    output = torch.cat(tensors_gather, dim=0)
-    return output
+from third_party.OpenPCDet.pcdet.models.pretext_heads.gather_utils import *
 
 
 class SegHead(nn.Module):
@@ -28,42 +15,6 @@ class SegHead(nn.Module):
             self.head = MLP(model_cfg.mlp_dim) # projection head
 
         #self.dout=nn.Dropout(p=0.3)
-    
-    @torch.no_grad()
-    def gather_feats(self, batch_indices, feats_or_coords, batch_size_this, num_vox_or_pts_batch, max_num_vox_or_pts):
-        shuffle_feats=[]
-        shuffle_feats_shape = list(feats_or_coords.size())
-        shuffle_feats_shape[0] = max_num_vox_or_pts.item()
-
-        for bidx in range(batch_size_this):
-            num_vox_this_pc = num_vox_or_pts_batch[bidx]
-            b_mask = batch_indices == bidx
-
-            shuffle_feats.append(torch.ones(shuffle_feats_shape).cuda())
-            shuffle_feats[bidx][:num_vox_this_pc] =  feats_or_coords[b_mask]
-
-
-        shuffle_feats = torch.stack(shuffle_feats) #(bs_this, max num vox, C)
-        feats_gather = concat_all_gather(shuffle_feats)
-
-        return feats_gather
-
-    @torch.no_grad()
-    def get_feats_this(self, idx_this, all_size, gather_feats, is_ind=False):
-        feats_this_batch = []
-
-        # after shuffling we get only the actual information of each tensor
-        # :actual_size is the information, actual_size:biggest_size are just ones (ignore)
-        for idx in range(len(idx_this)):
-            pc_idx = idx_this[idx]
-            num_vox_this_pc = all_size[idx_this[idx]]
-            feats_this_pc = gather_feats[pc_idx][:num_vox_this_pc]
-            if is_ind:
-                feats_this_pc[:,0] = idx #change b_id in vox coords to new bid
-            feats_this_batch.append(feats_this_pc) #(num voxels for pc idx, 4=bid, zyx)
-        
-        feats_this_batch = torch.cat(feats_this_batch, dim=0)
-        return feats_this_batch
     
     @torch.no_grad()
     def _batch_unshuffle_ddp(self, batch_dict, idx_unshuffle):
@@ -81,7 +32,7 @@ class SegHead(nn.Module):
         num_pts_batch = np.unique(points[:,0].cpu().numpy(), return_counts=True)[1]
         all_size = concat_all_gather(torch.tensor(num_pts_batch).cuda())
         max_size = torch.max(all_size) #max num voxels in any pc
-        points_gather = self.gather_feats(batch_indices=points[:,0], 
+        points_gather = gather_feats(batch_indices=points[:,0], 
                                         feats_or_coords=points, 
                                         batch_size_this=batch_size_this, 
                                         num_vox_or_pts_batch=num_pts_batch, 
@@ -94,7 +45,7 @@ class SegHead(nn.Module):
         idx_this = idx_unshuffle.view(num_gpus, -1)[gpu_idx] # indices of shuffled pc id [4,6,5,1,.,0,....] -> [[4,6,5,1,.,0,.],[ second 8 indices]] -> pick for this gpu [4,6,5,1,.,0,.,.]
 
         batch_dict['batch_size'] = len(idx_this)
-        batch_dict['points'] = self.get_feats_this(idx_this, all_size, points_gather, is_ind=True) # (N1+..Nbs, bxyzi)
+        batch_dict['points'] = get_feats_this(idx_this, all_size, points_gather, is_ind=True) # (N1+..Nbs, bxyzi)
    
         ################################ Unshuffle point features ###########################3
 
@@ -118,13 +69,12 @@ class SegHead(nn.Module):
                 point_features: (N, C)
         """
 
-        cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
-
         # unshuffle point features, points (not needed), batch size bcz no BN in projection layers
         idx_unshuffle = batch_dict.get('idx_unshuffle', None)
         if torch.distributed.is_initialized() and idx_unshuffle is not None:
             batch_dict = self._batch_unshuffle_ddp(batch_dict, idx_unshuffle)
 
+        cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
         point_features = batch_dict['point_features'] # unshuffled (B=2, C=128, N num points = 20000)    
         batch_size = batch_dict["batch_size"] # unshuffled
 
