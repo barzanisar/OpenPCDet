@@ -40,8 +40,7 @@
                 "--func",
                 "create_waymo_gt_database",
                 "--cfg_file",
-                "tools/cfgs/dataset_configs/waymo_dataset.yaml",
-                "--use_parallel"
+                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
             ]
         },
         {
