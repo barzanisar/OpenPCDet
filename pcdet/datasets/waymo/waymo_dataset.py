@@ -585,7 +585,7 @@ def create_waymo_gt_database(
         )
     else:
         dataset.create_groundtruth_database(
-            info_path=train_filename, save_path=save_path, split='train', sampled_interval=1,
+            info_path=train_filename, save_path=save_path, split='train', sampled_interval=100,
             used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
         )
     print('---------------Data preparation Done---------------')
