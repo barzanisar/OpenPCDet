@@ -16,6 +16,7 @@ die() { echo "$*" 1>&2 ; exit 1; }
 
 # ========== WAYMO ==========
 DATA_DIR=/home/$USER/projects/def-swasland-ab/Datasets/Waymo
+SING_IMG=/home/$USER/scratch/singularity/openpcdet_martin.sif
 
 # Load Singularity
 module load StdEnv/2020
