@@ -16,6 +16,7 @@ from pathlib import Path
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 from ...utils import box_utils, common_utils
 from ..dataset import DatasetTemplate
+from functools import partial
 # from ..simulator.vis import open3d_vis_utils as V
 # from ..simulator.atmos_models import LISA
 # from ..simulator.simulate_rain_waymo import *
@@ -457,6 +458,137 @@ class WaymoDataset(DatasetTemplate):
         # stacked_gt_points = np.concatenate(stacked_gt_points, axis=0)
         # np.save(db_data_save_path, stacked_gt_points)
 
+    def create_gt_database_of_single_scene(self, info_with_idx, database_save_path=None, used_classes=None, total_samples=0):
+        info, info_idx = info_with_idx
+        print('gt_database sample: %d/%d' % (info_idx, total_samples))
+
+        all_db_infos = {}
+        point_offset_cnt = 0
+
+        pc_info = info['point_cloud']
+        sequence_name = pc_info['lidar_sequence']
+        sample_idx = pc_info['sample_idx']
+        points = self.get_lidar(sequence_name, sample_idx)
+
+        annos = info['annos']
+        names = annos['name']
+        difficulty = annos['difficulty']
+        gt_boxes = annos['gt_boxes_lidar']
+
+        if info_with_idx % 4 != 0 and len(names) > 0:
+            mask = (names == 'Vehicle')
+            names = names[~mask]
+            difficulty = difficulty[~mask]
+            gt_boxes = gt_boxes[~mask]
+
+        if info_with_idx % 2 != 0 and len(names) > 0:
+            mask = (names == 'Pedestrian')
+            names = names[~mask]
+            difficulty = difficulty[~mask]
+            gt_boxes = gt_boxes[~mask]
+
+        num_obj = gt_boxes.shape[0]
+        if num_obj == 0:
+            return {}
+
+        box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
+            torch.from_numpy(points[:, 0:3]).unsqueeze(dim=0).float().cuda(),
+            torch.from_numpy(gt_boxes[:, 0:7]).unsqueeze(dim=0).float().cuda()
+        ).long().squeeze(dim=0).cpu().numpy()
+
+        for i in range(num_obj):
+            filename = '%s_%04d_%s_%d.bin' % (sequence_name, sample_idx, names[i], i)
+            filepath = database_save_path / filename
+            gt_points = points[box_idxs_of_pts == i]
+            gt_points[:, :3] -= gt_boxes[i, :3]
+
+            if (used_classes is None) or names[i] in used_classes:
+                gt_points = gt_points.astype(np.float32)
+                assert gt_points.dtype == np.float32
+                with open(filepath, 'w') as f:
+                    gt_points.tofile(f)
+
+                db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
+                db_info = {'name': names[i], 'path': db_path, 'sequence_name': sequence_name,
+                            'sample_idx': sample_idx, 'gt_idx': i, 'box3d_lidar': gt_boxes[i],
+                            'num_points_in_gt': gt_points.shape[0], 'difficulty': difficulty[i]}
+
+                # it will be used if you choose to use shared memory for gt sampling
+                db_info['global_data_offset'] = [point_offset_cnt, point_offset_cnt + gt_points.shape[0]]
+                point_offset_cnt += gt_points.shape[0]
+
+                if names[i] in all_db_infos:
+                    all_db_infos[names[i]].append(db_info)
+                else:
+                    all_db_infos[names[i]] = [db_info]
+        
+        return all_db_infos
+    
+    def create_groundtruth_database_parallel(self, info_path, save_path, used_classes=None, split='train', sampled_interval=1,
+                                             processed_data_tag=None, num_workers=16):
+        database_save_path = save_path / ('%s_gt_database_%s' % (processed_data_tag, split))
+        db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
+            
+        database_save_path.mkdir(parents=True, exist_ok=True)
+
+        with open(info_path, 'rb') as f:
+            infos = pickle.load(f)
+
+        if sampled_interval > 1:
+            sampled_infos=[]
+            for k in range(0, len(infos), sampled_interval):
+                sampled_infos.append(infos[k])
+            infos = sampled_infos
+        
+        print(f'Number workers: {num_workers}')
+        create_gt_database_of_single_scene = partial(
+            self.create_gt_database_of_single_scene, database_save_path=database_save_path,
+            used_classes=used_classes, total_samples=len(infos)
+        )
+        # create_gt_database_of_single_scene((infos[300], 0))
+        with multiprocessing.Pool(num_workers) as p:
+            all_db_infos_list = list(p.map(create_gt_database_of_single_scene, zip(infos, np.arange(len(infos)))))
+
+        all_db_infos = {}
+
+        for cur_db_infos in all_db_infos_list:
+            for key, val in cur_db_infos.items():
+                if key not in all_db_infos:
+                    all_db_infos[key] = val
+                else:
+                    all_db_infos[key].extend(val)
+
+        for k, v in all_db_infos.items():
+            print('Database %s: %d' % (k, len(v)))
+
+        with open(db_info_save_path, 'wb') as f:
+            pickle.dump(all_db_infos, f)
+
+def create_waymo_gt_database(
+    dataset_cfg, class_names, data_path, save_path, processed_data_tag='waymo_processed_data',
+    workers=min(16, multiprocessing.cpu_count()), use_parallel=False):
+    dataset = WaymoDataset(
+        dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
+        training=False, logger=common_utils.create_logger()
+    )
+    train_split = dataset_cfg.DATA_SPLIT['train']
+    train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
+
+    print('---------------Start create groundtruth database for data augmentation---------------')
+    dataset.set_split(train_split)
+
+    if use_parallel:
+        dataset.create_groundtruth_database_parallel(
+            info_path=train_filename, save_path=save_path, split='train', sampled_interval=1,
+            used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag,
+            num_workers=workers
+        )
+    else:
+        dataset.create_groundtruth_database(
+            info_path=train_filename, save_path=save_path, split='train', sampled_interval=1,
+            used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
+        )
+    print('---------------Data preparation Done---------------')
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
                        raw_data_tag='raw_data', processed_data_tag='waymo_processed_data',
@@ -473,33 +605,33 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     print('---------------Start to generate data infos---------------')
 
-    # dataset.set_split(train_split)
-    # waymo_infos_train = dataset.get_infos(
-    #     raw_data_path=data_path / raw_data_tag,
-    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-    #     sampled_interval=1 # 10 to make waymo_processed_data_10 and 1 to make gtdb
-    # )
-    # with open(train_filename, 'wb') as f:
-    #     pickle.dump(waymo_infos_train, f)
-    # print('----------------Waymo info train file is saved to %s----------------' % train_filename)
-
-    # dataset.set_split(val_split)
-    # waymo_infos_val = dataset.get_infos(
-    #     raw_data_path=data_path / raw_data_tag,
-    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-    #     sampled_interval=1 # 10 to make waymo_processed_data_10
-    # )
-    # with open(val_filename, 'wb') as f:
-    #     pickle.dump(waymo_infos_val, f)
-    # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
-
-    print('---------------Start create groundtruth database for data augmentation---------------')
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     dataset.set_split(train_split)
-    dataset.create_groundtruth_database(
-        info_path=train_filename, save_path=save_path, split='train', sampled_interval=1,
-        used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
+    waymo_infos_train = dataset.get_infos(
+        raw_data_path=data_path / raw_data_tag,
+        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+        sampled_interval=1 # 10 to make waymo_processed_data_10 and 1 to make gtdb
     )
+    with open(train_filename, 'wb') as f:
+        pickle.dump(waymo_infos_train, f)
+    print('----------------Waymo info train file is saved to %s----------------' % train_filename)
+
+    dataset.set_split(val_split)
+    waymo_infos_val = dataset.get_infos(
+        raw_data_path=data_path / raw_data_tag,
+        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+        sampled_interval=1 # 10 to make waymo_processed_data_10
+    )
+    with open(val_filename, 'wb') as f:
+        pickle.dump(waymo_infos_val, f)
+    print('----------------Waymo info val file is saved to %s----------------' % val_filename)
+
+    # print('---------------Start create groundtruth database for data augmentation---------------')
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # dataset.set_split(train_split)
+    # dataset.create_groundtruth_database(
+    #     info_path=train_filename, save_path=save_path, split='train', sampled_interval=1,
+    #     used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
+    # )
 
     print('---------------Data preparation Done---------------')
 
@@ -635,17 +767,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
+    parser.add_argument('--use_parallel', action='store_true', default=False, help='')
     args = parser.parse_args()
+    ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+    import yaml
+    from easydict import EasyDict
+    try:
+        yaml_config = yaml.safe_load(open(args.cfg_file), Loader=yaml.FullLoader)
+    except:
+        yaml_config = yaml.safe_load(open(args.cfg_file))
+    dataset_cfg = EasyDict(yaml_config)
+
 
     if args.func == 'create_waymo_infos':
-        import yaml
-        from easydict import EasyDict
-        try:
-            yaml_config = yaml.safe_load(open(args.cfg_file), Loader=yaml.FullLoader)
-        except:
-            yaml_config = yaml.safe_load(open(args.cfg_file))
-        dataset_cfg = EasyDict(yaml_config)
-        ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         create_waymo_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
@@ -654,6 +788,17 @@ if __name__ == '__main__':
             raw_data_tag='raw_data',
             processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
         )
+    elif args.func == 'create_waymo_gt_database':
+        create_waymo_gt_database(
+            dataset_cfg=dataset_cfg,
+            class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+            data_path=ROOT_DIR / 'data' / 'waymo',
+            save_path=ROOT_DIR / 'data' / 'waymo',
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
+            use_parallel=args.use_parallel
+        )
+    else:
+        raise NotImplementedError
     
     # if args.func == 'simulate_rain':
     #     simulate_rain(

@@ -57,7 +57,7 @@ $SING_IMG
 
 TRAIN_CMD=$BASE_CMD
 
-TRAIN_CMD+="python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_infos --cfg_file tools/cfgs/dataset_configs/waymo_dataset.yaml"
+TRAIN_CMD+="python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_gt_database --cfg_file tools/cfgs/dataset_configs/waymo_dataset.yaml"
 
 echo "Running create infos"
 echo "$TRAIN_CMD"

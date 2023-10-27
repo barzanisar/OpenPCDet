@@ -38,9 +38,10 @@
             "console": "integratedTerminal",
             "args": [
                 "--func",
-                "create_waymo_infos",
+                "create_waymo_gt_database",
                 "--cfg_file",
-                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
+                "tools/cfgs/dataset_configs/waymo_dataset.yaml",
+                "--use_parallel"
             ]
         },
         {
@@ -119,7 +120,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint.yaml", 
+                "cfgs/waymo_models/centerpoint.yaml",
                 "--eval_all"
             ]
         },
@@ -145,7 +146,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint_finetune.yaml", 
+                "cfgs/waymo_models/centerpoint_finetune.yaml",
                 "--eval_all"
             ]
         },
