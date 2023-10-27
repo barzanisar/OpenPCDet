@@ -100,7 +100,7 @@ class Detector3DTemplate(nn.Module):
 
         backbone_2d_module = backbones_2d.__all__[self.model_cfg.BACKBONE_2D.NAME](
             model_cfg=self.model_cfg.BACKBONE_2D,
-            input_channels=model_info_dict['num_bev_features']
+            input_channels=model_info_dict.get('num_bev_features', None)
         )
         model_info_dict['module_list'].append(backbone_2d_module)
         model_info_dict['num_bev_features'] = backbone_2d_module.num_bev_features
@@ -127,7 +127,7 @@ class Detector3DTemplate(nn.Module):
             return None, model_info_dict
         dense_head_module = dense_heads.__all__[self.model_cfg.DENSE_HEAD.NAME](
             model_cfg=self.model_cfg.DENSE_HEAD,
-            input_channels=model_info_dict['num_bev_features'],
+            input_channels=model_info_dict['num_bev_features'] if 'num_bev_features' in model_info_dict else self.model_cfg.DENSE_HEAD.INPUT_FEATURES,
             num_class=self.num_class if not self.model_cfg.DENSE_HEAD.CLASS_AGNOSTIC else 1,
             class_names=self.class_names,
             grid_size=model_info_dict['grid_size'],
@@ -163,7 +163,7 @@ class Detector3DTemplate(nn.Module):
         point_head_module = roi_heads.__all__[self.model_cfg.ROI_HEAD.NAME](
             model_cfg=self.model_cfg.ROI_HEAD,
             input_channels=model_info_dict['num_point_features'],
-            backbone_channels=model_info_dict['backbone_channels'],
+            backbone_channels=model_info_dict.get('backbone_channels', None),
             point_cloud_range=model_info_dict['point_cloud_range'],
             voxel_size=model_info_dict['voxel_size'],
             num_class=self.num_class if not self.model_cfg.ROI_HEAD.CLASS_AGNOSTIC else 1,
@@ -379,7 +379,7 @@ class Detector3DTemplate(nn.Module):
             self.load_state_dict(state_dict)
         return state_dict, update_model_state
 
-    def load_params_from_file(self, filename, logger, to_cpu=False):
+    def load_params_from_file(self, filename, logger, to_cpu=False, pre_trained_path=None):
         if not os.path.isfile(filename):
             raise FileNotFoundError
 
@@ -387,6 +387,10 @@ class Detector3DTemplate(nn.Module):
         loc_type = torch.device('cpu') if to_cpu else None
         checkpoint = torch.load(filename, map_location=loc_type)
         model_state_disk = checkpoint['model_state']
+        if not pre_trained_path is None:
+            pretrain_checkpoint = torch.load(pre_trained_path, map_location=loc_type)
+            pretrain_model_state_disk = pretrain_checkpoint['model_state']
+            model_state_disk.update(pretrain_model_state_disk)
 
         version = checkpoint.get("version", None)
         if version is not None:

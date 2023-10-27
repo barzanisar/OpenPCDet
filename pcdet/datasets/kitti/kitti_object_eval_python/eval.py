@@ -1044,9 +1044,9 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
             ret_dict[f'{cls}_3d_AP_R40_iou_{d3_min_overlap}/moderate'] = mAP3d_R40[j, 1, i]
             ret_dict[f'{cls}_3d_AP_R40_iou_{d3_min_overlap}/hard'] = mAP3d_R40[j, 2, i]
             
-            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/easy'] = mAPbev_R40[j, 0, i]
-            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/moderate'] = mAPbev_R40[j, 1, i]
-            # ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/hard'] = mAPbev_R40[j, 2, i]
+            ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/easy'] = mAPbev_R40[j, 0, i]
+            ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/moderate'] = mAPbev_R40[j, 1, i]
+            ret_dict[f'{cls}_bev_R40_iou_{bev_min_overlap}/hard'] = mAPbev_R40[j, 2, i]
             
             # ret_dict[f'{cls}_image_R40_iou_{bbox_min_overlap}/easy'] = mAPbbox_R40[j, 0, i]
             # ret_dict[f'{cls}_image_R40_iou_{bbox_min_overlap}/moderate'] = mAPbbox_R40[j, 1, i]
