@@ -47,7 +47,6 @@ singularity exec
 --pwd /OpenPCDet/tools
 --bind $PROJ_DIR/checkpoints:/OpenPCDet/checkpoints
 --bind $PROJ_DIR/output:/OpenPCDet/output
---bind $PROJ_DIR/tests:/OpenPCDet/tests
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
 --bind $DATA_DIR:/OpenPCDet/data/waymo
