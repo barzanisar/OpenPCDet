@@ -73,11 +73,11 @@ def parse_config():
 def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
     # load checkpoint
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
-    model.cuda()
+    model.cuda(args.local_rank)
 
     # start evaluation
     eval_dict = eval_utils.eval_one_epoch(
-        cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
+        cfg, model, test_loader, epoch_id, logger, local_rank=args.local_rank, dist_test=dist_test,
         result_dir=eval_output_dir, save_to_file=args.save_to_file
     )
 
@@ -110,7 +110,7 @@ def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir
     highest_metric = -1.
 
     # tensorboard log
-    if cfg.LOCAL_RANK == 0:
+    if cfg.GLOBAL_RANK == 0:
         tb_log = SummaryWriter(log_dir=str(eval_output_dir / ('tensorboard_%s' % cfg.DATA_CONFIG.DATA_SPLIT['test'])))
 
     while True:
@@ -120,18 +120,18 @@ def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir
             break
 
         model.load_params_from_file(filename=cur_ckpt, logger=logger, to_cpu=dist_test)
-        model.cuda()
+        model.cuda(args.local_rank)
 
         # start evaluation
         cur_result_dir = eval_output_dir / ('epoch_%s' % cur_epoch_id) / cfg.DATA_CONFIG.DATA_SPLIT['test']
         tb_dict = eval_utils.eval_one_epoch(
-            cfg, model, test_loader, cur_epoch_id, logger, dist_test=dist_test,
+            cfg, model, test_loader, cur_epoch_id, logger, local_rank=args.local_rank, dist_test=dist_test,
             result_dir=cur_result_dir, save_to_file=args.save_to_file
         )
 
         highest_metric = wandb_utils.log_and_summary(cfg, tb_dict, step=int(cur_epoch_id), highest_metric=highest_metric)
 
-        if cfg.LOCAL_RANK == 0:
+        if cfg.GLOBAL_RANK == 0:
             for key, val in tb_dict.items():
                 tb_log.add_scalar(key, val, cur_epoch_id)
 
@@ -147,7 +147,7 @@ def main():
         dist_test = False
         total_gpus = 1
     else:
-        total_gpus, cfg.LOCAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
+        total_gpus, cfg.GLOBAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
             args.tcp_port, args.local_rank, backend='nccl'
         )
         dist_test = True
@@ -178,7 +178,7 @@ def main():
 
     eval_output_dir.mkdir(parents=True, exist_ok=True)
     log_file = eval_output_dir / ('log_eval_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
-    logger = common_utils.create_logger(log_file, rank=cfg.LOCAL_RANK)
+    logger = common_utils.create_logger(log_file, rank=cfg.GLOBAL_RANK)
 
     if not args.disable_wandb:
         wandb_utils.init(cfg, args, job_type='eval', eval_tag=args.eval_tag)
@@ -187,6 +187,7 @@ def main():
     logger.info('**********************Start logging**********************')
     gpu_list = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ.keys() else 'ALL'
     logger.info('CUDA_VISIBLE_DEVICES=%s' % gpu_list)
+    torch.cuda.set_device(args.local_rank)
 
     if dist_test:
         logger.info('total_batch_size: %d' % (total_gpus * args.batch_size))
@@ -210,7 +211,7 @@ def main():
     elif args.time_profile:
         model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
         model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
-        model.cuda()
+        model.cuda(args.local_rank)
         model.eval()
         progress_bar = tqdm.tqdm(total=args.time_profile_iterations, leave=True, desc='time profiler', dynamic_ncols=True)
         for i, batch_dict in enumerate(test_loader):

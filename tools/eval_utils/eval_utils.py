@@ -19,7 +19,7 @@ def statistics_info(cfg, ret_dict, metric, disp_dict):
         '(%d, %d) / %d' % (metric['recall_roi_%s' % str(min_thresh)], metric['recall_rcnn_%s' % str(min_thresh)], metric['gt_num'])
 
 
-def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None):
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, local_rank, dist_test=False, save_to_file=False, result_dir=None):
     result_dir.mkdir(parents=True, exist_ok=True)
 
     final_output_dir = result_dir / 'final_result' / 'data'
@@ -47,16 +47,16 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
 
     logger.info('*************** EPOCH %s EVALUATION *****************' % epoch_id)
     if dist_test:
-        num_gpus = torch.cuda.device_count()
-        local_rank = cfg.LOCAL_RANK % num_gpus
+        # num_gpus = torch.cuda.device_count()
+        # local_rank = cfg.LOCAL_RANK % num_gpus
         model = torch.nn.parallel.DistributedDataParallel(
                 model,
-                device_ids=[local_rank],
+                device_ids=[local_rank % torch.cuda.device_count()],
                 broadcast_buffers=False
         )
     model.eval()
 
-    if cfg.LOCAL_RANK == 0:
+    if cfg.GLOBAL_RANK == 0:
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
@@ -75,11 +75,11 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
             output_path=final_output_dir if save_to_file else None
         )
         det_annos += annos
-        if cfg.LOCAL_RANK == 0:
+        if cfg.GLOBAL_RANK == 0:
             progress_bar.set_postfix(disp_dict)
             progress_bar.update()
 
-    if cfg.LOCAL_RANK == 0:
+    if cfg.GLOBAL_RANK == 0:
         progress_bar.close()
 
     if dist_test:
@@ -91,7 +91,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     sec_per_example = (time.time() - start_time) / len(dataloader.dataset)
     logger.info('Generate label finished(sec_per_example: %.4f second).' % sec_per_example)
 
-    if cfg.LOCAL_RANK != 0:
+    if cfg.GLOBAL_RANK != 0:
         return {}
 
     ret_dict = {}

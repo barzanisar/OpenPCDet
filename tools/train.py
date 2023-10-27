@@ -41,12 +41,11 @@ def parse_config():
     parser.add_argument('--pretrained_model', type=none_or_str, default=None, help='pretrained_model')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
-    parser.add_argument('--sync_bn', action='store_true', default=True, help='whether to use sync bn')
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--save_ckpt_after_epoch', type=int, default=0, help='number of training epochs to save ckpt after')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-    parser.add_argument('--max_ckpt_save_num', type=int, default=40, help='max number of saved checkpoint')
+    parser.add_argument('--max_ckpt_save_num', type=int, default=500, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
@@ -61,7 +60,7 @@ def parse_config():
     cfg_from_yaml_file(args.cfg_file, cfg)
     cfg.TAG = Path(args.cfg_file).stem
     cfg.EXP_GROUP_PATH = args.cfg_file.split('/')[-2] #'/'.join(args.cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
-
+    cfg.GLOBAL_RANK = 0
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs, cfg)
 
@@ -73,7 +72,7 @@ def main():
         dist_train = False
         total_gpus = 1
     else:
-        total_gpus, cfg.LOCAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
+        total_gpus, cfg.GLOBAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
             args.tcp_port, args.local_rank, backend='nccl'
         )
         dist_train = True
@@ -87,7 +86,7 @@ def main():
     args.epochs = cfg.OPTIMIZATION.NUM_EPOCHS if args.epochs is None else args.epochs
 
     if args.fix_random_seed:
-        common_utils.set_random_seed(666 + cfg.LOCAL_RANK)
+        common_utils.set_random_seed(666 + cfg.GLOBAL_RANK)
 
     output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG # exp_group = 'dense_models', Tag = 'pvrcnn_train_clear_FOV3000_60' (.yaml)
     if args.extra_tag != 'default':
@@ -97,7 +96,7 @@ def main():
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = output_dir / ('log_train_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
-    logger = common_utils.create_logger(log_file, rank=cfg.LOCAL_RANK)
+    logger = common_utils.create_logger(log_file, rank=cfg.GLOBAL_RANK)
 
     # log to file
     logger.info('**********************Start logging**********************')
@@ -109,10 +108,10 @@ def main():
     for key, val in vars(args).items():
         logger.info('{:16} {}'.format(key, val))
     log_config_to_file(cfg, logger=logger)
-    if cfg.LOCAL_RANK == 0:
+    if cfg.GLOBAL_RANK == 0:
         os.system('cp %s %s' % (args.cfg_file, output_dir))
 
-    tb_log = SummaryWriter(log_dir=str(output_dir / 'tensorboard')) if cfg.LOCAL_RANK == 0 else None
+    tb_log = SummaryWriter(log_dir=str(output_dir / 'tensorboard')) if cfg.GLOBAL_RANK == 0 else None
 
     train_set, train_loader, train_sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
@@ -127,9 +126,10 @@ def main():
     )
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
-    if dist_train and args.sync_bn:
+    if dist_train:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model.cuda()
+    torch.cuda.set_device(args.local_rank)
+    model.cuda(args.local_rank)
 
     # load checkpoint if it is possible
     start_epoch = it = 0
@@ -143,7 +143,7 @@ def main():
             ### Change for finetuning
             logger.info('**********************Loading SSL backbone**********************')
             state = torch.load(args.pretrained_model)
-            init_model_from_weights(model, state, freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger)
+            init_model_from_weights(model, state, skip_layers=cfg.get('SKIP_INIT_LAYER', None), freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger, rank=cfg.GLOBAL_RANK)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
@@ -163,7 +163,7 @@ def main():
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank % torch.cuda.device_count()])
     logger.info(model)
 
     lr_scheduler, lr_warmup_scheduler = build_scheduler(
@@ -185,7 +185,7 @@ def main():
         start_epoch=start_epoch,
         total_epochs=args.epochs,
         start_iter=it,
-        rank=cfg.LOCAL_RANK,
+        rank=cfg.GLOBAL_RANK,
         tb_log=tb_log,
         ckpt_save_dir=ckpt_dir,
         train_sampler=train_sampler,

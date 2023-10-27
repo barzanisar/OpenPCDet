@@ -176,22 +176,45 @@ def init_dist_slurm(tcp_port, local_rank, backend='nccl'):
     return total_gpus, rank
 
 
-def init_dist_pytorch(tcp_port, local_rank, backend='nccl'):
-    if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method('spawn')
-    # os.environ['MASTER_PORT'] = str(tcp_port)
-    # os.environ['MASTER_ADDR'] = 'localhost'
-    num_gpus = torch.cuda.device_count()
-    torch.cuda.set_device(local_rank % num_gpus)
+def init_dist_pytorch(tcp_port, local_rank, backend='nccl'):    
+    env_dict = {
+                key: os.environ[key]
+                for key in ("MASTER_ADDR", "MASTER_PORT", "RANK", "WORLD_SIZE", "LOCAL_RANK")
+            }
+    print("LAUNCHING!")
+    print(env_dict)
 
-    dist.init_process_group(
-        backend=backend,
-        init_method='tcp://127.0.0.1:%d' % tcp_port,
-        rank=local_rank,
-        world_size=num_gpus
-    )
-    rank = dist.get_rank()
-    return num_gpus, rank
+    ngpus_per_node = torch.cuda.device_count()
+    rank = int(os.environ.get("SLURM_NODEID", 0))*ngpus_per_node + local_rank
+
+    torch.cuda.set_device(local_rank)
+    """ this block initializes a process group and initiate communications
+        between all processes running on all nodes """
+
+    print('From Rank: {}, ==> Initializing Process Group...'.format(rank))
+    dist.init_process_group(backend='nccl', init_method="env://")
+    print('From Rank: {}, ==> Process Group Ready!...'.format(rank))
+    print(env_dict, f"rank: {rank}", f"dist.get_world_size(): {dist.get_world_size()}")
+
+
+    # if mp.get_start_method(allow_none=True) is None:
+    #     mp.set_start_method('spawn')
+    # # os.environ['MASTER_PORT'] = str(tcp_port)
+    # # os.environ['MASTER_ADDR'] = 'localhost'
+    # num_gpus = torch.cuda.device_count()
+    # torch.cuda.set_device(local_rank % num_gpus)
+
+    # dist.init_process_group(
+    #     backend=backend,
+    #     init_method='tcp://127.0.0.1:%d' % tcp_port,
+    #     rank=local_rank,
+    #     world_size=num_gpus
+    # )
+    # rank = dist.get_rank()
+    total_num_gpus=dist.get_world_size()
+
+
+    return total_num_gpus, rank
 
 
 def get_dist_info(return_gpu_per_machine=False):

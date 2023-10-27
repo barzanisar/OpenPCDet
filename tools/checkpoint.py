@@ -39,10 +39,11 @@ def init_model_from_weights(
     logger,
     state_dict_key_name="model",
     skip_layers=None,
-    print_init_layers=False,
+    print_init_layers=True,
     replace_suffix="",
     freeze_bb=False,
-    append_suffix=""
+    append_suffix="",
+    rank=0
 ):
     """
     Initialize the model from any given params file. This is particularly useful
@@ -72,19 +73,19 @@ def init_model_from_weights(
             continue
         if "module.trunk.0."+param_name in state_dict:
             new_state_dict[param_name] = state_dict["module.trunk.0."+param_name] # this layer will be transfered to opdmodel
-        if "module.head."+param_name in state_dict:
-            new_state_dict[param_name] = state_dict["module.head."+param_name] # this layer will be transfered to opdmodel
+        elif "module.det_head."+param_name in state_dict:
+            new_state_dict[param_name] = state_dict["module.det_head."+param_name] # this layer will be transfered to opdmodel
         else:
             logger.info(f"{param_name} not found in ssl model!")
     state_dict = new_state_dict
             
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    #local_rank = int(os.environ.get("LOCAL_RANK", 0))
     not_found, not_init = [], []
     for layername in all_layers.keys():
         if (
             skip_layers and len(skip_layers) > 0 and layername.find(skip_layers) >= 0
         ) or layername.find("num_batches_tracked") >= 0:
-            if print_init_layers and (local_rank == 0):
+            if print_init_layers and (rank == 0):
                 not_init.append(layername)
                 logger.info(f"Ignored layer:\t{layername}")
             continue
@@ -94,11 +95,11 @@ def init_model_from_weights(
                 param = torch.from_numpy(param)
             all_layers[layername].copy_(param)
             init_layers[layername] = True
-            if print_init_layers and (local_rank == 0):
+            if print_init_layers and (rank == 0):
                 logger.info(f"Init layer:\t{layername}")
         else:
             not_found.append(layername)
-            if print_init_layers and (local_rank == 0):
+            if print_init_layers and (rank == 0):
                 logger.info(f"Not found:\t{layername}")
     ####################### DEBUG ############################
     # _print_state_dict_shapes(model.state_dict())

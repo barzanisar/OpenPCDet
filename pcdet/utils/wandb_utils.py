@@ -7,8 +7,8 @@ def is_wandb_enabled(cfg):
     wandb_enabled = False
     if cfg.get('WANDB'):
         wandb_enabled = cfg.WANDB.ENABLED
-    if cfg.get('LOCAL_RANK'):
-        wandb_enabled &= cfg.LOCAL_RANK == 0
+    if cfg.get('GLOBAL_RANK'):
+        wandb_enabled &= cfg.GLOBAL_RANK == 0
     # TODO Check WANDB_API_KEY validity, try except?
     if os.environ.get('WANDB_API_KEY') is None:
         wandb_enabled = False

@@ -376,9 +376,9 @@ class WaymoDataset(DatasetTemplate):
 
     def create_groundtruth_database(self, info_path, save_path, used_classes=None, split='train', sampled_interval=1,
                                     processed_data_tag=None):
-        database_save_path = save_path / ('%s_gt_database_%s_sampled_%d' % (processed_data_tag, split, sampled_interval))
+        database_save_path = save_path / ('%s_gt_database_%s' % (processed_data_tag, split))
         db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
-        db_data_save_path = save_path / ('%s_gt_database_%s_sampled_%d_global.npy' % (processed_data_tag, split, sampled_interval))
+        # db_data_save_path = save_path / ('%s_gt_database_%s_sampled_%d_global.npy' % (processed_data_tag, split, sampled_interval))
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
         with open(info_path, 'rb') as f:
@@ -400,17 +400,17 @@ class WaymoDataset(DatasetTemplate):
             difficulty = annos['difficulty']
             gt_boxes = annos['gt_boxes_lidar']
 
-            # if k % 4 != 0 and len(names) > 0:
-            #     mask = (names == 'Vehicle')
-            #     names = names[~mask]
-            #     difficulty = difficulty[~mask]
-            #     gt_boxes = gt_boxes[~mask]
+            if k % 4 != 0 and len(names) > 0:
+                mask = (names == 'Vehicle')
+                names = names[~mask]
+                difficulty = difficulty[~mask]
+                gt_boxes = gt_boxes[~mask]
 
-            # if k % 2 != 0 and len(names) > 0:
-            #     mask = (names == 'Pedestrian')
-            #     names = names[~mask]
-            #     difficulty = difficulty[~mask]
-            #     gt_boxes = gt_boxes[~mask]
+            if k % 2 != 0 and len(names) > 0:
+                mask = (names == 'Pedestrian')
+                names = names[~mask]
+                difficulty = difficulty[~mask]
+                gt_boxes = gt_boxes[~mask]
 
             num_obj = gt_boxes.shape[0]
             if num_obj == 0:
@@ -473,25 +473,25 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     print('---------------Start to generate data infos---------------')
 
-    dataset.set_split(train_split)
-    waymo_infos_train = dataset.get_infos(
-        raw_data_path=data_path / raw_data_tag,
-        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=10 # 10 to make waymo_processed_data_10 and 1 to make gtdb
-    )
-    with open(train_filename, 'wb') as f:
-        pickle.dump(waymo_infos_train, f)
-    print('----------------Waymo info train file is saved to %s----------------' % train_filename)
+    # dataset.set_split(train_split)
+    # waymo_infos_train = dataset.get_infos(
+    #     raw_data_path=data_path / raw_data_tag,
+    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+    #     sampled_interval=1 # 10 to make waymo_processed_data_10 and 1 to make gtdb
+    # )
+    # with open(train_filename, 'wb') as f:
+    #     pickle.dump(waymo_infos_train, f)
+    # print('----------------Waymo info train file is saved to %s----------------' % train_filename)
 
-    dataset.set_split(val_split)
-    waymo_infos_val = dataset.get_infos(
-        raw_data_path=data_path / raw_data_tag,
-        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=10 # 10 to make waymo_processed_data_10
-    )
-    with open(val_filename, 'wb') as f:
-        pickle.dump(waymo_infos_val, f)
-    print('----------------Waymo info val file is saved to %s----------------' % val_filename)
+    # dataset.set_split(val_split)
+    # waymo_infos_val = dataset.get_infos(
+    #     raw_data_path=data_path / raw_data_tag,
+    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+    #     sampled_interval=1 # 10 to make waymo_processed_data_10
+    # )
+    # with open(val_filename, 'wb') as f:
+    #     pickle.dump(waymo_infos_val, f)
+    # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
 
     print('---------------Start create groundtruth database for data augmentation---------------')
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -635,7 +635,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    # parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_10', help='')
     args = parser.parse_args()
 
     if args.func == 'create_waymo_infos':
@@ -647,7 +646,6 @@ if __name__ == '__main__':
             yaml_config = yaml.safe_load(open(args.cfg_file))
         dataset_cfg = EasyDict(yaml_config)
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
-        # dataset_cfg.PROCESSED_DATA_TAG = args.processed_data_tag
         create_waymo_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
