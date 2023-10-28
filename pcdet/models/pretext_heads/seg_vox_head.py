@@ -187,7 +187,7 @@ class SegVoxHead(nn.Module):
             if fg_points.shape[1] < self.NUM_KEYPOINTS:
                 times = int(self.NUM_KEYPOINTS / fg_points.shape[1]) + 1
                 non_empty = cur_pt_idxs[0, :fg_points.shape[1]]
-                cur_pt_idxs[0] = non_empty.repeat(times)[:self.model_cfg.NUM_KEYPOINTS]
+                cur_pt_idxs[0] = non_empty.repeat(times)[:self.NUM_KEYPOINTS]
 
             sampled_fg_keypoints = fg_points[0][cur_pt_idxs[0]] #(Num pts, 3=xyz)
             sampled_fg_cluster_lbls = cluster_labels_this_pc[fg_pts_mask][cur_pt_idxs[0].cpu()] #(Num pts, )
