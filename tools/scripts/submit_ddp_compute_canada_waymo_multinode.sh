@@ -168,4 +168,4 @@ export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
 export EVAL_TAG=$EVAL_TAG
 
-srun scripts/launch_ddp_waymo.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
+srun tools/scripts/launch_ddp_waymo.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
