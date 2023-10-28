@@ -58,7 +58,6 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0
 /OpenPCDet/tools/train.py 
 --launcher pytorch 
---sync_bn 
 --cfg_file /OpenPCDet/$CFG_FILE 
 --pretrained_model $PRETRAINED_MODEL 
 --extra_tag $EXTRA_TAG 
