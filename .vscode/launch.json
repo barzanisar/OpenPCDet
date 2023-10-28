@@ -64,7 +64,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint.yaml"
+                "cfgs/waymo_models/centerpoint_clus.yaml"
             ]
         },
         {
