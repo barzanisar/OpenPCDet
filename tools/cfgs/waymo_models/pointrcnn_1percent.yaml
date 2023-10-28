@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['scratch-train-pointrcnn']
+    tags: ['scratch']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_1percent.yaml
@@ -153,7 +153,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 6
     NUM_EPOCHS: 2 #60
 
     OPTIMIZER: adam_onecycle

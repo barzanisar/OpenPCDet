@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['scratch-train-centerpoint']
+    tags: ['finetune']
 
 SKIP_INIT_LAYER:  'dense_head.heads_list.0.hm.1'
 

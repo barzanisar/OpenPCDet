@@ -6,7 +6,7 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['finetune-pointrcnn']
+    tags: ['finetune']
 
 SKIP_INIT_LAYER: 'point_head.cls_layers.6'
 
