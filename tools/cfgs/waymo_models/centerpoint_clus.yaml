@@ -1,4 +1,4 @@
-CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist', 'Stuff']
+CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist', 'SmallStuff', 'MediumStuff', 'LargeStuff']
 
 WANDB:
     ENABLED: False
@@ -6,11 +6,18 @@ WANDB:
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['finetune-centerpoint']
+    tags: ['scratch']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_clus.yaml
 
+    PSEUDO_CLASSES_CFG:
+        PSEUDO_CLASSES: ['SmallStuff', 'MediumStuff', 'LargeStuff']
+        PSEUDO_MEAN_SIZES: [[0.5, 0.5, 1], [2, 1, 1.7], [5, 2, 2]]
+        MIN_IOU_OVERLAP: [[[0.5, 0.5, 0.5], [0.5, 0.25, 0.25]], 
+                            [[0.5, 0.5, 0.5], [0.5, 0.25, 0.25]],
+                            [[0.7, 0.7, 0.7], [0.5, 0.5, 0.5]]]
+    
     POINT_FEATURE_ENCODING: {
     encoding_type: absolute_coordinates_encoding,
     used_feature_list: ['x', 'y', 'z', 'intensity'],
@@ -44,7 +51,7 @@ MODEL:
         CLASS_AGNOSTIC: False
 
         CLASS_NAMES_EACH_HEAD: [
-            ['Vehicle', 'Pedestrian', 'Cyclist', 'Stuff']
+            ['Vehicle', 'Pedestrian', 'Cyclist', 'SmallStuff', 'MediumStuff', 'LargeStuff']
         ]
 
         SHARED_CONV_CHANNEL: 64
@@ -85,7 +92,7 @@ MODEL:
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
 
-        EVAL_METRIC: waymo
+        EVAL_METRIC: kitti
 
 
 OPTIMIZATION:

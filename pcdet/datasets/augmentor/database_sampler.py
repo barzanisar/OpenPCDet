@@ -26,7 +26,7 @@ class DataBaseSampler(object):
             db_info_path = self.root_path.resolve() / db_info_path
             with open(str(db_info_path), 'rb') as f:
                 infos = pickle.load(f)
-                [self.db_infos[cur_class].extend(infos[cur_class]) for cur_class in class_names]
+                [self.db_infos[cur_class].extend(infos[cur_class]) for cur_class in class_names if cur_class in infos]
 
         for func_name, val in sampler_cfg.PREPARE.items():
             self.db_infos = getattr(self, func_name)(self.db_infos, val)

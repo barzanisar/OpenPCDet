@@ -33,7 +33,7 @@ def get_thresholds(scores: np.ndarray, num_gt, num_sample_pts=41):
     return thresholds
 
 # 9
-def clean_data(gt_anno, dt_anno, current_class, difficulty):
+def clean_data(gt_anno, dt_anno, current_class, difficulty, class_names=None):
     """
         This function is called on one pc's gt_anno and dt_anno. It extracts ground truth bounding boxes for current evaluation class
     Args:
@@ -58,7 +58,7 @@ def clean_data(gt_anno, dt_anno, current_class, difficulty):
         -1 means do not use this dt box for evaluation bcz name does not match the current class argument]
 
     """
-    CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck', 'object']
+    CLASS_NAMES = class_names if class_names is not None else ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck']
     MIN_HEIGHT = [40, 25, 25] # for easy, moderate, hard difficulty
     MAX_OCCLUSION = [0, 1, 2] # for easy, moderate, hard difficulty
     MAX_TRUNCATION = [0.15, 0.3, 0.5] # for 15 % for easy, 30 % for moderate, 50 % for hard difficulty
@@ -91,8 +91,8 @@ def clean_data(gt_anno, dt_anno, current_class, difficulty):
             valid_class = 0 # gt class is a neighboring class of evaluation class
         elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name):
             valid_class = 0 # gt class is a neighboring class of evaluation class
-        elif (current_cls_name == "Object".lower() and gt_name in ["Van".lower(),  "Person_sitting".lower(), "Truck".lower()]):
-            valid_class = 0
+        # elif (current_cls_name == "Object".lower() and gt_name in ["Van".lower(),  "Person_sitting".lower(), "Truck".lower()]):
+        #     valid_class = 0
         else:
             valid_class = -1 # classes not used for evaluation for current class
         
@@ -627,7 +627,7 @@ def calculate_iou_partly(gt_annos, dt_annos, metric, num_parts=50):
     return overlaps, parted_overlaps, total_gt_num, total_dt_num
 
 # 8
-def _prepare_data(gt_annos, dt_annos, current_class, difficulty):
+def _prepare_data(gt_annos, dt_annos, current_class, difficulty, class_names=None):
     """
     Args:
         gt_annos: list of len == num frames in dataset, containing gt_annos for each frame
@@ -673,7 +673,7 @@ def _prepare_data(gt_annos, dt_annos, current_class, difficulty):
     total_num_valid_gt = 0
     # Loop over all frames in the dataset
     for i in range(len(gt_annos)): # for each frame
-        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty)
+        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty, class_names=class_names)
         num_valid_gt, ignored_gt, ignored_det, dc_bboxes = rets
         ignored_gts.append(np.array(ignored_gt, dtype=np.int64))
         ignored_dets.append(np.array(ignored_det, dtype=np.int64))
@@ -702,9 +702,10 @@ def eval_class(gt_annos,
                current_classes,
                difficultys,
                metric,
-               min_overlaps,
+               min_overlaps, 
                compute_aos=False,
-               num_parts=100):
+               num_parts=100,
+               class_names=None):
     """Kitti eval. support 2d/bev/3d/aos eval. support 0.5:0.05:0.95 coco AP.
     Args:
         gt_annos: list of len == num of frames in dataset. Each element is gt_annos dict containing gt boxes for a frame, must from get_label_annos() in kitti_common.py
@@ -742,7 +743,7 @@ def eval_class(gt_annos,
     aos = np.zeros([num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS]) # (3,3,2,41)
     for m, current_class in enumerate(current_classes):
         for l, difficulty in enumerate(difficultys):
-            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty)
+            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty, class_names=class_names)
             (gt_datas_list, dt_datas_list, ignored_gts, ignored_dets,
              dontcares, total_dc_num, total_num_valid_gt) = rets
             
@@ -848,7 +849,8 @@ def do_eval(gt_annos,
             current_classes,
             min_overlaps,
             compute_aos=False,
-            PR_detail_dict=None):
+            PR_detail_dict=None,
+            class_names=None):
     # min_overlaps: [num_minoverlap=2, metric=3, num_class=3]
     # num_minoverlap = 2 = first dim of min_overlaps i.e. overlap_0_7, overlap_0_5
     # metric = 3 = second dim of min_overlaps i.e. 0th row = 2d bbox, 1st row = bev, 2nd row = 3d bbox
@@ -867,7 +869,7 @@ def do_eval(gt_annos,
 
     difficultys = [0, 1, 2]
     ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 0,
-                     min_overlaps, compute_aos)
+                     min_overlaps, compute_aos, class_names=class_names)
     # ret: [num_class, num_diff, num_minoverlap, num_sample_points]
     mAP_bbox = get_mAP(ret["precision"]) # for 2d bbox in camera image 
     mAP_bbox_R40 = get_mAP_R40(ret["precision"])
@@ -885,7 +887,7 @@ def do_eval(gt_annos,
 
     # metric = 1 i.e. bev
     ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 1,
-                     min_overlaps)
+                     min_overlaps, class_names=class_names)
     mAP_bev = get_mAP(ret["precision"])
     mAP_bev_R40 = get_mAP_R40(ret["precision"])
 
@@ -894,7 +896,7 @@ def do_eval(gt_annos,
 
     # metric = 2 i.e. 3d bbox
     ret = eval_class(gt_annos, dt_annos, current_classes, difficultys, 2,
-                     min_overlaps)
+                     min_overlaps, class_names=class_names)
     mAP_3d = get_mAP(ret["precision"])
     mAP_3d_R40 = get_mAP_R40(ret["precision"])
     if PR_detail_dict is not None:
@@ -903,14 +905,14 @@ def do_eval(gt_annos,
 
 
 def do_coco_style_eval(gt_annos, dt_annos, current_classes, overlap_ranges,
-                       compute_aos):
+                       compute_aos, class_names=None):
     # overlap_ranges: [range, metric, num_class]
     min_overlaps = np.zeros([10, *overlap_ranges.shape[1:]])
     for i in range(overlap_ranges.shape[1]):
         for j in range(overlap_ranges.shape[2]):
             min_overlaps[:, i, j] = np.linspace(*overlap_ranges[:, i, j])
     mAP_bbox, mAP_bev, mAP_3d, mAP_aos = do_eval(
-        gt_annos, dt_annos, current_classes, min_overlaps, compute_aos)
+        gt_annos, dt_annos, current_classes, min_overlaps, compute_aos, class_names=class_names)
     # ret: [num_class, num_diff, num_minoverlap]
     mAP_bbox = mAP_bbox.mean(-1)
     mAP_bev = mAP_bev.mean(-1)
@@ -920,32 +922,48 @@ def do_coco_style_eval(gt_annos, dt_annos, current_classes, overlap_ranges,
     return mAP_bbox, mAP_bev, mAP_3d, mAP_aos
 
 #1
-def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict=None):
+def get_official_eval_result(gt_annos, dt_annos, current_classes, pseudo_class_dict=None, PR_detail_dict=None):
     # dt_annos are prediction outputs from model. len(dt_annos) == len(test dataset)
     # gt annos have corresponding gt boxes and labels for every frame
 
     # Columns are for car, ped, cyc, van, person sitting, truck
     # Rows are for 2d bbox, bev, 3d bbox
     # We are only interested in 3d bbox row and car, ped, cyc columns
-    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7], 
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7],
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7]])  
-    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5,     0.7], 
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5],
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5]])
-    overlap_0_25 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5, 0.5], 
-                        [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.25],
-                        [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.25]])
-    min_overlaps = np.stack([overlap_0_7, overlap_0_5, overlap_0_25], axis=0)
+
+    overlap_0_7 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7], 
+                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7],
+                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7]])  
+    overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5], 
+                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
+                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
+    # overlap_0_25 = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5], 
+    #                          [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
+    #                          [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
+    # min_overlaps = np.stack([overlap_0_7, overlap_0_5, overlap_0_25], axis=0)
+
+    if pseudo_class_dict is not None:
+        min_ious = np.array(pseudo_class_dict['min_ious'])
+        overlap_0_7 = np.hstack([overlap_0_7, min_ious[:,0,:].T])
+        overlap_0_5 = np.hstack([overlap_0_5, min_ious[:,1,:].T])
+
+
+    min_overlaps = np.stack([overlap_0_7, overlap_0_5], axis=0)
+
     class_to_name = {
         0: 'Car',
         1: 'Pedestrian',
         2: 'Cyclist',
         3: 'Van',
         4: 'Person_sitting',
-        5: 'Truck',
-        6: 'Object'
+        5: 'Truck'
     }
+
+    if pseudo_class_dict is not None:
+        max_idx = max(list(class_to_name.keys()))+1
+        class_to_name.update({(max_idx+class_idx): name for class_idx, name in enumerate(pseudo_class_dict['names'])})
+
+    CLASS_NAMES = [name.lower() for key, name in class_to_name.items()]
+
     name_to_class = {v: n for n, v in class_to_name.items()}
     if not isinstance(current_classes, (list, tuple)):
         current_classes = [current_classes]
@@ -978,7 +996,7 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
     
     # Start Evaluation
     mAPbbox, mAPbev, mAP3d, mAPaos, mAPbbox_R40, mAPbev_R40, mAP3d_R40, mAPaos_R40 = do_eval(
-        gt_annos, dt_annos, current_classes, min_overlaps, compute_aos, PR_detail_dict=PR_detail_dict)
+        gt_annos, dt_annos, current_classes, min_overlaps, compute_aos=compute_aos, PR_detail_dict=PR_detail_dict, class_names=CLASS_NAMES)
     # End Evaluation
     
     # Populate ret_dict and results_str

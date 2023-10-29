@@ -52,11 +52,11 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn.yaml"
+                "cfgs/waymo_models/pointrcnn_1percent.yaml"
             ]
         },
         {
-            "name": "train_waymo_centerpoint",
+            "name": "train_waymo_centerpoint_clus",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -65,6 +65,18 @@
             "args": [
                 "--cfg_file",
                 "cfgs/waymo_models/centerpoint_clus.yaml"
+            ]
+        },
+        {
+            "name": "test_waymo_centerpoint_clus",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/centerpoint_clus.yaml", "--eval_all"
             ]
         },
         {
@@ -106,7 +118,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn.yaml",
+                "cfgs/waymo_models/pointrcnn_1percent.yaml",
                 "--eval_all"
             ]
         },

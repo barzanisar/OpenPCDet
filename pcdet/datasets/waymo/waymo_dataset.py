@@ -31,9 +31,14 @@ class WaymoDataset(DatasetTemplate):
         self.split = self.dataset_cfg.DATA_SPLIT[self.mode]
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()] #read split.txt
+        self.pseudo_classes_cfg = self.dataset_cfg.get('PSEUDO_CLASSES_CFG', None)
+        self.approx_boxes_path = self.root_path / (self.dataset_cfg.PROCESSED_DATA_TAG + '_clustered')
 
         self.infos = []
         self.include_waymo_data(self.mode) # read tfrecords in sample_seq_list and then find its pkl in waymo_processed_data_10 and include the pkl infos in waymo infos
+
+        if self.pseudo_classes_cfg is not None:
+            self.add_pseudo_classes()
 
         self.use_shared_memory = self.dataset_cfg.get('USE_SHARED_MEMORY', False) and self.training
         if self.use_shared_memory:
@@ -50,7 +55,47 @@ class WaymoDataset(DatasetTemplate):
         self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()]
         self.infos = []
         self.include_waymo_data(self.mode)
+    
+    def add_pseudo_classes(self):
+        pseudo_class_cnts = np.zeros(len(self.pseudo_classes_cfg.PSEUDO_CLASSES))
+        mean_box_sizes = self.pseudo_classes_cfg.get('PSEUDO_MEAN_SIZES', None)
 
+        
+        if mean_box_sizes is not None and len(self.pseudo_classes_cfg.PSEUDO_CLASSES) > 1:
+            mean_box_sizes = np.array(mean_box_sizes)
+
+        for info in self.infos:
+            info['annos'] = common_utils.drop_info_with_name(info['annos'], name='unknown')
+            approx_boxes = info['approx_boxes_closeness_to_edge'][np.logical_not(info['approx_boxes_overlaps_gt_box'])]
+
+            
+            # assign psuedo classes according to mean sizes
+            if mean_box_sizes is not None and len(self.pseudo_classes_cfg.PSEUDO_CLASSES) > 1:
+                lwh = approx_boxes[:, 3:6]
+                l = np.max(lwh[:,:2], axis=1)
+                w = np.min(lwh[:,:2], axis=1)
+                lwh[:,0] = l
+                lwh[:,1] = w
+                
+                dist = (((mean_box_sizes.reshape(1, -1, 3) - \
+                lwh.reshape(-1, 1, 3)) ** 2).sum(axis=2))  # N=boxes x M=mean sizes 
+                idx_matched_mean_sizes = dist.argmin(axis=1) # N gt boxes
+                approx_names = np.array(self.pseudo_classes_cfg.PSEUDO_CLASSES)[idx_matched_mean_sizes]
+                unique_idx, counts = np.unique(idx_matched_mean_sizes, return_counts=True)
+                pseudo_class_cnts[unique_idx] += counts
+            else:
+                approx_names = [self.pseudo_classes_cfg.PSEUDO_CLASSES[0]] * len(approx_boxes)
+                pseudo_class_cnts[0] += len(approx_boxes)
+            
+            info['annos']['name'] = np.concatenate((info['annos']['name'], approx_names))
+            info['annos']['gt_boxes_lidar'] = np.concatenate((info['annos']['gt_boxes_lidar'], approx_boxes[:,:7]))
+            info['annos']['difficulty'] = np.concatenate((info['annos']['difficulty'], np.zeros(len(approx_boxes), dtype=np.int)))
+            info['annos']['num_points_in_gt'] = np.concatenate((info['annos']['num_points_in_gt'], approx_boxes[:,16]))
+        
+        self.logger.info('Pseudo Class Counts:')
+        for i in range(len(pseudo_class_cnts)):
+            self.logger.info(f'{self.pseudo_classes_cfg.PSEUDO_CLASSES[i]}: {pseudo_class_cnts[i]}')    
+        
     def include_waymo_data(self, mode):
         self.logger.info('Loading Waymo dataset')
         waymo_infos = []
@@ -58,7 +103,10 @@ class WaymoDataset(DatasetTemplate):
         num_skipped_infos = 0
         for k in range(len(self.sample_sequence_list)):
             sequence_name = os.path.splitext(self.sample_sequence_list[k])[0]
-            info_path = self.data_path / sequence_name / ('%s.pkl' % sequence_name)
+            if self.add_pseudo_classes:
+                info_path = self.approx_boxes_path / sequence_name / ('approx_boxes.pkl')
+            else:
+                info_path = self.data_path / sequence_name / ('%s.pkl' % sequence_name)
             info_path = self.check_sequence_name_with_all_version(info_path)
             if not info_path.exists():
                 num_skipped_infos += 1
@@ -210,7 +258,8 @@ class WaymoDataset(DatasetTemplate):
 
         if 'annos' in info:
             annos = info['annos']
-            annos = common_utils.drop_info_with_name(annos, name='unknown')
+            if self.pseudo_classes_cfg is None:
+                annos = common_utils.drop_info_with_name(annos, name='unknown')
 
             if self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False):
                 gt_boxes_lidar = box_utils.boxes3d_kitti_fakelidar_to_lidar(annos['gt_boxes_lidar'])
@@ -296,6 +345,11 @@ class WaymoDataset(DatasetTemplate):
                 'Sign': 'Sign',
                 'Car': 'Car'
             }
+
+            if self.pseudo_classes_cfg is not None:
+                map_name_to_kitti.update({name: name for name in self.pseudo_classes_cfg.PSEUDO_CLASSES})
+                pseudo_class_dict = {'names': self.pseudo_classes_cfg.PSEUDO_CLASSES ,'min_ious': self.pseudo_classes_cfg.MIN_IOU_OVERLAP}
+
             kitti_utils.transform_annotations_to_kitti_format(eval_det_annos, map_name_to_kitti=map_name_to_kitti)
             kitti_utils.transform_annotations_to_kitti_format(
                 eval_gt_annos, map_name_to_kitti=map_name_to_kitti,
@@ -303,7 +357,8 @@ class WaymoDataset(DatasetTemplate):
             )
             kitti_class_names = [map_name_to_kitti[x] for x in class_names]
             ap_result_str, ap_dict = kitti_eval.get_official_eval_result(
-                gt_annos=eval_gt_annos, dt_annos=eval_det_annos, current_classes=kitti_class_names
+                gt_annos=eval_gt_annos, dt_annos=eval_det_annos, current_classes=kitti_class_names, 
+                pseudo_class_dict=pseudo_class_dict  if self.pseudo_classes_cfg is not None else None
             )
             return ap_result_str, ap_dict
 
