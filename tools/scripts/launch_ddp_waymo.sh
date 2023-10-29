@@ -4,7 +4,6 @@
 NUM_GPUS="${CUDA_VISIBLE_DEVICES: -1}"
 NUM_GPUS=$(($NUM_GPUS + 1))
 WORLD_SIZE=$((NUM_GPUS * SLURM_NNODES))
-WORKERS=4
 
 
 echo "NUM GPUS in Node $SLURM_NODEID: $NUM_GPUS"
@@ -62,7 +61,15 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --pretrained_model $PRETRAINED_MODEL 
 --extra_tag $EXTRA_TAG 
 --fix_random_seed
+--workers $WORKERS
 "
+
+# Additional arguments if necessary
+if [ $BATCH_SIZE_PER_GPU != "default" ]
+then
+    TRAIN_CMD+="    --batch_size $BATCH_SIZE_PER_GPU
+"
+fi
 
 TEST_CMD=$BASE_CMD
 
@@ -74,6 +81,13 @@ TEST_CMD+="python -m torch.distributed.launch
 --workers $WORKERS
 --extra_tag $EXTRA_TAG
 --eval_all"
+
+# Additional arguments if necessary
+if [ $BATCH_SIZE_PER_GPU != "default" ]
+then
+    TEST_CMD+="    --batch_size $BATCH_SIZE_PER_GPU
+"
+fi
 
 
 # Additional arguments if necessary

@@ -24,6 +24,8 @@ EXTRA_TAG='default'
 TEST_INFO_PKL='default' # Test only 
 EVAL_TAG='default' # Test only 
 PRETRAINED_MODEL=None
+WORKERS=4
+BATCH_SIZE_PER_GPU='default'
 TCP_PORT=18888
 
 # ========== WAYMO ==========
@@ -105,6 +107,22 @@ while :; do
             die 'ERROR: "--tcp_port" requires a non-empty option argument.'
         fi
         ;;
+    -w|--workers)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            WORKERS=$2
+            shift
+        else
+            die 'ERROR: "--tcp_port" requires a non-empty option argument.'
+        fi
+        ;;
+    -b|--batch_size_per_gpu)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            BATCH_SIZE_PER_GPU=$2
+            shift
+        else
+            die 'ERROR: "--train_batch_size" requires a non-empty option argument.'
+        fi
+        ;;
 
 
     # Additional parameters
@@ -167,5 +185,7 @@ export TEST_INFO_PKL=$TEST_INFO_PKL
 export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
 export EVAL_TAG=$EVAL_TAG
+export WORKERS=$WORKERS
+export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 
 srun tools/scripts/launch_ddp_waymo.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
