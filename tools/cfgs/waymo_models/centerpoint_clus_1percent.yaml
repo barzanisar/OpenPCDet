@@ -9,7 +9,7 @@ WANDB:
     tags: ['scratch']
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_clus.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_1percent.yaml
 
     PSEUDO_CLASSES_CFG:
         PSEUDO_CLASSES: ['SmallStuff', 'MediumStuff', 'LargeStuff']
@@ -96,11 +96,11 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 2 #30
+    BATCH_SIZE_PER_GPU: 10
+    NUM_EPOCHS: 200
 
     OPTIMIZER: adam_onecycle
-    LR: 0.003
+    LR: 0.006
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

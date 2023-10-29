@@ -1,4 +1,4 @@
-CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist']
+CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist', 'SmallStuff', 'MediumStuff', 'LargeStuff']
 
 WANDB:
     ENABLED: False
@@ -11,6 +11,12 @@ WANDB:
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_1percent.yaml
     
+    PSEUDO_CLASSES_CFG:
+        PSEUDO_CLASSES: ['SmallStuff', 'MediumStuff', 'LargeStuff']
+        PSEUDO_MEAN_SIZES: [[0.5, 0.5, 1], [2, 1, 1.7], [5, 2, 2]]
+        MIN_IOU_OVERLAP: [[[0.5, 0.5, 0.5], [0.5, 0.25, 0.25]], 
+                            [[0.5, 0.5, 0.5], [0.5, 0.25, 0.25]],
+                            [[0.7, 0.7, 0.7], [0.5, 0.5, 0.5]]]
     POINT_FEATURE_ENCODING: {
     encoding_type: absolute_coordinates_encoding,
     used_feature_list: ['x', 'y', 'z', 'intensity'],
@@ -62,7 +68,11 @@ MODEL:
                 'mean_size': [
                     [4.7, 2.1, 1.7],
                     [0.91, 0.86, 1.73],
-                    [1.78, 0.84, 1.78]
+                    [1.78, 0.84, 1.78],
+                    [0.5, 0.5, 1], 
+                    [2, 1, 1.7], 
+                    [5, 2, 2]
+
                 ]
             }
 

@@ -5,7 +5,7 @@ PROCESSED_DATA_TAG: 'waymo_processed_data_v_1_2_0'
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
-    'train': train_clus,
+    'train': train_clus, #only to test locally
     'test': val_clus
 }
 

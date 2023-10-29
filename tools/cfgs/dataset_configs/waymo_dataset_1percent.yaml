@@ -8,9 +8,9 @@ DATA_SPLIT: {
     'train': train,
     'test': val
 }
-
+# to train on 1% waymo i.e. 1500 samples
 SAMPLED_INTERVAL: {
-    'train': 100,
+    'train': 100, 
     'test': 1
 }
 
