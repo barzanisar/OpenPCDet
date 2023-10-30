@@ -8,7 +8,7 @@
 #SBATCH --job-name=OpenPCDet-train
 #SBATCH --account=rrg-swasland
 #SBATCH --cpus-per-task=16                  # CPU cores/threads
-#SBATCH --mem=64000M                        # memory per node
+#SBATCH --mem=400G                        # memory per node
 #SBATCH --output=./output/log/%x-%j.out     # STDOUT
 #SBATCH --array=1-3%1                       # 3 is the number of jobs in the chain
 #SBATCH --mail-user=barzanisar93@gmail.com

@@ -14,16 +14,16 @@
 #sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840 --workers 2
 
 ################## Scratch train on graham ##############################
-# sbatch --time=04:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
-# sbatch --time=04:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
+# sbatch --time=04:00:00 --gres=gpu:t4:4 --mem=150G --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
+# sbatch --time=04:00:00 --gres=gpu:t4:4 --mem=150G --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
 
 # Test (In progress)
-#sbatch --time=04:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=test-pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810 --test_only 
-#sbatch --time=04:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=test-pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830 --test_only
+sbatch --time=04:00:00 --gres=gpu:t4:4 --mem=150G --nodes=1 --ntasks=1 --array=1-3%1 --job-name=test-pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810 --test_only --batch_size_per_gpu 4 --workers 2
+sbatch --time=04:00:00 --gres=gpu:t4:4 --mem=150G --nodes=1 --ntasks=1 --array=1-3%1 --job-name=test-pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830 --test_only --batch_size_per_gpu 4 --workers 2
 
 ############ Not needed ###############
-# sbatch --time=03:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820 --workers 2 --batch_size 4
-# sbatch --time=03:00:00 --gres=gpu:t4:4 --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840 --workers 2 --batch_size 4
+# sbatch --time=03:00:00 --gres=gpu:t4:4 --mem=150G --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820 --workers 2 --batch_size 4
+# sbatch --time=03:00:00 --gres=gpu:t4:4 --mem=150G --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840 --workers 2 --batch_size 4
 
 
 ######################## Finetune on narval (In progress) ###########################
