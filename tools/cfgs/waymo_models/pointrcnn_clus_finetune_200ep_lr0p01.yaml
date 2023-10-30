@@ -8,6 +8,8 @@ WANDB:
     dir: '/OpenPCDet/output'
     tags: ['finetune']
 
+SKIP_INIT_LAYER: 'point_head.cls_layers.6'
+
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_1percent.yaml
     
