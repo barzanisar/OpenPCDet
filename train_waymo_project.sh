@@ -1,17 +1,31 @@
+################## create waymo database 1% ##################
 #sbatch --time=03:00:00 --array=1-1%1 --job-name=create_database-waymo tools/scripts/create_waymo_infos.sh
 
-# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
-# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820
+################## Scratch train on narval ##############################
+# sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
+# sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
 
-# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
-# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840
+#### In progress #########
+#sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820 --workers 2
+#sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-2%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840 --workers 2
+
+################## Scratch train on graham ##############################
+# sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
+# sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
+# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820 --workers 2 --batch_size 4
+# sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-3%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840 --workers 2 --batch_size 4
 
 
-sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-4%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
-sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-4%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18820
+######################## Finetune on graham ###########################
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_finetune_100ep_lr0p003.yaml --tcp_port 18910 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_finetune_200ep_lr0p003.yaml --tcp_port 18920 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_finetune_200ep_lr0p01.yaml --tcp_port 18930 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
 
-sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-4%1 --job-name=pointrcnn-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_clus_1percent.yaml --tcp_port 18830
-sbatch --time=03:00:00 --nodes=2 --ntasks=2 --array=1-4%1 --job-name=centerpoint-clus-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_clus_1percent.yaml --tcp_port 18840
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_finetune_100ep_lr0p003.yaml --tcp_port 18940 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_finetune_200ep_lr0p003.yaml --tcp_port 18950 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
+sbatch --time=04:00:00 --nodes=2 --ntasks=2 --array=1-1%1 --job-name=finetune-pointrcnn tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_finetune_200ep_lr0p01.yaml --tcp_port 18960 --pretrained_model /OpenPCDet/checkpoints/pointnet_train_all_FOV3000_60/pointrcnn_pretrain_ep99.pth.tar
 
-# sbatch --time=00:15:00 --nodes=1 --ntasks=1 --array=1-1%1 --job-name=pointrcnn-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_1percent.yaml --tcp_port 18810
-# sbatch --time=00:15:00 --nodes=1 --ntasks=1 --array=1-1%1 --job-name=centerpoint-waymo tools/scripts/submit_ddp_compute_canada_waymo_multinode.sh --cfg_file tools/cfgs/waymo_models/centerpoint_1percent.yaml --tcp_port 18890
+
+
+
+# prerain centerpoint waymo -> reduce batchsize and try on 3 nodes?-> on 2 nodes working
