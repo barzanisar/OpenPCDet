@@ -207,6 +207,7 @@ def d3_box_overlap_kernel(boxes, qboxes, rinc, criterion=-1):
                         ua = area2
                     else:
                         ua = inc
+                    assert ua > 0
                     rinc[i, j] = inc / ua #intersection over union
                 else:
                     rinc[i, j] = 0.0
