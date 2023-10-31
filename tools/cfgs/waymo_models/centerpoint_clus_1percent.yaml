@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist', 'SmallStuff', 'MediumStuff', 'LargeStuff']
 
 WANDB:
-    ENABLED: False
+    ENABLED: True
     PROJECT: SSL3dObject
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
