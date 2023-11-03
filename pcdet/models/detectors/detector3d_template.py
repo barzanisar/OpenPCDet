@@ -174,10 +174,10 @@ class Detector3DTemplate(nn.Module):
             return None, model_info_dict
         point_head_module = roi_heads.__all__[self.model_cfg.ROI_HEAD.NAME](
             model_cfg=self.model_cfg.ROI_HEAD,
-            input_channels=model_info_dict['num_point_features'],
-            backbone_channels=model_info_dict['backbone_channels'],
+            input_channels=self.model_cfg.ROI_HEAD.get('num_point_features', model_info_dict['num_point_features']),
+            backbone_channels=model_info_dict.get('backbone_channels', None),
             point_cloud_range=model_info_dict['point_cloud_range'],
-            voxel_size=model_info_dict['voxel_size'],
+            voxel_size=model_info_dict.get('voxel_size', None),
             num_class=self.num_class if not self.model_cfg.ROI_HEAD.CLASS_AGNOSTIC else 1,
         )
 
@@ -338,12 +338,12 @@ class Detector3DTemplate(nn.Module):
 
         if cur_gt.shape[0] > 0:
             if box_preds.shape[0] > 0:
-                iou3d_rcnn = iou3d_nms_utils.boxes_iou3d_gpu(box_preds[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100=rcnn predicted boxes, M=gt boxes)
+                iou3d_rcnn, _, _ = iou3d_nms_utils.boxes_iou3d_gpu(box_preds[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100=rcnn predicted boxes, M=gt boxes)
             else:
                 iou3d_rcnn = torch.zeros((0, cur_gt.shape[0]))
 
             if rois is not None:
-                iou3d_roi = iou3d_nms_utils.boxes_iou3d_gpu(rois[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100= predicted 1st stage rois, M=gt boxes)
+                iou3d_roi,_,_ = iou3d_nms_utils.boxes_iou3d_gpu(rois[:, 0:7], cur_gt[:, 0:7]) # iou3d matrix of shape (100= predicted 1st stage rois, M=gt boxes)
 
             for cur_thresh in thresh_list:
                 if iou3d_rcnn.shape[0] == 0:

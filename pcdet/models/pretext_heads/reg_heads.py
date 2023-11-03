@@ -75,9 +75,14 @@ class RegHead(nn.Module):
             delta_rot_scale_ratio_preds[None, ...], seg_labels[None, ...]
         )# (1, 16384x2, 8)
 
+        loss_sum = seg_reg_loss_src.sum(dim=1) #(1, 2=rot loss, scale loss)
+        batch_dict['seg_reg_loss_rot'] = loss_sum[0, 0].item()
+        batch_dict['seg_reg_loss_scale'] = loss_sum[0, 1].item()
+
+
         normalizer = max(float(num_segs), 1.0) #torch.clamp(num_segs, min=1.0)
 
-        seg_reg_loss = self.loss_weight * (seg_reg_loss_src.sum()/normalizer) 
+        seg_reg_loss = self.loss_weight * (loss_sum.sum()/normalizer) 
 
 
         batch_dict['seg_reg_loss'] = seg_reg_loss

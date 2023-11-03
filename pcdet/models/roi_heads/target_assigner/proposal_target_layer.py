@@ -140,7 +140,7 @@ class ProposalTargetLayer(nn.Module):
                 )
             else:
                 # match 512 predicted boxes with the 41 gt boxes without worrying about same class. i.e. find matches with max iou3D
-                iou3d = iou3d_nms_utils.boxes_iou3d_gpu(cur_roi, cur_gt[:, 0:7])  # (M, N)
+                iou3d, _, _ = iou3d_nms_utils.boxes_iou3d_gpu(cur_roi, cur_gt[:, 0:7])  # (M, N)
                 max_overlaps, gt_assignment = torch.max(iou3d, dim=1)
 
             # sample total ROI_PER_IMAGE:128 predicted boxes i.e. sample  (FG_RATIO * 128 = 64) fg boxes and (128-64=64) bg boxes
@@ -276,7 +276,7 @@ class ProposalTargetLayer(nn.Module):
                 cur_gt = gt_boxes[gt_mask] # (14, 7) get all car gt_boxes 
                 original_gt_assignment = gt_mask.nonzero().view(-1) # (14) get indices of car gt boxes
 
-                iou3d = iou3d_nms_utils.boxes_iou3d_gpu(cur_roi, cur_gt)  # (predicted boxes num=168, gt boxes num=14) 3D iou = overlap_bev_area * overlap_height between each predicted and gt box of car class
+                iou3d, _, _ = iou3d_nms_utils.boxes_iou3d_gpu(cur_roi, cur_gt)  # (predicted boxes num=168, gt boxes num=14) 3D iou = overlap_bev_area * overlap_height between each predicted and gt box of car class
                 cur_max_overlaps, cur_gt_assignment = torch.max(iou3d, dim=1) # for each predicted box get cur_max_overlaps: max iou3D with all gt box cur_max_overlaps, and cur_gt_assignment: gt box index that gives max iou3D with this predicted box
                 max_overlaps[roi_mask] = cur_max_overlaps #(168)
                 gt_assignment[roi_mask] = original_gt_assignment[cur_gt_assignment] #(168)
