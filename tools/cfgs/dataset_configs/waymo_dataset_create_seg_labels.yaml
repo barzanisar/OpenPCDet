@@ -1,6 +1,6 @@
 DATASET: 'WaymoDataset'
 DATA_PATH: '../data/waymo'
-PROCESSED_DATA_TAG: 'waymo_processed_data_one'
+PROCESSED_DATA_TAG: 'waymo_processed_data_one_labels' #waymo..._labels
 
 USE_TWO_RETURNS: False
 

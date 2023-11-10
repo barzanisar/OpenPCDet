@@ -156,32 +156,86 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
 
     return points, cp_points, points_NLZ, points_intensity, points_elongation
 
+def convert_range_image_to_point_cloud_labels(frame,
+                                              range_images,
+                                              segmentation_labels,
+                                              ri_index=0):
+    """Convert segmentation labels from range images to point clouds.
 
-def save_lidar_points(frame, cur_save_path, use_two_returns=True):
-    range_images, camera_projections, _, range_image_top_pose = \
+    Args:
+      frame: open dataset frame
+      range_images: A dict of {laser_name, [range_image_first_return,
+         range_image_second_return]}.
+      segmentation_labels: A dict of {laser_name, [range_image_first_return,
+         range_image_second_return]}.
+      ri_index: 0 for the first return, 1 for the second return.
+
+    Returns:
+      point_labels: {[N, 2]} list of 3d lidar points's segmentation labels. 0 for
+        points that are not labeled.
+    """
+    calibrations = sorted(frame.context.laser_calibrations, key=lambda c: c.name)
+    point_labels = []
+    for c in calibrations:
+        range_image = range_images[c.name][ri_index]
+        range_image_tensor = tf.reshape(
+            tf.convert_to_tensor(range_image.data), range_image.shape.dims)
+        range_image_mask = range_image_tensor[..., 0] > 0
+
+        if c.name in segmentation_labels:
+            sl = segmentation_labels[c.name][ri_index]
+            sl_tensor = tf.reshape(tf.convert_to_tensor(sl.data), sl.shape.dims)
+            sl_points_tensor = tf.gather_nd(sl_tensor, tf.where(range_image_mask))
+        else:
+            num_valid_point = tf.math.reduce_sum(tf.cast(range_image_mask, tf.int32))
+            sl_points_tensor = tf.zeros([num_valid_point, 2], dtype=tf.int32)
+
+        point_labels.append(sl_points_tensor.numpy())
+    return point_labels
+
+def save_lidar_points(frame, cur_save_path, use_two_returns=True, only_extract_seg_labels=False):
+    range_images, camera_projections, segmentation_labels, range_image_top_pose = \
         frame_utils.parse_range_image_and_camera_projection(frame)
 
-    points, cp_points, points_in_NLZ_flag, points_intensity, points_elongation = convert_range_image_to_point_cloud(
-        frame, range_images, camera_projections, range_image_top_pose, ri_index=(0, 1) if use_two_returns else (0,)
-    )
+    num_points_of_each_lidar=None
+    if only_extract_seg_labels:
+        if len(segmentation_labels):
+            points, _, points_in_NLZ_flag, points_intensity, points_elongation = convert_range_image_to_point_cloud(
+            frame, range_images, camera_projections, range_image_top_pose, ri_index=(0, 1) if use_two_returns else (0,)
+            )
 
-    # 3d points in vehicle frame.
-    points_all = np.concatenate(points, axis=0)
-    points_in_NLZ_flag = np.concatenate(points_in_NLZ_flag, axis=0).reshape(-1, 1)
-    points_intensity = np.concatenate(points_intensity, axis=0).reshape(-1, 1)
-    points_elongation = np.concatenate(points_elongation, axis=0).reshape(-1, 1)
+            num_points_of_each_lidar = [point.shape[0] for point in points]
+            point_labels = convert_range_image_to_point_cloud_labels(frame, range_images, segmentation_labels, ri_index=0)
+            point_labels_all = np.concatenate(point_labels, axis=0) # vstack across five lidars
+            point_labels_all = point_labels_all[:, 1].reshape(-1, 1).astype(np.float16) # 0 to 22 labels
+            np.save(cur_save_path, point_labels_all)
+            print('saving to ', cur_save_path)
+    else:
+        # class_names = ['UNDEFINED', 'CAR', 'TRUCK', 'BUS', 'OTHER_VEHICLE', 'MOTORCYCLIST', 'BICYCLIST', 'PEDESTRIAN', 'SIGN',
+        #           'TRAFFIC_LIGHT', 'POLE', 'CONSTRUCTION_CONE', 'BICYCLE', 'MOTORCYCLE', 'BUILDING', 'VEGETATION',
+        #           'TREE_TRUNK', 'CURB', 'ROAD', 'LANE_MARKER', 'OTHER_GROUND', 'WALKABLE', 'SIDEWALK']
 
-    num_points_of_each_lidar = [point.shape[0] for point in points]
-    save_points = np.concatenate([
-        points_all, points_intensity, points_elongation, points_in_NLZ_flag
-    ], axis=-1).astype(np.float32)
+        # 3d points in vehicle frame.
+        points, _, points_in_NLZ_flag, points_intensity, points_elongation = convert_range_image_to_point_cloud(
+            frame, range_images, camera_projections, range_image_top_pose, ri_index=(0, 1) if use_two_returns else (0,)
+            )
+            
+        num_points_of_each_lidar = [point.shape[0] for point in points]
+        points_all = np.concatenate(points, axis=0)
+        points_in_NLZ_flag = np.concatenate(points_in_NLZ_flag, axis=0).reshape(-1, 1)
+        points_intensity = np.concatenate(points_intensity, axis=0).reshape(-1, 1)
+        points_elongation = np.concatenate(points_elongation, axis=0).reshape(-1, 1)
 
-    np.save(cur_save_path, save_points)
-    # print('saving to ', cur_save_path)
-    return num_points_of_each_lidar
+        save_points = np.concatenate([
+            points_all, points_intensity, points_elongation, points_in_NLZ_flag
+        ], axis=-1).astype(np.float32)
+
+        np.save(cur_save_path, save_points)
+        print('saving to ', cur_save_path)
+    return num_points_of_each_lidar, len(segmentation_labels)>0
 
 
-def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=False):
+def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=True, only_extract_seg_labels=False):
     sequence_name = os.path.splitext(os.path.basename(sequence_file))[0]
 
     # print('Load record (sampled_interval=%d): %s' % (sampled_interval, sequence_name))
@@ -233,12 +287,16 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
             annotations = generate_labels(frame)
             info['annos'] = annotations
 
-        num_points_of_each_lidar = save_lidar_points(
-            frame, cur_save_dir / ('%04d.npy' % cnt), use_two_returns=use_two_returns
+        num_points_of_each_lidar, seg_labels_exist = save_lidar_points(
+            frame, cur_save_dir / ('%04d.npy' % cnt), use_two_returns=use_two_returns, only_extract_seg_labels=only_extract_seg_labels
         )
         info['num_points_of_each_lidar'] = num_points_of_each_lidar
 
-        sequence_infos.append(info)
+        if only_extract_seg_labels:
+            if seg_labels_exist:
+                sequence_infos.append(info)
+        else:
+            sequence_infos.append(info)
 
     with open(pkl_file, 'wb') as f:
         pickle.dump(sequence_infos, f)

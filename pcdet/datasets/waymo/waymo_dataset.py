@@ -103,7 +103,7 @@ class WaymoDataset(DatasetTemplate):
         num_skipped_infos = 0
         for k in range(len(self.sample_sequence_list)):
             sequence_name = os.path.splitext(self.sample_sequence_list[k])[0]
-            if self.add_pseudo_classes:
+            if self.pseudo_classes_cfg is not None:
                 info_path = self.approx_boxes_path / sequence_name / ('approx_boxes.pkl')
             else:
                 info_path = self.data_path / sequence_name / ('%s.pkl' % sequence_name)
@@ -197,7 +197,7 @@ class WaymoDataset(DatasetTemplate):
                 sequence_file = found_sequence_file
         return sequence_file
 
-    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True, sampled_interval=1):
+    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True, sampled_interval=1, use_two_returns=True, only_extract_seg_labels=False):
         from functools import partial
         from . import waymo_utils
         print('---------------The waymo sample interval is %d, total sequecnes is %d-----------------'
@@ -205,7 +205,7 @@ class WaymoDataset(DatasetTemplate):
 
         process_single_sequence = partial(
             waymo_utils.process_single_sequence,
-            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label
+            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label, use_two_returns=use_two_returns, only_extract_seg_labels=only_extract_seg_labels
         )
         sample_sequence_file_list = [
             self.check_sequence_name_with_all_version(raw_data_path / sequence_file)
@@ -647,12 +647,12 @@ def create_waymo_gt_database(
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
                        raw_data_tag='raw_data', processed_data_tag='waymo_processed_data',
-                       workers=min(16, multiprocessing.cpu_count())):
+                       workers=min(16, multiprocessing.cpu_count()), only_extract_seg_labels=False):
     dataset = WaymoDataset(
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
     )
-    train_split, val_split = dataset_cfg.DATA_SPLIT['train'], dataset_cfg.DATA_SPLIT['test']#'train', 'val'
+    train_split, val_split = dataset_cfg.DATA_SPLIT['train'], dataset_cfg.DATA_SPLIT['test']
 
     train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
     val_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, val_split))
@@ -664,21 +664,25 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1 # 10 to make waymo_processed_data_10 and 1 to make gtdb
+        sampled_interval=1, # 10 to make waymo_processed_data_10 and 1 to make gtdb
+        use_two_returns=dataset_cfg.USE_TWO_RETURNS,
+        only_extract_seg_labels=only_extract_seg_labels
     )
     with open(train_filename, 'wb') as f:
         pickle.dump(waymo_infos_train, f)
     print('----------------Waymo info train file is saved to %s----------------' % train_filename)
 
-    dataset.set_split(val_split)
-    waymo_infos_val = dataset.get_infos(
-        raw_data_path=data_path / raw_data_tag,
-        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1 # 10 to make waymo_processed_data_10
-    )
-    with open(val_filename, 'wb') as f:
-        pickle.dump(waymo_infos_val, f)
-    print('----------------Waymo info val file is saved to %s----------------' % val_filename)
+    # dataset.set_split(val_split)
+    # waymo_infos_val = dataset.get_infos(
+    #     raw_data_path=data_path / raw_data_tag,
+    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+    #     sampled_interval=1, # 10 to make waymo_processed_data_10
+    #     use_two_returns=dataset_cfg.USE_TWO_RETURNS,
+    #     only_extract_seg_labels=only_extract_seg_labels
+    # )
+    # with open(val_filename, 'wb') as f:
+    #     pickle.dump(waymo_infos_val, f)
+    # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
 
     # print('---------------Start create groundtruth database for data augmentation---------------')
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -840,8 +844,18 @@ if __name__ == '__main__':
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
-            raw_data_tag='raw_data',
+            raw_data_tag='raw_data_one',
             processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
+        )
+    elif args.func == 'create_waymo_seg_labels':
+        create_waymo_infos(
+            dataset_cfg=dataset_cfg,
+            class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+            data_path=ROOT_DIR / 'data' / 'waymo',
+            save_path=ROOT_DIR / 'data' / 'waymo',
+            raw_data_tag='raw_data_one',
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
+            only_extract_seg_labels=True
         )
     elif args.func == 'create_waymo_gt_database':
         create_waymo_gt_database(
