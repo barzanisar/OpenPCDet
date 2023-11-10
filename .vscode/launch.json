@@ -30,7 +30,7 @@
         //     ]
         // },
         {
-            "name": "Python: create waymo infos",
+            "name": "Python: create_waymo_seg_labels",
             "type": "python",
             "request": "launch",
             "module": "pcdet.datasets.waymo.waymo_dataset",
@@ -38,7 +38,21 @@
             "console": "integratedTerminal",
             "args": [
                 "--func",
-                "create_waymo_gt_database",
+                "create_waymo_seg_labels",
+                "--cfg_file",
+                "tools/cfgs/dataset_configs/waymo_dataset_create_seg_labels.yaml"
+            ]
+        },
+        {
+            "name": "Python: create_waymo_infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.waymo.waymo_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": [
+                "--func",
+                "create_waymo_infos",
                 "--cfg_file",
                 "tools/cfgs/dataset_configs/waymo_dataset.yaml"
             ]
