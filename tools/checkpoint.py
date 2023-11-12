@@ -40,9 +40,7 @@ def init_model_from_weights(
     state_dict_key_name="model",
     skip_layers=None,
     print_init_layers=True,
-    replace_suffix="",
     freeze_bb=False,
-    append_suffix="",
     rank=0
 ):
     """

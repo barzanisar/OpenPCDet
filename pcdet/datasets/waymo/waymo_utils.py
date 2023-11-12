@@ -208,13 +208,17 @@ def save_lidar_points(frame, cur_save_path, use_two_returns=True, only_extract_s
             point_labels = convert_range_image_to_point_cloud_labels(frame, range_images, segmentation_labels, ri_index=0)
             point_labels_all = np.concatenate(point_labels, axis=0) # vstack across five lidars
             point_labels_all = point_labels_all[:, 1].reshape(-1, 1).astype(np.float16) # 0 to 22 labels
-            np.save(cur_save_path, point_labels_all)
+            #points_all = np.concatenate(points, axis=0)
+            
+            point_labels_all.tofile(cur_save_path)
             print('saving to ', cur_save_path)
-    else:
-        # class_names = ['UNDEFINED', 'CAR', 'TRUCK', 'BUS', 'OTHER_VEHICLE', 'MOTORCYCLIST', 'BICYCLIST', 'PEDESTRIAN', 'SIGN',
-        #           'TRAFFIC_LIGHT', 'POLE', 'CONSTRUCTION_CONE', 'BICYCLE', 'MOTORCYCLE', 'BUILDING', 'VEGETATION',
-        #           'TREE_TRUNK', 'CURB', 'ROAD', 'LANE_MARKER', 'OTHER_GROUND', 'WALKABLE', 'SIDEWALK']
+            #lbls = np.fromfile(cur_save_path, dtype=np.float16)
+            #assert points_all.shape[0] == lbls.shape[0]
 
+            # print(f'Points shape: {points_all.shape[0]}, Point labels shape: {point_labels_all.shape[0]}')
+
+    else:
+        
         # 3d points in vehicle frame.
         points, _, points_in_NLZ_flag, points_intensity, points_elongation = convert_range_image_to_point_cloud(
             frame, range_images, camera_projections, range_image_top_pose, ri_index=(0, 1) if use_two_returns else (0,)
@@ -249,10 +253,10 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
     pkl_file = cur_save_dir / ('%s.pkl' % sequence_name)
 
     sequence_infos = []
-    if pkl_file.exists():
-        sequence_infos = pickle.load(open(pkl_file, 'rb'))
-        print('Skip sequence since it has been processed before: %s' % pkl_file)
-        return sequence_infos
+    # if pkl_file.exists():
+    #     sequence_infos = pickle.load(open(pkl_file, 'rb'))
+    #     print('Skip sequence since it has been processed before: %s' % pkl_file)
+    #     return sequence_infos
 
     # data corresponds to one frame in a sequence
     for cnt, data in enumerate(dataset):
