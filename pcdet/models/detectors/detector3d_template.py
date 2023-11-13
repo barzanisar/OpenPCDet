@@ -222,10 +222,13 @@ class Detector3DTemplate(nn.Module):
                 pred_scores: # example shape: (4), RCNN predicted box objectness probabilities for nms shortlisted boxes
                 pred_boxes:  # example shape: (4), RCNN predicted boxes for nms shortlisted boxes
         """
-        post_process_cfg = self.model_cfg.POST_PROCESSING
+        post_process_cfg = self.model_cfg.get('POST_PROCESSING', None)
         batch_size = batch_dict['batch_size']
         recall_dict = {}
         pred_dicts = []
+        if post_process_cfg is None:
+            return pred_dicts, recall_dict
+        
         for index in range(batch_size):
             if batch_dict.get('batch_index', None) is not None:
                 assert batch_dict['batch_box_preds'].shape.__len__() == 2

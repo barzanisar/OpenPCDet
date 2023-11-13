@@ -17,11 +17,17 @@ class CenterPoint(Detector3DTemplate):
                 'loss': loss,
                 'batch_dict': batch_dict
             }
-            return ret_dict, tb_dict, disp_dict
+            return ret_dict, tb_dict, disp_dict, None
         else:
-            pred_dicts, recall_dicts = self.post_processing(batch_dict)
-            return pred_dicts, recall_dicts
+            loss, tb_dict, disp_dict = self.get_training_loss()
 
+            ret_dict = {
+                'loss': loss,
+                'batch_dict': batch_dict
+            }
+            pred_dicts, recall_dicts = self.post_processing(batch_dict)
+            return ret_dict, tb_dict, pred_dicts, recall_dicts
+        
     def get_training_loss(self):
         disp_dict = {}
 
@@ -38,6 +44,8 @@ class CenterPoint(Detector3DTemplate):
         return loss, tb_dict, disp_dict
 
     def post_processing(self, batch_dict):
+        if 'POST_PROCESSING' not in self.model_cfg:
+            return None, None
         post_process_cfg = self.model_cfg.POST_PROCESSING
         batch_size = batch_dict['batch_size']
         final_pred_dict = batch_dict['final_box_dicts']
