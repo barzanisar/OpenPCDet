@@ -253,10 +253,10 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
     pkl_file = cur_save_dir / ('%s.pkl' % sequence_name)
 
     sequence_infos = []
-    # if pkl_file.exists():
-    #     sequence_infos = pickle.load(open(pkl_file, 'rb'))
-    #     print('Skip sequence since it has been processed before: %s' % pkl_file)
-    #     return sequence_infos
+    if pkl_file.exists():
+        sequence_infos = pickle.load(open(pkl_file, 'rb'))
+        print('Skip sequence since it has been processed before: %s' % pkl_file)
+        return sequence_infos
 
     # data corresponds to one frame in a sequence
     for cnt, data in enumerate(dataset):

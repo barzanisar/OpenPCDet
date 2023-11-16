@@ -672,17 +672,17 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
         pickle.dump(waymo_infos_train, f)
     print('----------------Waymo info train file is saved to %s----------------' % train_filename)
 
-    # dataset.set_split(val_split)
-    # waymo_infos_val = dataset.get_infos(
-    #     raw_data_path=data_path / raw_data_tag,
-    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-    #     sampled_interval=1, # 10 to make waymo_processed_data_10
-    #     use_two_returns=dataset_cfg.USE_TWO_RETURNS,
-    #     only_extract_seg_labels=only_extract_seg_labels
-    # )
-    # with open(val_filename, 'wb') as f:
-    #     pickle.dump(waymo_infos_val, f)
-    # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
+    dataset.set_split(val_split)
+    waymo_infos_val = dataset.get_infos(
+        raw_data_path=data_path / raw_data_tag,
+        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+        sampled_interval=1, # 10 to make waymo_processed_data_10
+        use_two_returns=dataset_cfg.USE_TWO_RETURNS,
+        only_extract_seg_labels=only_extract_seg_labels
+    )
+    with open(val_filename, 'wb') as f:
+        pickle.dump(waymo_infos_val, f)
+    print('----------------Waymo info val file is saved to %s----------------' % val_filename)
 
     # print('---------------Start create groundtruth database for data augmentation---------------')
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -844,7 +844,7 @@ if __name__ == '__main__':
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
-            raw_data_tag='raw_data_one',
+            raw_data_tag='raw_data',
             processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
         )
     elif args.func == 'create_waymo_seg_labels':
@@ -853,7 +853,7 @@ if __name__ == '__main__':
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
-            raw_data_tag='raw_data_one',
+            raw_data_tag='raw_data',
             processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
             only_extract_seg_labels=True
         )
