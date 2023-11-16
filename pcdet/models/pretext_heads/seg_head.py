@@ -106,6 +106,6 @@ class SegHead(nn.Module):
         batch_dict["pretext_head_feats"] = all_seg_feats # (num clusters, 128)
         point_features = point_features.permute(0, 2, 1).contiguous()  # (B=2, N=20000, C=128)
         batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1]) # (B x N, 128)
-        batch_dict['point_coords'] = batch_dict['points'][:,:4] 
+        batch_dict['point_coords'] = batch_dict['points'][:,:4] #(b id, xyz)
 
         return batch_dict        

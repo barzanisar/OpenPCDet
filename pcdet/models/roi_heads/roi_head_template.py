@@ -261,8 +261,8 @@ class RoIHeadTemplate(nn.Module):
         if loss_cfgs.CLS_LOSS == 'BinaryCrossEntropy':
             rcnn_cls_flat = rcnn_cls.view(-1)
             batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), rcnn_cls_labels.float(), reduction='none') #(256 rois)
-            cls_valid_mask = (rcnn_cls_labels >= 0).float() #(256) 1 for possible foreground objects, 0 otherwise
-            rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0) # (1): only choose losses for possible foreground boxes (ignore background boxes), sum these losses and divide by num possible fg boxes
+            cls_valid_mask = (rcnn_cls_labels >= 0).float() #(256) 1 for possible foreground and bg obj objects
+            rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0) # (1): only choose losses for fg and bg objects
         elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
             batch_loss_cls = F.cross_entropy(rcnn_cls, rcnn_cls_labels, reduction='none', ignore_index=-1)
             cls_valid_mask = (rcnn_cls_labels >= 0).float()
