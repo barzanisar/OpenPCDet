@@ -1,13 +1,13 @@
 DATASET: 'WaymoDataset'
 DATA_PATH: '../data/waymo'
-PROCESSED_DATA_TAG: 'waymo_processed_data_one'
+PROCESSED_DATA_TAG: 'waymo_processed_data_v_1_2_0'
 
-USE_TWO_RETURNS: False
+USE_TWO_RETURNS: True
 
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
-    'train': train_one, #train
+    'train': train, #train
     'test': val
 }
 

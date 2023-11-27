@@ -54,11 +54,37 @@
                 "--func",
                 "create_waymo_infos",
                 "--cfg_file",
-                "tools/cfgs/dataset_configs/waymo_dataset_create_seg_labels.yaml"
+                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
             ]
         },
         {
-            "name": "train_waymo_pointrcnn",
+            "name": "Python: create_waymo_gt_database",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.waymo.waymo_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": [
+                "--func",
+                "create_waymo_gt_database",
+                "--cfg_file",
+                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
+            ]
+        },
+        {
+            "name": "train_waymo_centerpoint",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/centerpoint.yaml"
+            ]
+        },
+        {
+            "name": "train_waymo_pointrcnn_1percent",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
