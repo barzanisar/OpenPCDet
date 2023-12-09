@@ -191,7 +191,6 @@ class MinkUNet(nn.Module):
         y4 = ME.cat(y4, x0)
         y4 = self.up4[1](y4)
         
-        # batch_dict['sparse_point_feats'] = y4 # sparse tensor C=[bs x 20k, bid, xyz vox coords], F=[bs x 20k, 96]
-        batch_dict['sparse_point_feats'] = x0 # sparse tensor C=[bs x 20k, bid, xyz vox coords], F=[bs x 20k, 96]
+        batch_dict['sparse_point_feats'] = y4 # sparse tensor C=[bs x 20k, bid, xyz vox coords], F=[bs x 20k, 96]
         
         return batch_dict
