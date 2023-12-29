@@ -78,8 +78,8 @@ class SegSparseVoxHead(nn.Module):
             f_this.append(f_gather[idx_this[idx]][:all_size[idx_this[idx]],:].cpu().numpy())
 
         # final unshuffled coordinates and features, build back the sparse tensor
-        c_this = np.array(c_this) # original pcs are back (8, 20k, 3=xyz vox coord)
-        f_this = np.array(f_this) # original pcs are back (8, 20k, 4=xyzi pts)
+        # c_this = np.array(c_this) # original pcs are back (8, 20k, 3=xyz vox coord)
+        # f_this = np.array(f_this) # original pcs are back (8, 20k, 4=xyzi pts)
         x_this = numpy_to_sparse_tensor(c_this, f_this) # sparse tensor in this gpu (C: (8,20k,4=b_id,xyz vox coords), F:(8, 20k, 4=xyzi pts))
 
         batch_dict['sparse_point_feats'] = x_this
@@ -108,7 +108,7 @@ class SegSparseVoxHead(nn.Module):
         cluster_ids = batch_dict['cluster_ids']
 
         if self.cluster:
-            b = list_segments_points(x.C, x.F, np.asarray(cluster_ids)) #[num points in all segments of all 8 pcs x 96]
+            b = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
 
         # from input points dropout some (increase randomness)
         x = self.dropout(b) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
