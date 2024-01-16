@@ -1,15 +1,13 @@
-from .seg_head import SegHead
+from .projection_point_head import ProjectionPointHead
 from .seg_vox_head import SegVoxHead
-from .depth_head import DepthHead
 from .reg_heads import RegHead
-from .seg_sparse_vox_head import SegSparseVoxHead
+from .projection_sparse_vox_head import ProjectionSparseVoxHead
 
 
 
 __all__ = {
-    'SegHead': SegHead,
+    'ProjectionPointHead': ProjectionPointHead,
+    'ProjectionSparseVoxHead': ProjectionSparseVoxHead,
     'SegVoxHead': SegVoxHead,
-    'SegSparseVoxHead': SegSparseVoxHead,
-    'DepthHead': DepthHead,
     'RegHead': RegHead
     }

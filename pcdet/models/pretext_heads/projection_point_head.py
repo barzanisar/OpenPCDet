@@ -6,15 +6,14 @@ from third_party.OpenPCDet.pcdet.models.pretext_heads.mlp import MLP
 from third_party.OpenPCDet.pcdet.models.pretext_heads.gather_utils import *
 
 
-class SegHead(nn.Module):
+class ProjectionPointHead(nn.Module):
     def __init__(self, model_cfg, point_cloud_range, voxel_size):
         super().__init__()
         self.use_mlp = False
+        self.cluster = model_cfg.cluster
         if model_cfg.use_mlp:
             self.use_mlp = True
             self.head = MLP(model_cfg.mlp_dim) # projection head
-
-        #self.dout=nn.Dropout(p=0.3)
     
     @torch.no_grad()
     def _batch_unshuffle_ddp(self, batch_dict, idx_unshuffle):
@@ -73,37 +72,46 @@ class SegHead(nn.Module):
         idx_unshuffle = batch_dict.get('idx_unshuffle', None)
         if torch.distributed.is_initialized() and idx_unshuffle is not None:
             batch_dict = self._batch_unshuffle_ddp(batch_dict, idx_unshuffle)
-
-        cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
+        
         point_features = batch_dict['point_features'] # unshuffled (B=2, C=128, N num points = 20000)    
         batch_size = batch_dict["batch_size"] # unshuffled
 
-        batch_seg_feats = []
-        for pc_idx in range(batch_size):
-            pc_feats = point_features[pc_idx] #(128, 20000)
-            cluster_labels_this_pc = cluster_ids[pc_idx] # (20000,)
-            common_cluster_labels_this_pc = batch_dict['common_cluster_ids'][pc_idx]
-            
-            for segment_lbl in common_cluster_labels_this_pc: #np.unique(cluster_labels_this_pc):
-                assert segment_lbl != -1
-                # if segment_lbl == -1:
-                #     continue
+        if self.cluster:
+            #SegContrast
+            cluster_ids = batch_dict['cluster_ids'] #original (B=2, 20000)
+
+            batch_seg_feats = []
+            for pc_idx in range(batch_size):
+                pc_feats = point_features[pc_idx] #(128, 20000)
+                cluster_labels_this_pc = cluster_ids[pc_idx] # (20000,)
+                common_cluster_labels_this_pc = batch_dict['common_cluster_ids'][pc_idx]
                 
-                seg_feats = pc_feats[:,cluster_labels_this_pc == segment_lbl] #(128, npoints in this seg)
-                #seg_feats = self.dout(seg_feats) #zero some values in [128, num points in this cluster]
-                seg_feats = seg_feats.unsqueeze(0) #1,128, npoints in this seg
-                npoints = seg_feats.shape[-1]
-                seg_max_feat = F.max_pool1d(seg_feats, npoints).squeeze(-1) #[1, 128, npoints] -> [1, 128, 1] -> [1, 128]
-                batch_seg_feats.append(seg_max_feat) # (1, 128)
+                for segment_lbl in common_cluster_labels_this_pc: #np.unique(cluster_labels_this_pc):
+                    assert segment_lbl != -1
+                    # if segment_lbl == -1:
+                    #     continue
+                    
+                    seg_feats = pc_feats[:,cluster_labels_this_pc == segment_lbl] #(128, npoints in this seg)
+                    #seg_feats = self.dout(seg_feats) #zero some values in [128, num points in this cluster]
+                    seg_feats = seg_feats.unsqueeze(0) #1,128, npoints in this seg
+                    npoints = seg_feats.shape[-1]
+                    seg_max_feat = F.max_pool1d(seg_feats, npoints).squeeze(-1) #[1, 128, npoints] -> [1, 128, 1] -> [1, 128]
+                    batch_seg_feats.append(seg_max_feat) # (1, 128)
+                
             
+            feats = torch.vstack(batch_seg_feats) # (num clusters, 128)
+        else:
+            #DepthContrast
+            numpts = point_features.shape[-1] # 16384
+            # get one feature vector of dim 128 for the entire point cloud
+            feats = torch.squeeze(F.max_pool1d(point_features, numpts)) # (num pc =8,128)            
         
-        all_seg_feats = torch.vstack(batch_seg_feats) # (num clusters, 128)
         if self.use_mlp:
-            all_seg_feats = self.head(all_seg_feats) # (num clusters, 128)
+            feats = self.head(feats) # (num clusters, 128)
         
 
         # Convert point features in OpenPCDet format
-        batch_dict["pretext_head_feats"] = all_seg_feats # (num clusters, 128)
+        batch_dict["pretext_head_feats"] = feats # (num clusters, 128)
         point_features = point_features.permute(0, 2, 1).contiguous()  # (B=2, N=20000, C=128)
         batch_dict['point_features'] = point_features.view(-1, point_features.shape[-1]) # (B x N, 128)
         batch_dict['point_coords'] = batch_dict['points'][:,:4] #(b id, xyz)

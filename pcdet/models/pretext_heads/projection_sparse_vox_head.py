@@ -8,10 +8,10 @@ from third_party.OpenPCDet.pcdet.models.pretext_heads.mlp import MLP
 from third_party.OpenPCDet.pcdet.models.pretext_heads.gather_utils import *
 
 
-class SegSparseVoxHead(nn.Module):
+class ProjectionSparseVoxHead(nn.Module):
     def __init__(self, model_cfg, point_cloud_range, voxel_size):
         super().__init__()
-        self.cluster = True #TODO implement both depth contrast and seg contrast here
+        self.cluster = model_cfg.cluster
         self.use_mlp = False
         if model_cfg.use_mlp:
             self.use_mlp = True
@@ -108,10 +108,10 @@ class SegSparseVoxHead(nn.Module):
         cluster_ids = batch_dict['cluster_ids']
 
         if self.cluster:
-            b = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
+            x = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
 
         # from input points dropout some (increase randomness)
-        x = self.dropout(b) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
+        x = self.dropout(x) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
 
         # global max pooling over the remaining points
         x = self.glob_pool(x) #[num segments x 96] max pools pts in each seg
