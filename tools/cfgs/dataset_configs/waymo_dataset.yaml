@@ -7,7 +7,7 @@ USE_TWO_RETURNS: True
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
-    'train': train, #train
+    'train': train,
     'test': val
 }
 

@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --time=04:00:00
-#SBATCH --job-name=OpenPCDet-train
+#SBATCH --job-name=OpenPCDet-create_gtdatabase
 #SBATCH --account=rrg-swasland
 #SBATCH --cpus-per-task=16             # CPU cores/threads
 #SBATCH --gres=gpu:a100:1                # Number of GPUs (per node)
 #SBATCH --mem=64000M                   # memory per node
 #SBATCH --output=./output/log/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
-#SBATCH --array=1-2%1   # 4 is the number of jobs in the chain
+#SBATCH --array=1-1%1   
 #SBATCH --mail-user=barzanisar93@gmail.com
 
 # die function
