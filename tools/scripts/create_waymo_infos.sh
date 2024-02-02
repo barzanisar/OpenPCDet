@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --time=04:00:00
 #SBATCH --job-name=OpenPCDet-create_gtdatabase
-#SBATCH --account=rrg-swasland
+#SBATCH --account=def-swasland-ab
 #SBATCH --cpus-per-task=16             # CPU cores/threads
-#SBATCH --gres=gpu:a100:1                # Number of GPUs (per node)
+#SBATCH --gres=gpu:p100l:1                # Number of GPUs (per node)
 #SBATCH --mem=64000M                   # memory per node
 #SBATCH --output=./output/log/%x-%j.out   # STDOUT
 #SBATCH --mail-type=ALL
