@@ -12,7 +12,7 @@ DATA_SPLIT: {
 }
 
 SAMPLED_INTERVAL: {
-    'train': 1,
+    'train': 100,
     'test': 1
 }
 
@@ -22,7 +22,7 @@ DATA_AUGMENTOR:
         - NAME: gt_sampling
           USE_ROAD_PLANE: False
           DB_INFO_PATH:
-              - waymo_processed_data_v_1_2_0_waymo_dbinfos_train_sampled_1.pkl
+              - waymo_processed_data_v_1_2_0_waymo_dbinfos_train_sampled_100.pkl
           PREPARE: {
              filter_by_min_points: ['Vehicle:5', 'Pedestrian:5', 'Cyclist:5'],
              filter_by_difficulty: [-1],
