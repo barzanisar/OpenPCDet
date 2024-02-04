@@ -28,7 +28,8 @@ class ProjectionSparseVoxHead(nn.Module):
         """ #x is a sparse tensor C:(8pcs x 20k pts, 4=b_id,xyz vox coord) F:(8x20k, 4=xyzi pts)
         # gather from all gpus
         x = batch_dict['sparse_point_feats']
-        batch_size = []
+        # point_coords = torch.cat((batch_dict['sparse_points'].C[:,0].unsqueeze(-1), batch_dict['sparse_points'].F[:,:3]), dim=1) #bid, xyz
+        num_pts_batch = []
 
         # sparse tensor should be decomposed
         c, f = x.decomposed_coordinates_and_features # c=list of bs=8 [(20k, 3=xyz vox coord), ...,()]
@@ -36,8 +37,8 @@ class ProjectionSparseVoxHead(nn.Module):
         # each pcd has different size, get the biggest size as default
         newx = list(zip(c, f))# list of 8=[(c,f)..., (c,f)]
         for bidx in newx:
-            batch_size.append(len(bidx[0]))
-        all_size = concat_all_gather(torch.tensor(batch_size).cuda()) # if 2 gpus then list of 16 = [20k, ..., 20k]
+            num_pts_batch.append(len(bidx[0]))
+        all_size = concat_all_gather(torch.tensor(num_pts_batch).cuda()) # if 2 gpus then list of 16 = [20k, ..., 20k]
         max_size = torch.max(all_size) # max num pts in any pc 20k
 
         # create a tensor with shape (batch_size, max_size)
@@ -83,6 +84,17 @@ class ProjectionSparseVoxHead(nn.Module):
         x_this = numpy_to_sparse_tensor(c_this, f_this) # sparse tensor in this gpu (C: (8,20k,4=b_id,xyz vox coords), F:(8, 20k, 4=xyzi pts))
 
         batch_dict['sparse_point_feats'] = x_this
+
+        ####################### Unshuffle points #######################
+        # points_gather = gather_feats(batch_indices=point_coords[:,0], 
+        #                                 feats_or_coords=point_coords, 
+        #                                 batch_size_this=batch_size_this, 
+        #                                 num_vox_or_pts_batch=num_pts_batch, 
+        #                                 max_num_vox_or_pts=max_size)
+
+        batch_dict['batch_size'] = len(idx_this)
+        # batch_dict['point_coords'] = get_feats_this(idx_this, all_size, points_gather, is_ind=True) # (N1+..Nbs, bxyzi)
+   
         return batch_dict
 
     
@@ -120,6 +132,9 @@ class ProjectionSparseVoxHead(nn.Module):
         out = self.head(x.F) #[num segments x 96] -> [num segments x 128]
 
         batch_dict["pretext_head_feats"] = out
+        batch_dict['point_features'] = batch_dict['sparse_point_feats'].F
+        # if 'point_coords' not in batch_dict:
+        #     batch_dict['point_coords'] =  torch.cat((batch_dict['sparse_points'].C[:,0].unsqueeze(-1), batch_dict['sparse_points'].F[:,:3]), dim=1) #bid, xyz
 
         return batch_dict
 

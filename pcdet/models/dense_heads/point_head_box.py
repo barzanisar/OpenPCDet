@@ -17,11 +17,12 @@ class PointHeadBox(PointHeadTemplate):
         #                       [linear=256 (bias=False), batchnorm1, relu],
         #                        [linear=3 (bias=true)]] 
         #cout = 3 = num_class if not class agnostic else cout=1=numclass i.e. fg/bg prediction
-        self.cls_layers = self.make_fc_layers(
-            fc_cfg=self.model_cfg.CLS_FC,
-            input_channels=input_channels,
-            output_channels=num_class
-        )
+        if 'CLS_FC' in self.model_cfg:
+            self.cls_layers = self.make_fc_layers(
+                fc_cfg=self.model_cfg.CLS_FC,
+                input_channels=input_channels,
+                output_channels=num_class
+            )
 
         target_cfg = self.model_cfg.TARGET_CONFIG
         self.box_coder = getattr(box_coder_utils, target_cfg.BOX_CODER)(
@@ -78,11 +79,16 @@ class PointHeadBox(PointHeadTemplate):
 
     def get_loss(self, tb_dict=None):
         tb_dict = {} if tb_dict is None else tb_dict
-        point_loss_cls, tb_dict_1 = self.get_cls_layer_loss() # 1 number
+        if 'CLS_FC' in self.model_cfg:
+            point_loss_cls, tb_dict_1 = self.get_cls_layer_loss() # 1 number
         point_loss_box, tb_dict_2 = self.get_box_layer_loss() # 1 number
 
-        point_loss = point_loss_cls + point_loss_box
-        tb_dict.update(tb_dict_1)
+        if 'CLS_FC' in self.model_cfg:
+            point_loss = point_loss_cls + point_loss_box
+            tb_dict.update(tb_dict_1)
+        else:
+            point_loss = point_loss_box
+        
         tb_dict.update(tb_dict_2)
         return point_loss, tb_dict
 
@@ -111,18 +117,21 @@ class PointHeadBox(PointHeadTemplate):
                 point_box_labels: (N1 + N2 + N3 + ..., code_size=8) groundtruth box residuals [xt, yt, zt, log(dx_gt/dx_mean_anchor), log(dy_gt/dy_anchor), log(dz_gt/dz_anchor), cos(r_gt), sin(r_gt) ]
 
         """
+        ret_dict = {}
         if self.model_cfg.get('USE_POINT_FEATURES_BEFORE_FUSION', False):
             point_features = batch_dict['point_features_before_fusion']
         else:
             point_features = batch_dict['point_features'] # (total_points in batch = N =16384x2, 128) 
-        point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class=3) Predict class scores (car, pedestrian, cyclist) for every point
+        
+        if 'CLS_FC' in self.model_cfg:
+            point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class=3) Predict class scores (car, pedestrian, cyclist) for every point
+            point_cls_preds_max, _ = point_cls_preds.max(dim=-1) #(N, 3) -> max score for each point (N)
+            batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) # (N) turn max scores in probabilities i.e. objectness confidence for each point
+            ret_dict['point_cls_preds'] = point_cls_preds
+
         point_box_preds = self.box_layers(point_features)  # (total_points, box_code_size=8) Predicted box residuals for each pt (xt,yt,zt,dxt,dyt,dzt, cos r, sin r)
-
-        point_cls_preds_max, _ = point_cls_preds.max(dim=-1) #(N, 3) -> max score for each point (N)
-        batch_dict['point_cls_scores'] = torch.sigmoid(point_cls_preds_max) # (N) turn max scores in probabilities i.e. objectness confidence for each point
-
-        ret_dict = {'point_cls_preds': point_cls_preds,
-                    'point_box_preds': point_box_preds}
+        ret_dict['point_box_preds'] = point_box_preds
+        
         if self.training:
             targets_dict = self.assign_targets(batch_dict)
             # point_cls_labels: (N1 + N2 + N3 + ...), long type, gt class labels for each point  0:background, -1:ignored pts that are just outside gt box but within extended gt box, 1:Car, 2:Pedestrian, 3:Cyclist
