@@ -1,19 +1,17 @@
 DATASET: 'WaymoDataset'
 DATA_PATH: '../data/waymo'
-PROCESSED_DATA_TAG: 'waymo_processed_data_v_1_2_0'
-
-USE_TWO_RETURNS: True
+PROCESSED_DATA_TAG: 'waymo_processed_data_one'
 
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
-    'train': train,
+    'train': train_one,
     'test': val
 }
-
+# to train on 1% waymo i.e. 1500 samples
 SAMPLED_INTERVAL: {
-    'train': 100,
-    'test': 20
+    'train': 1, 
+    'test': 1
 }
 
 DATA_AUGMENTOR:
@@ -22,7 +20,7 @@ DATA_AUGMENTOR:
         - NAME: gt_sampling
           USE_ROAD_PLANE: False
           DB_INFO_PATH:
-              - waymo_processed_data_v_1_2_0_waymo_dbinfos_train_sampled_100.pkl
+              - waymo_processed_data_one_waymo_dbinfos_train_sampled_1.pkl
           PREPARE: {
              filter_by_min_points: ['Vehicle:5', 'Pedestrian:5', 'Cyclist:5'],
              filter_by_difficulty: [-1],
@@ -45,7 +43,7 @@ DATA_AUGMENTOR:
 
 POINT_FEATURE_ENCODING: {
     encoding_type: absolute_coordinates_encoding,
-    used_feature_list: ['x', 'y', 'z', 'intensity', 'elongation'],
+    used_feature_list: ['x', 'y', 'z', 'intensity'],
     src_feature_list: ['x', 'y', 'z', 'intensity', 'elongation'],
 }
 
