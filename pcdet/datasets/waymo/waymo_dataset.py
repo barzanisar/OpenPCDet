@@ -9,7 +9,7 @@ import copy
 import numpy as np
 import torch
 import multiprocessing
-import SharedArray
+# import SharedArray
 import torch.distributed as dist
 from tqdm import tqdm
 from pathlib import Path
@@ -126,49 +126,49 @@ class WaymoDataset(DatasetTemplate):
             self.infos = sampled_waymo_infos
             self.logger.info('Total sampled samples for Waymo dataset: %d' % len(self.infos))
 
-    def load_data_to_shared_memory(self):
-        self.logger.info(f'Loading training data to shared memory (file limit={self.shared_memory_file_limit})')
+    # def load_data_to_shared_memory(self):
+    #     self.logger.info(f'Loading training data to shared memory (file limit={self.shared_memory_file_limit})')
 
-        cur_rank, num_gpus = common_utils.get_dist_info()
-        all_infos = self.infos[:self.shared_memory_file_limit] \
-            if self.shared_memory_file_limit < len(self.infos) else self.infos
-        cur_infos = all_infos[cur_rank::num_gpus]
-        for info in cur_infos:
-            pc_info = info['point_cloud']
-            sequence_name = pc_info['lidar_sequence']
-            sample_idx = pc_info['sample_idx']
+    #     cur_rank, num_gpus = common_utils.get_dist_info()
+    #     all_infos = self.infos[:self.shared_memory_file_limit] \
+    #         if self.shared_memory_file_limit < len(self.infos) else self.infos
+    #     cur_infos = all_infos[cur_rank::num_gpus]
+    #     for info in cur_infos:
+    #         pc_info = info['point_cloud']
+    #         sequence_name = pc_info['lidar_sequence']
+    #         sample_idx = pc_info['sample_idx']
 
-            sa_key = f'{sequence_name}___{sample_idx}'
-            if os.path.exists(f"/dev/shm/{sa_key}"):
-                continue
+    #         sa_key = f'{sequence_name}___{sample_idx}'
+    #         if os.path.exists(f"/dev/shm/{sa_key}"):
+    #             continue
 
-            points = self.get_lidar(sequence_name, sample_idx)
-            common_utils.sa_create(f"shm://{sa_key}", points)
+    #         points = self.get_lidar(sequence_name, sample_idx)
+    #         common_utils.sa_create(f"shm://{sa_key}", points)
 
-        dist.barrier()
-        self.logger.info('Training data has been saved to shared memory')
+    #     dist.barrier()
+    #     self.logger.info('Training data has been saved to shared memory')
 
-    def clean_shared_memory(self):
-        self.logger.info(f'Clean training data from shared memory (file limit={self.shared_memory_file_limit})')
+    # def clean_shared_memory(self):
+    #     self.logger.info(f'Clean training data from shared memory (file limit={self.shared_memory_file_limit})')
 
-        cur_rank, num_gpus = common_utils.get_dist_info()
-        all_infos = self.infos[:self.shared_memory_file_limit] \
-            if self.shared_memory_file_limit < len(self.infos) else self.infos
-        cur_infos = all_infos[cur_rank::num_gpus]
-        for info in cur_infos:
-            pc_info = info['point_cloud']
-            sequence_name = pc_info['lidar_sequence']
-            sample_idx = pc_info['sample_idx']
+    #     cur_rank, num_gpus = common_utils.get_dist_info()
+    #     all_infos = self.infos[:self.shared_memory_file_limit] \
+    #         if self.shared_memory_file_limit < len(self.infos) else self.infos
+    #     cur_infos = all_infos[cur_rank::num_gpus]
+    #     for info in cur_infos:
+    #         pc_info = info['point_cloud']
+    #         sequence_name = pc_info['lidar_sequence']
+    #         sample_idx = pc_info['sample_idx']
 
-            sa_key = f'{sequence_name}___{sample_idx}'
-            if not os.path.exists(f"/dev/shm/{sa_key}"):
-                continue
+    #         sa_key = f'{sequence_name}___{sample_idx}'
+    #         if not os.path.exists(f"/dev/shm/{sa_key}"):
+    #             continue
 
-            SharedArray.delete(f"shm://{sa_key}")
+    #         SharedArray.delete(f"shm://{sa_key}")
 
-        if num_gpus > 1:
-            dist.barrier()
-        self.logger.info('Training data has been deleted from shared memory')
+    #     if num_gpus > 1:
+    #         dist.barrier()
+    #     self.logger.info('Training data has been deleted from shared memory')
 
     # @staticmethod
     # def check_sequence_name_with_all_version(sequence_file):
@@ -245,11 +245,11 @@ class WaymoDataset(DatasetTemplate):
         sequence_name = pc_info['lidar_sequence']
         sample_idx = pc_info['sample_idx']
 
-        if self.use_shared_memory and index < self.shared_memory_file_limit:
-            sa_key = f'{sequence_name}___{sample_idx}'
-            points = SharedArray.attach(f"shm://{sa_key}").copy()
-        else:
-            points = self.get_lidar(sequence_name, sample_idx)
+        # if self.use_shared_memory and index < self.shared_memory_file_limit:
+        #     sa_key = f'{sequence_name}___{sample_idx}'
+        #     points = SharedArray.attach(f"shm://{sa_key}").copy()
+        # else:
+        points = self.get_lidar(sequence_name, sample_idx)
 
         input_dict = {
             'points': points,

@@ -3,7 +3,7 @@ import pickle
 import os
 import copy
 import numpy as np
-import SharedArray
+# import SharedArray
 import torch.distributed as dist
 
 from ...ops.iou3d_nms import iou3d_nms_utils
@@ -57,34 +57,35 @@ class DataBaseSampler(object):
     def __setstate__(self, d):
         self.__dict__.update(d)
 
-    def __del__(self):
-        if self.use_shared_memory:
-            self.logger.info('Deleting GT database from shared memory')
-            cur_rank, num_gpus = common_utils.get_dist_info()
-            sa_key = self.sampler_cfg.DB_DATA_PATH[0]
-            if cur_rank % num_gpus == 0 and os.path.exists(f"/dev/shm/{sa_key}"):
-                SharedArray.delete(f"shm://{sa_key}")
+    # def __del__(self):
+    #     if self.use_shared_memory:
+    #         self.logger.info('Deleting GT database from shared memory')
+    #         cur_rank, num_gpus = common_utils.get_dist_info()
+    #         sa_key = self.sampler_cfg.DB_DATA_PATH[0]
+    #         if cur_rank % num_gpus == 0 and os.path.exists(f"/dev/shm/{sa_key}"):
+    #             SharedArray.delete(f"shm://{sa_key}")
 
-            if num_gpus > 1:
-                dist.barrier()
-            self.logger.info('GT database has been removed from shared memory')
+    #         if num_gpus > 1:
+    #             dist.barrier()
+    #         self.logger.info('GT database has been removed from shared memory')
 
     def load_db_to_shared_memory(self):
-        self.logger.info('Loading GT database to shared memory')
-        cur_rank, world_size, num_gpus = common_utils.get_dist_info(return_gpu_per_machine=True)
+        pass
+        # self.logger.info('Loading GT database to shared memory')
+        # cur_rank, world_size, num_gpus = common_utils.get_dist_info(return_gpu_per_machine=True)
 
-        assert self.sampler_cfg.DB_DATA_PATH.__len__() == 1, 'Current only support single DB_DATA'
-        db_data_path = self.root_path.resolve() / self.sampler_cfg.DB_DATA_PATH[0]
-        sa_key = self.sampler_cfg.DB_DATA_PATH[0]
+        # assert self.sampler_cfg.DB_DATA_PATH.__len__() == 1, 'Current only support single DB_DATA'
+        # db_data_path = self.root_path.resolve() / self.sampler_cfg.DB_DATA_PATH[0]
+        # sa_key = self.sampler_cfg.DB_DATA_PATH[0]
 
-        if cur_rank % num_gpus == 0 and not os.path.exists(f"/dev/shm/{sa_key}"):
-            gt_database_data = np.load(db_data_path)
-            common_utils.sa_create(f"shm://{sa_key}", gt_database_data)
+        # if cur_rank % num_gpus == 0 and not os.path.exists(f"/dev/shm/{sa_key}"):
+        #     gt_database_data = np.load(db_data_path)
+        #     common_utils.sa_create(f"shm://{sa_key}", gt_database_data)
             
-        if num_gpus > 1:
-            dist.barrier()
-        self.logger.info('GT database has been saved to shared memory')
-        return sa_key
+        # if num_gpus > 1:
+        #     dist.barrier()
+        # self.logger.info('GT database has been saved to shared memory')
+        # return sa_key
 
     def filter_by_difficulty(self, db_infos, removed_difficulty):
         # remove db infos with difficulty = removed_difficulty
@@ -169,11 +170,11 @@ class DataBaseSampler(object):
             data_dict.pop('road_plane')
 
         obj_points_list = []
-        if self.use_shared_memory:
-            gt_database_data = SharedArray.attach(f"shm://{self.gt_database_data_key}")
-            gt_database_data.setflags(write=0)
-        else:
-            gt_database_data = None 
+        # if self.use_shared_memory:
+        #     gt_database_data = SharedArray.attach(f"shm://{self.gt_database_data_key}")
+        #     gt_database_data.setflags(write=0)
+        # else:
+        gt_database_data = None 
 
         for idx, info in enumerate(total_valid_sampled_dict):
             if self.use_shared_memory:

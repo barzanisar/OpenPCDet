@@ -68,7 +68,7 @@
                 "--func",
                 "create_waymo_gt_database",
                 "--cfg_file",
-                "tools/cfgs/dataset_configs/waymo_dataset.yaml"
+                "tools/cfgs/dataset_configs/waymo_dataset_practice.yaml"
             ]
         },
         {
@@ -84,7 +84,7 @@
             ]
         },
         {
-            "name": "train_waymo_pointrcnn_1percent",
+            "name": "train_waymo_pointrcnn_practice",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -92,7 +92,7 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_1percent.yaml"
+                "cfgs/waymo_models/pointrcnn_practice.yaml"
             ]
         },
         {
@@ -128,9 +128,9 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_finetune.yaml",
+                "cfgs/waymo_models/pointrcnn_practice_minkunet_finetune.yaml",
                 "--pretrained_model",
-                "../checkpoints/waymo_ssl3d_pointrcnn_checkpoint.pth.tar",
+                "../checkpoints/checkpoint_minkunet_plus_reg_pretrain.pth.tar",
                 "--fix_random_seed"
             ]
         },
