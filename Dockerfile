@@ -8,9 +8,6 @@
 # ==================================================================
 FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
 
-ENV TZ=America/New_York
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
 RUN rm -rf /var/lib/apt/lists/* \
            /etc/apt/sources.list.d/cuda.list \
            /etc/apt/sources.list.d/nvidia-ml.list && \
@@ -27,6 +24,9 @@ RUN APT_INSTALL="apt-get install -y --no-install-recommends" && \
 # ==================================================================
 # tools
 # ------------------------------------------------------------------
+ENV TZ=America/New_York
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 RUN apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
@@ -42,12 +42,11 @@ RUN apt-get install -y --no-install-recommends \
         libsm6 \
         libxext6 \
         libxrender-dev \
-        ninja-build
+        libssl-dev
 
 # ==================================================================
 # python
 # ------------------------------------------------------------------
-WORKDIR /OpenPCDet
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends \
@@ -59,12 +58,29 @@ RUN apt-get install -y --no-install-recommends \
         python3-setuptools
 RUN ln -s /usr/bin/python3.8 /usr/local/bin/python3
 RUN ln -s /usr/bin/python3.8 /usr/local/bin/python
-COPY requirements.txt requirements.txt
-RUN python -m pip --no-cache-dir install torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
-RUN python -m pip install --upgrade pip
-RUN python -m pip --no-cache-dir install --upgrade -r requirements.txt
-RUN python -m pip install SharedArray==3.1.0
-RUN pip install -U urllib3 requests
+
+# ==================================================================
+# conda
+# ------------------------------------------------------------------
+
+#RUN mkdir -p /opt/conda
+ENV CONDA_DIR /opt/conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p /opt/conda
+
+ENV PATH=$CONDA_DIR/bin:$PATH
+RUN rm -rf ~/miniconda.sh
+ENV PATH /opt/conda/envs/ssl/bin:$PATH
+
+RUN /opt/conda/bin/conda init bash \
+    && . ~/.bashrc \
+    && conda create -n ssl python=3.8 \
+    && conda activate ssl 
+RUN echo "source activate ssl" > ~/.bashrc
+
+# Make RUN commands use the new environment:
+SHELL ["conda", "run", "--no-capture-output", "-n", "ssl", "/bin/bash", "-c"]
+
 
 # ==================================================================
 # config & cleanup
@@ -74,13 +90,13 @@ RUN ldconfig && \
     apt-get autoremove && \
     rm -rf /var/lib/apt/lists/* /tmp/* ~/*
 
-# Install cmake v3.13.2
+# Install cmake v3.21.3
 RUN apt-get purge -y cmake && \
     mkdir /root/temp && \
     cd /root/temp && \
-    wget https://cmake.org/files/v3.13/cmake-3.13.2.tar.gz && \
-    tar -xzvf cmake-3.13.2.tar.gz && \
-    cd cmake-3.13.2 && \
+    wget https://cmake.org/files/v3.21/cmake-3.21.3.tar.gz && \
+    tar -xzvf cmake-3.21.3.tar.gz && \
+    cd cmake-3.21.3 && \
     bash ./bootstrap && \
     make && \
     make install && \
@@ -96,6 +112,37 @@ RUN cp -r ./boost_1_68_0/boost /usr/include
 RUN rm -rf ./boost_1_68_0
 RUN rm -rf ./boost_1_68_0.tar.gz
 
+
+# setup environment
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES ${NVIDIA_VISIBLE_DEVICES:-all}
+ENV NVIDIA_DRIVER_CAPABILITIES ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
+
+ENV TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
+ENV PYTHONPATH="/usr/lib/python3.8/site-packages/:${PYTHONPATH}"
+
+# ==================================================================
+# OpenPCDet
+# ------------------------------------------------------------------
+WORKDIR /OpenPCDet
+#cuda home env needed for minkowski
+ENV CUDA_HOME="/usr/local/cuda-11.1" 
+COPY requirements.txt requirements.txt
+RUN apt-get update && apt-get install -y libgl1
+
+RUN apt-get update -y
+RUN apt-get install -y libeigen3-dev
+RUN pip install pip==22.1.2
+RUN python -m pip --no-cache-dir install -r requirements.txt
+RUN conda install openblas-devel -c anaconda
+RUN python -m pip --no-cache-dir install torch==1.9.0+cu111 torchvision==0.10.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+RUN apt install libopenblas-dev -y
+RUN pip install -U git+https://github.com/NVIDIA/MinkowskiEngine -v --no-deps --install-option="--blas_include_dirs=${CONDA_PREFIX}/include" --install-option="--blas=openblas"
+RUN pip install nuscenes-devkit
+
 # # Install spconv v1.1
 # RUN git clone https://github.com/traveller59/spconv.git
 # RUN cd ./spconv && git checkout v1.2.1 && git submodule update --init --recursive && SPCONV_FORCE_BUILD_CUDA=1 python setup.py bdist_wheel
@@ -103,35 +150,11 @@ RUN rm -rf ./boost_1_68_0.tar.gz
 #     rm -rf /root/spconv
 # ENV LD_LIBRARY_PATH="/usr/local/lib/python3.8/dist-packages/spconv:${LD_LIBRARY_PATH}"
 
-# setup environment
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
-
-# nvidia runtime
-COPY --from=nvidia/opengl:1.0-glvnd-runtime-ubuntu20.04 \
- /usr/lib/x86_64-linux-gnu \
- /usr/lib/x86_64-linux-gnu
-
-COPY --from=nvidia/opengl:1.0-glvnd-runtime-ubuntu20.04 \
- /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
- /usr/share/glvnd/egl_vendor.d/10_nvidia.json
-
-RUN echo '/usr/local/lib/x86_64-linux-gnu' >> /etc/ld.so.conf.d/glvnd.conf && \
- ldconfig && \
- echo '/usr/$LIB/libGL.so.1' >> /etc/ld.so.preload && \
- echo '/usr/$LIB/libEGL.so.1' >> /etc/ld.so.preload
-
-# nvidia-container-runtime
-ENV NVIDIA_VISIBLE_DEVICES ${NVIDIA_VISIBLE_DEVICES:-all}
-ENV NVIDIA_DRIVER_CAPABILITIES ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
-
 # ==================================================================
 # OpenPCDet Framework
 # ------------------------------------------------------------------
 WORKDIR /OpenPCDet
 COPY pcdet pcdet
 COPY setup.py setup.py
-ENV TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
-ENV PYTHONPATH="/usr/lib/python3.8/site-packages/:${PYTHONPATH}"
 RUN python setup.py develop
 RUN mkdir checkpoints && mkdir data && mkdir output && mkdir tests && mkdir tools && mkdir lib

@@ -1,5 +1,5 @@
 CLASS_NAMES: ['Vehicle', 'Pedestrian']
-
+# python train.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml
 WANDB:
     ENABLED: False
     PROJECT: SSL3dObject

@@ -27,7 +27,7 @@ EXTRA_TAG='default'
 
 # ========== WAYMO ==========
 DATA_DIR=/home/$USER/scratch/Datasets/Waymo
-SING_IMG=/home/$USER/scratch/singularity/ssl_lidar_aug.sif
+SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
 TEST_ONLY=false
 
 # Usage info
