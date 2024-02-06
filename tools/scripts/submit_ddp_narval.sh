@@ -22,6 +22,8 @@ CFG_FILE=tools/cfgs/waymo_models/pointrcnn_minkunet.yaml
 PRETRAINED_MODEL=None
 BATCH_SIZE_PER_GPU=8
 TCP_PORT=18888
+EXTRA_TAG='default'
+
 
 # ========== WAYMO ==========
 DATA_DIR=/home/$USER/scratch/Datasets/Waymo
@@ -98,6 +100,14 @@ while :; do
     -z|--test_only)       # Takes an option argument; ensure it has been specified.
         TEST_ONLY="true"
         ;;
+    -t|--extra_tag)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            EXTRA_TAG=$2
+            shift
+        else
+            die 'ERROR: "--extra_tag" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -119,6 +129,7 @@ DATA_DIR=$DATA_DIR
 SING_IMG=$SING_IMG
 TEST_ONLY=$TEST_ONLY
 NUM_GPUS=$NUM_GPUS
+EXTRA_TAG=$EXTRA_TAG
 "
 
 echo ""
@@ -134,5 +145,6 @@ export DATA_DIR=$DATA_DIR
 export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 export TEST_ONLY=$TEST_ONLY
+export EXTRA_TAG=$EXTRA_TAG
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
