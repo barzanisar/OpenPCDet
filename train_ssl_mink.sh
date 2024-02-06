@@ -3,7 +3,7 @@ sbatch --time=03:00:00 --array=1-1%1 --job-name=create_database-waymo tools/scri
 
 #################### 80 epochs #########################################
 ## scratch
-sbatch --time=10:00:00 --array=1-4%1 --job-name=det-scratch-80ep tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_80ep.yaml --tcp_port 18910 --extra_tag scratch 
+sbatch --time=1:00:00 --array=1-1%1 --job-name=det-scratch-80ep tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_80ep.yaml --tcp_port 18910 --extra_tag scratch 
 sbatch --time=10:00:00 --array=1-4%1 --job-name=det-scratch-80ep_try2 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_80ep.yaml --tcp_port 18911 --extra_tag scratch_try2
 
 ## finetune seg 

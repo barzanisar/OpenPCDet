@@ -63,6 +63,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --fix_random_seed
 --batch_size $BATCHSIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
+--extra_tag $EXTRA_TAG
 "
 
 
@@ -75,6 +76,7 @@ TEST_CMD+="python -m torch.distributed.launch
 --cfg_file /OpenPCDet/$CFG_FILE
 --batch_size $BATCHSIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
+--extra_tag $EXTRA_TAG
 --eval_all"
 
 if [ $TEST_ONLY == "true" ]
