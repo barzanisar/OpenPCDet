@@ -17,6 +17,30 @@ die() { echo "$*" 1>&2 ; exit 1; }
 # ========== WAYMO ==========
 DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 SING_IMG=/home/$USER/scratch/singularity/openpcdet_martin.sif
+CFG_FILE=tools/cfgs/dataset_configs/waymo_dataset.yaml
+
+# Get command line arguments
+while :; do
+    case $1 in
+    # train.py parameters
+    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CFG_FILE=$2
+            shift
+        else
+            die 'ERROR: "--cfg_file" requires a non-empty option argument.'
+        fi
+        ;;
+    -?*)
+        printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
+        ;;
+    *)               # Default case: No more options, so break out of the loop.
+        break
+    esac
+
+    shift
+done
+
 
 # Load Singularity
 module load StdEnv/2020
@@ -51,14 +75,13 @@ singularity exec
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
 --bind $DATA_DIR:/OpenPCDet/data/waymo
---bind $PROJ_DIR/data/waymo/ImageSets:/OpenPCDet/data/waymo/ImageSets
 $OPENPCDET_BINDS
 $SING_IMG
 "
 
 TRAIN_CMD=$BASE_CMD
 
-TRAIN_CMD+="python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_gt_database --cfg_file tools/cfgs/dataset_configs/waymo_dataset.yaml"
+TRAIN_CMD+="python -m pcdet.datasets.waymo.waymo_dataset --func create_waymo_gt_database --cfg_file $CFG_FILE"
 
 echo "Running create infos"
 echo "$TRAIN_CMD"

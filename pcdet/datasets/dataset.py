@@ -53,15 +53,16 @@ class DatasetTemplate(torch_data.Dataset):
         self.voxel_size = self.data_processor.voxel_size
         self.total_epochs = 0
         self._merge_all_iters_to_one_epoch = False
+        self.mode = 'train' if self.training else 'test'
 
         if hasattr(self.data_processor, "depth_downsample_factor"):
             self.depth_downsample_factor = self.data_processor.depth_downsample_factor
         else:
             self.depth_downsample_factor = None
 
-    @property
-    def mode(self):
-        return 'train' if self.training else 'test'
+    # @property
+    # def mode(self):
+    #     return 'train' if self.training else 'test'
 
     def __getstate__(self):
         d = dict(self.__dict__)

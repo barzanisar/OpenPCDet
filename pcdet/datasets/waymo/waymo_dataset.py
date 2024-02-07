@@ -45,7 +45,7 @@ class WaymoDataset(DatasetTemplate):
             self.shared_memory_file_limit = self.dataset_cfg.get('SHARED_MEMORY_FILE_LIMIT', 0x7FFFFFFF)
             self.load_data_to_shared_memory()
 
-    def set_split(self, split):
+    def set_split(self, split, mode):
         super().__init__(
             dataset_cfg=self.dataset_cfg, class_names=self.class_names, training=self.training,
             root_path=self.root_path, logger=self.logger
@@ -54,6 +54,7 @@ class WaymoDataset(DatasetTemplate):
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()]
         self.infos = []
+        self.mode = mode
         self.include_waymo_data(self.mode)
     
     def add_pseudo_classes(self):
@@ -100,8 +101,16 @@ class WaymoDataset(DatasetTemplate):
         self.logger.info('Loading Waymo dataset')
         waymo_infos = []
 
+        self.logger.info(f'Total {mode} sequences {len(self.sample_sequence_list)}')
+        if self.dataset_cfg.get('SCENE_SAMPLING', False):
+            sample_sequence_list_range = range(0, len(self.sample_sequence_list), self.dataset_cfg.SAMPLED_INTERVAL[mode])
+            self.logger.info(f'Total {mode} sampled sequences {len(sample_sequence_list_range)}')
+        else:
+            sample_sequence_list_range = range(len(self.sample_sequence_list))
+        
+        
         num_skipped_infos = 0
-        for k in range(len(self.sample_sequence_list)):
+        for k in sample_sequence_list_range:
             sequence_name = os.path.splitext(self.sample_sequence_list[k])[0]
             if self.pseudo_classes_cfg is not None:
                 info_path = self.approx_boxes_path / sequence_name / ('approx_boxes.pkl')
@@ -116,15 +125,17 @@ class WaymoDataset(DatasetTemplate):
                 waymo_infos.extend(infos) # each info is one frame
 
         self.infos.extend(waymo_infos[:])
-        self.logger.info('Total skipped info %s' % num_skipped_infos)
-        self.logger.info('Total samples for Waymo dataset: %d' % (len(waymo_infos))) # total frames
+        self.logger.info(f'Total {mode} skipped info {num_skipped_infos}')
+        self.logger.info(f'Total {mode} samples for Waymo dataset: {len(waymo_infos)}') # total frames
 
-        if self.dataset_cfg.SAMPLED_INTERVAL[mode] > 1: # not needed since our pkl file was already sampled at 10
-            sampled_waymo_infos = []
-            for k in range(0, len(self.infos), self.dataset_cfg.SAMPLED_INTERVAL[mode]):
-                sampled_waymo_infos.append(self.infos[k])
-            self.infos = sampled_waymo_infos
-            self.logger.info('Total sampled samples for Waymo dataset: %d' % len(self.infos))
+        if 'SCENE_SAMPLING' not in self.dataset_cfg:
+            # Frame sampling
+            if self.dataset_cfg.SAMPLED_INTERVAL[mode] > 1: # not needed since our pkl file was already sampled at 10
+                sampled_waymo_infos = []
+                for k in range(0, len(self.infos), self.dataset_cfg.SAMPLED_INTERVAL[mode]):
+                    sampled_waymo_infos.append(self.infos[k])
+                self.infos = sampled_waymo_infos
+                self.logger.info(f'Total {mode} sampled samples for Waymo dataset: {len(self.infos)}')
 
     # def load_data_to_shared_memory(self):
     #     self.logger.info(f'Loading training data to shared memory (file limit={self.shared_memory_file_limit})')
@@ -430,20 +441,26 @@ class WaymoDataset(DatasetTemplate):
 
         return ap_result_str, ap_dict
 
-    def create_groundtruth_database(self, info_path, save_path, used_classes=None, split='train', sampled_interval=1,
-                                    processed_data_tag=None):
+    def create_groundtruth_database(self, save_path, used_classes=None, split='train', processed_data_tag=None):
+        
         database_save_path = save_path / ('%s_gt_database_%s' % (processed_data_tag, split))
-        db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
+        sampled_interval = self.dataset_cfg.SAMPLED_INTERVAL[split]
+        if self.dataset_cfg.get('SCENE_SAMPLING', False):
+            db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_scene_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
+        else:
+            db_info_save_path = save_path / ('%s_waymo_dbinfos_%s_sampled_%d.pkl' % (processed_data_tag, split, sampled_interval))
+
         # db_data_save_path = save_path / ('%s_gt_database_%s_sampled_%d_global.npy' % (processed_data_tag, split, sampled_interval))
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
-        with open(info_path, 'rb') as f:
-            infos = pickle.load(f)
+        infos = self.infos
+        # with open(info_path, 'rb') as f:
+        #     infos = pickle.load(f)
 
         point_offset_cnt = 0
         stacked_gt_points = []
-        for k in range(0, len(infos), sampled_interval):
-            print('gt_database sample: %d/%d' % (k + 1, len(infos)))
+        for k in range(0, len(infos)):
+            self.logger.info('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
 
             pc_info = info['point_cloud']
@@ -504,7 +521,7 @@ class WaymoDataset(DatasetTemplate):
                     else:
                         all_db_infos[names[i]] = [db_info]
         for k, v in all_db_infos.items():
-            print('Database %s: %d' % (k, len(v)))
+            self.logger.info('Database %s: %d' % (k, len(v)))
 
         with open(db_info_save_path, 'wb') as f:
             pickle.dump(all_db_infos, f)
@@ -514,21 +531,18 @@ class WaymoDataset(DatasetTemplate):
         # np.save(db_data_save_path, stacked_gt_points)
 
 def create_waymo_gt_database(
-    dataset_cfg, class_names, data_path, save_path, processed_data_tag='waymo_processed_data',
-    workers=min(16, multiprocessing.cpu_count()), use_parallel=False):
+    dataset_cfg, class_names, data_path, save_path, processed_data_tag='waymo_processed_data'):
     dataset = WaymoDataset(
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
     )
     train_split = dataset_cfg.DATA_SPLIT['train']
-    train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
+    # train_filename = save_path / ('%s_infos_%s.pkl' % (processed_data_tag, train_split))
 
     print('---------------Start create groundtruth database for data augmentation---------------')
-    dataset.set_split(train_split)
+    dataset.set_split(train_split, 'train')
 
-
-    dataset.create_groundtruth_database(
-        info_path=train_filename, save_path=save_path, split='train', sampled_interval=dataset_cfg.SAMPLED_INTERVAL['train'],
+    dataset.create_groundtruth_database(save_path=save_path, split='train',
         used_classes=['Vehicle', 'Pedestrian', 'Cyclist'], processed_data_tag=processed_data_tag
     )
     print('---------------Data preparation Done---------------')
@@ -548,11 +562,11 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     print('---------------Start to generate data infos---------------')
 
-    dataset.set_split(train_split)
+    dataset.set_split(train_split, 'train')
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1, # 10 to make waymo_processed_data_10 and 1 to make gtdb
+        sampled_interval=1, # always keep this 1
         use_two_returns=dataset_cfg.USE_TWO_RETURNS,
         only_extract_seg_labels=only_extract_seg_labels
     )
@@ -560,11 +574,11 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
         pickle.dump(waymo_infos_train, f)
     print('----------------Waymo info train file is saved to %s----------------' % train_filename)
 
-    dataset.set_split(val_split)
+    dataset.set_split(val_split, 'test')
     waymo_infos_val = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1, # 10 to make waymo_processed_data_10
+        sampled_interval=1, # always keep this 1
         use_two_returns=dataset_cfg.USE_TWO_RETURNS,
         only_extract_seg_labels=only_extract_seg_labels
     )
@@ -582,131 +596,6 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
 
     print('---------------Data preparation Done---------------')
 
-# def simulate_rain(clear_weather_split, sim_percent, sim_data_tag, data_path, processed_data_tag):
-#     simulator = LISA(rmax=200)
-#     rain_rates = np.linspace(0.5, 10.0, 20)
-#
-#     data_save_path = data_path / 'rainy_processed_data'
-#     data_save_path.mkdir(parents=True, exist_ok=True)
-#     clear_data_path = data_path / processed_data_tag
-#
-#     for split, percent in zip(clear_weather_split, sim_percent):
-#         split_dir = data_path / 'ImageSets' / (split + '.txt')
-#         clear_sequence_list = [x.strip() for x in open(split_dir).readlines()]
-#         sim_upto_len = int(percent * len(clear_sequence_list))
-#         #rainy_split = split + '_' + sim_data_tag
-#
-#         # # Create train_rainy.txt (50% rainy and 50% clear) and val_rainy.txt
-#         # dst_txt = data_path / 'ImageSets' / (rainy_split + '.txt')
-#         # with open(dst_txt, 'w') as f:
-#         #     for i in range(sim_upto_len):
-#         #         seq_name = clear_sequence_list[i]
-#         #         # create a rainy name for this seq
-#         #         if '_with_camera_labels' in seq_name:
-#         #             rain_seq_name = seq_name.split('_with_camera_labels')[
-#         #                                 0] + '_' + sim_data_tag + '_with_camera_labels' + \
-#         #                             seq_name.split('_with_camera_labels')[1]
-#         #         else:
-#         #             rain_seq_name = seq_name.split('.')[0] + '_' + sim_data_tag + seq_name.split('.')[1]
-#         #
-#         #         f.write(rain_seq_name)
-#         #         if i != len(clear_sequence_list) - 1:
-#         #             f.write('\n')
-#         #     for i in range(sim_upto_len, len(clear_sequence_list)):
-#         #         f.write(clear_sequence_list[i])
-#         #         if i != len(clear_sequence_list) - 1:
-#         #             f.write('\n')
-#
-#
-#         for i in tqdm(range(sim_upto_len)): #, desc='Number of sequences processed'
-#             seq_name = clear_sequence_list[i].split('.')[0]
-#
-#             # create a rainy name for this seq
-#             if '_with_camera_labels' in seq_name:
-#                 rain_seq_name = seq_name.split('_with_camera_labels')[0] + '_' + sim_data_tag + '_with_camera_labels'
-#             else:
-#                 rain_seq_name = seq_name.split('.')[0] + '_' + sim_data_tag
-#
-#             clear_seq_dir = clear_data_path / seq_name
-#             rainy_seq_dir = data_save_path / rain_seq_name
-#
-#             # Copy clear processed seq into a new rainy seq dir
-#             shutil.copytree(clear_seq_dir, rainy_seq_dir, dirs_exist_ok=True)
-#             seq_info_path = rainy_seq_dir / (seq_name + '.pkl')
-#             rainy_seq_info_path = rainy_seq_dir / (rain_seq_name + '.pkl')
-#             with open(seq_info_path, 'rb') as f:
-#                 seq_infos = pickle.load(f)
-#
-#             lidar_files = sorted(glob.glob(str(rainy_seq_dir) + "/*.npy"))
-#             for file, info in tqdm(zip(lidar_files, seq_infos)): #, desc=f'Number of frames in one seq: {rain_seq_name}'
-#                 points = np.load(file)  # (N, 6): [x, y, z, intensity, elongation, NLZ_flag]
-#                 points[:,3] = np.tanh(points[:,3])
-#                 #genHistogram(points)
-#                 Rr = np.random.choice(rain_rates)
-#                 #print(f'Rain rate: {Rr}')
-#                 #Simulate Rain
-#                 noisy_pc = simulator.msu_rain(points[:, :4], Rr)  # augment_mc(points[:,:4], Rr)
-#                 if noisy_pc.max() == np.nan or noisy_pc.max() > 200:
-#                     rows, cols = np.where(noisy_pc > 200)
-#                     print(f'num outliers: {rows.shape[0]}')
-#                     for row, col in zip(rows, cols):
-#                         print(f'Row:{row}, Col:{col}, Value:{noisy_pc[row,col]}')
-#                         if col != 3:
-#                             c=1
-#                 #genHistogram(noisy_pc, Rr)
-#                 #b=1
-#
-#                 if False:
-#                     # Add labels 0=lost, 1=scattered, 2=attenuated #(N, 7): [x, y, z, intensity, elongation, NLZ_flag, labels]
-#                     save_points = np.concatenate((noisy_pc[:,:4], points[:,4:6], noisy_pc[:, 4].reshape(-1,1)), axis=1).astype(float32)
-#                     np.save(Path(file), save_points)
-#
-#                     # # Check points
-#                     # noisy_points = np.load(file)
-#                     # norm = np.linalg.norm(save_points[:, :4] - noisy_points[:, :4], axis=1)
-#                     # c=1
-#
-#                 if False:
-#                     lost_points = np.where(noisy_pc[:, 4] == 0)
-#                     scattered_points = np.where(noisy_pc[:, 4] == 1)
-#                     attenuated_points = np.where(noisy_pc[:, 4] == 2)
-#
-#                     noisy_pc[lost_points, :4] = points[lost_points, :4]
-#                     V.draw_scenes(points=noisy_pc[:, :3], point_colors=get_colors(noisy_pc, color_feature=4))
-#                     b=1
-#
-#                 info['point_cloud']['lidar_sequence'] = rain_seq_name
-#                 info['frame_id'] = rain_seq_name + info['frame_id'][-4:] # seq_name + frame id (_000 to _198)
-#                 info['precipitation_rate'] = Rr
-#                 info['annos']['num_points_in_gt_clear'] = copy.deepcopy(info['annos']['num_points_in_gt'])
-#
-#
-#                 gt_boxes = info['annos']['gt_boxes_lidar']
-#                 num_obj = gt_boxes.shape[0]
-#
-#                 box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
-#                     torch.from_numpy(noisy_pc[:, 0:3]).unsqueeze(dim=0).float().cuda(),
-#                     torch.from_numpy(gt_boxes[:, 0:7]).unsqueeze(dim=0).float().cuda()
-#                 ).long().squeeze(dim=0).cpu().numpy()
-#
-#                 for i in range(num_obj):
-#                     gt_points = noisy_pc[box_idxs_of_pts == i]
-#                     # if gt_points.shape[0] > 0:
-#                     #     print(gt_points[:, :3].max())
-#                     # gt_points[:, :3] -= gt_boxes[i, :3]
-#                     # if gt_points.shape[0] > 0:
-#                     #     print(gt_points[:, :3].max())
-#
-#                     info['annos']['num_points_in_gt'][i] = gt_points.shape[0]
-#
-#             #print(f'-------Simulated {rain_seq_name}--------')
-#             # with open(rainy_seq_info_path, 'wb') as f:
-#             #     pickle.dump(seq_infos, f)
-#
-#             # Remove old seq_info
-#             #seq_info_path.unlink()
-
-
 
 if __name__ == '__main__':
     import argparse
@@ -714,7 +603,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    parser.add_argument('--use_parallel', action='store_true', default=False, help='')
     args = parser.parse_args()
     ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
     import yaml
@@ -751,8 +639,7 @@ if __name__ == '__main__':
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             data_path=ROOT_DIR / 'data' / 'waymo',
             save_path=ROOT_DIR / 'data' / 'waymo',
-            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG,
-            use_parallel=args.use_parallel
+            processed_data_tag=dataset_cfg.PROCESSED_DATA_TAG
         )
     else:
         raise NotImplementedError
