@@ -219,11 +219,11 @@ def get_sample_data(nusc, sample_data_token, selected_anntokens=None):
     for box in boxes:
         box.velocity = nusc.box_velocity(box.token)
         # Move box to ego vehicle coord system
-        box.translate(-np.array(pose_record['translation']))
+        box.translate(-np.array(pose_record['translation'])) # box is in world/global frame -> transform to ego frame
         box.rotate(Quaternion(pose_record['rotation']).inverse)
 
         #  Move box to sensor coord system
-        box.translate(-np.array(cs_record['translation']))
+        box.translate(-np.array(cs_record['translation'])) # box in ego frame -> transform to lidar frame
         box.rotate(Quaternion(cs_record['rotation']).inverse)
 
         box_list.append(box)
@@ -252,21 +252,21 @@ def quaternion_yaw(q: Quaternion) -> float:
 def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, max_sweeps=10):
     train_nusc_infos = []
     val_nusc_infos = []
-    progress_bar = tqdm.tqdm(total=len(nusc.sample), desc='create_info', dynamic_ncols=True)
+    progress_bar = tqdm.tqdm(total=len(nusc.sample), desc='create_info', dynamic_ncols=True) #404 keyframes in 10 scenes of mini
 
     ref_chan = 'LIDAR_TOP'  # The radar channel from which we track back n sweeps to aggregate the point cloud.
     chan = 'LIDAR_TOP'  # The reference channel of the current sample_rec that the point clouds are mapped to.
 
-    for index, sample in enumerate(nusc.sample):
+    for index, sample in enumerate(nusc.sample): # loop over all keyframes in all 10 scenes
         progress_bar.update()
 
-        ref_sd_token = sample['data'][ref_chan]
-        ref_sd_rec = nusc.get('sample_data', ref_sd_token)
-        ref_cs_rec = nusc.get('calibrated_sensor', ref_sd_rec['calibrated_sensor_token'])
+        ref_sd_token = sample['data'][ref_chan] #LIDAR_TOP token of this keyframe
+        ref_sd_rec = nusc.get('sample_data', ref_sd_token) #sample_data of LIDAR_TOP token 
+        ref_cs_rec = nusc.get('calibrated_sensor', ref_sd_rec['calibrated_sensor_token']) # transl and rot of LIDAR_TOP wrt ego vehicle frame
         ref_pose_rec = nusc.get('ego_pose', ref_sd_rec['ego_pose_token'])
         ref_time = 1e-6 * ref_sd_rec['timestamp']
 
-        ref_lidar_path, ref_boxes, _ = get_sample_data(nusc, ref_sd_token)
+        ref_lidar_path, ref_boxes, _ = get_sample_data(nusc, ref_sd_token) # ref boxes in current lidar keyframe
 
         ref_cam_front_token = sample['data']['CAM_FRONT']
         ref_cam_path, _, ref_cam_intrinsic = nusc.get_sample_data(ref_cam_front_token)
@@ -274,7 +274,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
         # Homogeneous transform from ego car frame to reference frame
         ref_from_car = transform_matrix(
             ref_cs_rec['translation'], Quaternion(ref_cs_rec['rotation']), inverse=True
-        )
+        ) # Lidar_frame_from_car
 
         # Homogeneous transformation matrix from global to _current_ ego car frame
         car_from_global = transform_matrix(
@@ -294,7 +294,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
 
         sample_data_token = sample['data'][chan]
         curr_sd_rec = nusc.get('sample_data', sample_data_token)
-        sweeps = []
+        sweeps = [] # get current keyframe and 10 frames before with timelag to current keyframe and transform to ref/current lidar keyframe
         while len(sweeps) < max_sweeps - 1:
             if curr_sd_rec['prev'] == '':
                 if len(sweeps) == 0:
@@ -324,7 +324,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
                     current_cs_rec['translation'], Quaternion(current_cs_rec['rotation']), inverse=False,
                 )
 
-                tm = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current])
+                tm = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current]) # transf ref LIDAR keyframe from current lidar frame
 
                 lidar_path = nusc.get_sample_data_path(curr_sd_rec['token'])
 
@@ -364,7 +364,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
 
             assert len(annotations) == len(gt_boxes) == len(velocity)
 
-            info['gt_boxes'] = gt_boxes[mask, :]
+            info['gt_boxes'] = gt_boxes[mask, :] # in current lidar keyframe
             info['gt_boxes_velocity'] = velocity[mask, :]
             info['gt_names'] = np.array([map_name_from_general_to_detection[name] for name in names])[mask]
             info['gt_boxes_token'] = tokens[mask]

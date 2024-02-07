@@ -31,7 +31,7 @@ class NuScenesDataset(DatasetTemplate):
                 continue
             with open(info_path, 'rb') as f:
                 infos = pickle.load(f)
-                nuscenes_infos.extend(infos)
+                nuscenes_infos.extend(infos) #40 keyframes per scene x 8 train scenes = 320 keyframes
 
         self.infos.extend(nuscenes_infos)
         self.logger.info('Total samples for NuScenes dataset: %d' % (len(nuscenes_infos)))
@@ -251,11 +251,11 @@ class NuScenesDataset(DatasetTemplate):
         result_str, result_dict = nuscenes_utils.format_nuscene_results(metrics, self.class_names, version=eval_version)
         return result_str, result_dict
 
-    def create_groundtruth_database(self, used_classes=None, max_sweeps=10):
+    def create_groundtruth_database(self, sampling_interval, used_classes=None, max_sweeps=10):
         import torch
 
-        database_save_path = self.root_path / f'gt_database_{max_sweeps}sweeps_withvelo'
-        db_info_save_path = self.root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo.pkl'
+        database_save_path = self.root_path / f'gt_database_{max_sweeps}sweeps_withvelo_sampled_{sampling_interval}'
+        db_info_save_path = self.root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo_sampled_{sampling_interval}.pkl'
 
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
@@ -296,7 +296,7 @@ class NuScenesDataset(DatasetTemplate):
             pickle.dump(all_db_infos, f)
 
 
-def create_nuscenes_info(version, data_path, save_path, max_sweeps=10):
+def create_nuscenes_info(version, data_path, save_path, sampling_interval, max_sweeps=10):
     from nuscenes.nuscenes import NuScenes
     from nuscenes.utils import splits
     from . import nuscenes_utils
@@ -318,10 +318,24 @@ def create_nuscenes_info(version, data_path, save_path, max_sweeps=10):
 
     nusc = NuScenes(version=version, dataroot=data_path, verbose=True)
     available_scenes = nuscenes_utils.get_available_scenes(nusc)
-    available_scene_names = [s['name'] for s in available_scenes]
-    train_scenes = list(filter(lambda x: x in available_scene_names, train_scenes))
+    available_scene_names = [s['name'] for s in available_scenes] #['scene-006', ...]
+    # Sample 1% train scenes and 100% val scenes
+    train_scenes = list(filter(lambda x: x in available_scene_names, train_scenes))  #train scene names
     val_scenes = list(filter(lambda x: x in available_scene_names, val_scenes))
-    train_scenes = set([available_scenes[available_scene_names.index(s)]['token'] for s in train_scenes])
+
+    if sampling_interval['train'] > 1:
+        sampled_train_scenes = []
+        for k in range(0, len(train_scenes), sampling_interval['train']):
+            sampled_train_scenes.append(train_scenes[k])
+        train_scenes = sampled_train_scenes
+    
+    if sampling_interval['test'] > 1:
+        sampled_val_scenes = []
+        for k in range(0, len(val_scenes), sampling_interval['test']):
+            sampled_val_scenes.append(val_scenes[k])
+        val_scenes = sampled_val_scenes
+
+    train_scenes = set([available_scenes[available_scene_names.index(s)]['token'] for s in train_scenes]) # train scene tokens
     val_scenes = set([available_scenes[available_scene_names.index(s)]['token'] for s in val_scenes])
 
     print('%s: train scene(%d), val scene(%d)' % (version, len(train_scenes), len(val_scenes)))
@@ -337,9 +351,11 @@ def create_nuscenes_info(version, data_path, save_path, max_sweeps=10):
             pickle.dump(train_nusc_infos, f)
     else:
         print('train sample: %d, val sample: %d' % (len(train_nusc_infos), len(val_nusc_infos)))
-        with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_train.pkl', 'wb') as f:
+        s_interval = sampling_interval['train']
+        with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_train_sampled_{s_interval}.pkl', 'wb') as f:
             pickle.dump(train_nusc_infos, f)
-        with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_val.pkl', 'wb') as f:
+        s_interval = sampling_interval['test']
+        with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_val_sampled_{s_interval}.pkl', 'wb') as f:
             pickle.dump(val_nusc_infos, f)
 
 
@@ -358,12 +374,12 @@ if __name__ == '__main__':
     if args.func == 'create_nuscenes_infos':
         dataset_cfg = EasyDict(yaml.safe_load(open(args.cfg_file)))
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
-        dataset_cfg.VERSION = args.version
+        # dataset_cfg.VERSION = args.version
         create_nuscenes_info(
             version=dataset_cfg.VERSION,
             data_path=ROOT_DIR / 'data' / 'nuscenes',
             save_path=ROOT_DIR / 'data' / 'nuscenes',
-            max_sweeps=dataset_cfg.MAX_SWEEPS,
+            max_sweeps=dataset_cfg.MAX_SWEEPS, sampling_interval=dataset_cfg.SCENE_SAMPLING_INTERVAL
         )
 
         nuscenes_dataset = NuScenesDataset(
@@ -371,4 +387,4 @@ if __name__ == '__main__':
             root_path=ROOT_DIR / 'data' / 'nuscenes',
             logger=common_utils.create_logger(), training=True
         )
-        nuscenes_dataset.create_groundtruth_database(max_sweeps=dataset_cfg.MAX_SWEEPS)
+        nuscenes_dataset.create_groundtruth_database(sampling_interval=dataset_cfg.SCENE_SAMPLING_INTERVAL['train'], max_sweeps=dataset_cfg.MAX_SWEEPS)

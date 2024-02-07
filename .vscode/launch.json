@@ -15,6 +15,20 @@
                 "tools/cfgs/dataset_configs/kitti_dataset.yaml"
             ]
         },
+        {
+            "name": "Python: create nuscenes infos",
+            "type": "python",
+            "request": "launch",
+            "module": "pcdet.datasets.nuscenes.nuscenes_dataset",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": [
+                "--func",
+                "create_nuscenes_infos",
+                "--cfg_file",
+                "tools/cfgs/dataset_configs/nuscenes_dataset.yaml"
+            ]
+        },
         // {
         //     "name": "Python: create dense infos",
         //     "type": "python",
@@ -132,6 +146,18 @@
                 "--pretrained_model",
                 "../checkpoints/checkpoint_minkunet_plus_reg_pretrain.pth.tar",
                 "--fix_random_seed"
+            ]
+        },
+        {
+            "name": "train_pointrcnn_nuscenes",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml"
             ]
         },
         {

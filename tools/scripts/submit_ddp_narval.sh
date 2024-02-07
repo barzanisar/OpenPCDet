@@ -27,6 +27,10 @@ EXTRA_TAG='default'
 
 # ========== WAYMO ==========
 DATA_DIR=/home/$USER/scratch/Datasets/Waymo
+WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
+NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
+DATASET=waymo
+
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
 TEST_ONLY=false
 
@@ -68,6 +72,20 @@ while :; do
     -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             CFG_FILE=$2
+
+            # Get dataset
+            echo "Checking dataset"
+            if [[ "$CFG_FILE"  == *"waymo_models"* ]]; then
+                DATASET=waymo
+                DATA_DIR=$WAYMO_DATA_DIR
+                echo "Waymo dataset cfg file"
+            elif [[ "$CFG_FILE"  == *"nuscenes_models"* ]]; then
+                DATASET=nuscenes
+                DATA_DIR=$NUSCENES_DATA_DIR
+                echo "Nuscenes dataset cfg file"
+            else
+                die 'ERROR: Could not determine backbone from cfg_file path.'
+            fi
             shift
         else
             die 'ERROR: "--cfg_file" requires a non-empty option argument.'
@@ -142,6 +160,7 @@ export TCP_PORT=$TCP_PORT
 export CFG_FILE=$CFG_FILE
 export SING_IMG=$SING_IMG
 export DATA_DIR=$DATA_DIR
+export DATASET=$DATASET
 export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 export TEST_ONLY=$TEST_ONLY
