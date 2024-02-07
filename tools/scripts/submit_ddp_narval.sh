@@ -26,10 +26,9 @@ EXTRA_TAG='default'
 
 
 # ========== WAYMO ==========
-DATA_DIR=/home/$USER/scratch/Datasets/Waymo
+DATA_DIR_BIND=/home/$USER/scratch/Datasets/Waymo:/OpenPCDet/data/waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
-DATASET=waymo
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
 TEST_ONLY=false
@@ -44,7 +43,7 @@ train.py parameters
 [--tcp_port TCP_PORT]
 
 additional parameters
-[--data_dir DATA_DIR]
+[--data_dir DATA_DIR_BIND]
 [--sing_img SING_IMG]
 [--test_only]
 
@@ -53,7 +52,7 @@ additional parameters
 --tcp_port             TCP_PORT           TCP port for distributed training   [default=$TCP_PORT]
 
 
---data_dir             DATA_DIR           Data directory               [default=$DATA_DIR]
+--data_dir             DATA_DIR_BIND           Data directory               [default=$DATA_DIR_BIND]
 --sing_img             SING_IMG           Singularity image file              [default=$SING_IMG]
 --test_only            TEST_ONLY          Test only flag                      [default=$TEST_ONLY]
 "
@@ -77,11 +76,11 @@ while :; do
             echo "Checking dataset"
             if [[ "$CFG_FILE"  == *"waymo_models"* ]]; then
                 DATASET=waymo
-                DATA_DIR=$WAYMO_DATA_DIR
+                DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
                 echo "Waymo dataset cfg file"
             elif [[ "$CFG_FILE"  == *"nuscenes_models"* ]]; then
                 DATASET=nuscenes
-                DATA_DIR=$NUSCENES_DATA_DIR
+                DATA_DIR_BIND=$NUSCENES_DATA_DIR:/OpenPCDet/data/nuscenes/v1.0-trainval
                 echo "Nuscenes dataset cfg file"
             else
                 die 'ERROR: Could not determine backbone from cfg_file path.'
@@ -143,7 +142,7 @@ PRETRAINED_MODEL=$PRETRAINED_MODEL
 TCP_PORT=$TCP_PORT
 
 Additional parameters
-DATA_DIR=$DATA_DIR
+DATA_DIR_BIND=$DATA_DIR_BIND
 SING_IMG=$SING_IMG
 TEST_ONLY=$TEST_ONLY
 EXTRA_TAG=$EXTRA_TAG
@@ -159,7 +158,7 @@ export MASTER_ADDR=$(hostname)
 export TCP_PORT=$TCP_PORT
 export CFG_FILE=$CFG_FILE
 export SING_IMG=$SING_IMG
-export DATA_DIR=$DATA_DIR
+export DATA_DIR_BIND=$DATA_DIR_BIND
 export DATASET=$DATASET
 export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU

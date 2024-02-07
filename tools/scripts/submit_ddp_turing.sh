@@ -15,7 +15,8 @@ TEST_ONLY=false
 
 # ========== WAYMO ==========
 DATASET=waymo
-DATA_DIR=/raid/datasets/Waymo
+DATA_DIR_BIND=/raid/datasets/Waymo:/OpenPCDet/data/waymo
+WAYMO_DATA_DIR=/raid/datasets/Waymo
 KITTI_DATA_DIR=/raid/datasets/semantic_kitti
 NUSCENES_DATA_DIR=/raid/datasets/nuscenes
 SING_IMG=/raid/home/nisarbar/singularity/ssl_openpcdet.sif
@@ -49,11 +50,11 @@ while :; do
             echo "Checking dataset"
             if [[ "$CFG_FILE"  == *"waymo_models"* ]]; then
                 DATASET=waymo
-                DATA_DIR=$WAYMO_DATA_DIR
+                DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
                 echo "Waymo dataset cfg file"
             elif [[ "$CFG_FILE"  == *"nuscenes_models"* ]]; then
                 DATASET=nuscenes
-                DATA_DIR=$NUSCENES_DATA_DIR
+                DATA_DIR_BIND=$NUSCENES_DATA_DIR:/OpenPCDet/data/nuscenes/v1.0-trainval
                 echo "Nuscenes dataset cfg file"
             else
                 die 'ERROR: Could not determine backbone from cfg_file path.'
@@ -98,6 +99,22 @@ while :; do
             die 'ERROR: "--extra_tag" requires a non-empty option argument.'
         fi
         ;;
+    -n|--num_gpus)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            NUM_GPUS=$2
+            shift
+        else
+            die 'ERROR: "--num_gpus" requires a non-empty option argument.'
+        fi
+        ;;
+    -c|--cuda_visible_devices)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CUDA_VISIBLE_DEVICES=$2
+            shift
+        else
+            die 'ERROR: "--cuda_visible_devices" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -115,7 +132,7 @@ PRETRAINED_MODEL=$PRETRAINED_MODEL
 TCP_PORT=$TCP_PORT
 
 Additional parameters
-DATA_DIR=$DATA_DIR
+DATA_DIR=$DATA_DIR_BIND
 SING_IMG=$SING_IMG
 TEST_ONLY=$TEST_ONLY
 EXTRA_TAG=$EXTRA_TAG
@@ -152,7 +169,7 @@ singularity exec
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
---bind $DATA_DIR:/OpenPCDet/data/$DATASET
+--bind $DATA_DIR_BIND
 $OPENPCDET_BINDS
 $SING_IMG
 "

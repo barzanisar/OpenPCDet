@@ -46,7 +46,7 @@ singularity exec
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
---bind $DATA_DIR:/OpenPCDet/data/$DATASET
+--bind $DATA_DIR_BIND
 $OPENPCDET_BINDS
 $SING_IMG
 "

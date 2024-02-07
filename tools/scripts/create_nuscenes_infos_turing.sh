@@ -51,8 +51,6 @@ OPENPCDET_BINDS+="
 "
 
 BASE_CMD="SINGULARITYENV_CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
-SINGULARITYENV_WANDB_API_KEY=$WANDB_API_KEY
-SINGULARITYENV_WANDB_MODE=$WANDB_MODE
 singularity exec
 --nv
 --pwd /OpenPCDet/tools
@@ -60,7 +58,7 @@ singularity exec
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
---bind $DATA_DIR:/OpenPCDet/data/nuscenes
+--bind $DATA_DIR:/OpenPCDet/data/nuscenes/v1.0-trainval
 $OPENPCDET_BINDS
 $SING_IMG
 "

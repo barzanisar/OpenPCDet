@@ -80,11 +80,11 @@ while :; do
             echo "Checking dataset"
             if [[ "$CFG_FILE"  == *"waymo_models"* ]]; then
                 DATASET=waymo
-                DATA_DIR=$WAYMO_DATA_DIR
+                DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
                 echo "Waymo dataset cfg file"
             elif [[ "$CFG_FILE"  == *"nuscenes_models"* ]]; then
                 DATASET=nuscenes
-                DATA_DIR=$NUSCENES_DATA_DIR
+                DATA_DIR_BIND=$NUSCENES_DATA_DIR:/OpenPCDet/data/nuscenes/v1.0-trainval
                 echo "Nuscenes dataset cfg file"
             else
                 die 'ERROR: Could not determine backbone from cfg_file path.'
@@ -146,7 +146,7 @@ PRETRAINED_MODEL=$PRETRAINED_MODEL
 TCP_PORT=$TCP_PORT
 
 Additional parameters
-DATA_DIR=$DATA_DIR
+DATA_DIR_BIND=$DATA_DIR_BIND
 SING_IMG=$SING_IMG
 TEST_ONLY=$TEST_ONLY
 EXTRA_TAG=$EXTRA_TAG
@@ -162,7 +162,7 @@ export MASTER_ADDR=$(hostname)
 export TCP_PORT=$TCP_PORT
 export CFG_FILE=$CFG_FILE
 export SING_IMG=$SING_IMG
-export DATA_DIR=$DATA_DIR
+export DATA_DIR_BIND=$DATA_DIR_BIND
 export DATASET=$DATASET
 export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU

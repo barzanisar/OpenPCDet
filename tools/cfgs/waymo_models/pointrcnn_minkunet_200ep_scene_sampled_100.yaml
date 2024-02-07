@@ -1,6 +1,5 @@
-CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
-              'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone']
-# python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
+CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist']
+
 WANDB:
     ENABLED: True
     PROJECT: SSL3dObject
@@ -9,7 +8,7 @@ WANDB:
     dir: '/OpenPCDet/output'
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/nuscenes_dataset_sampled_100.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_scene_sampled_100.yaml
     
 MODEL:
     NAME: PointRCNN
@@ -34,16 +33,9 @@ MODEL:
             BOX_CODER_CONFIG: {
                 'use_mean_size': True,
                 'mean_size': [
-                    [4.63, 1.97, 1.74],
-                    [6.93, 2.51, 2.84],
-                    [6.37, 2.85, 3.19],
-                    [10.5, 2.94, 3.47],
-                    [12.29, 2.90, 3.87],
-                    [0.50, 2.53, 0.98],
-                    [2.11, 0.77, 1.47],
-                    [1.70, 0.60, 1.28],
-                    [0.73, 0.67, 1.77],
-                    [0.41, 0.41, 1.07]
+                    [4.7, 2.1, 1.7],
+                    [0.91, 0.86, 1.73],
+                    [1.78, 0.84, 1.78]
                 ]
             }
 
@@ -129,7 +121,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 80
+    NUM_EPOCHS: 200
 
     OPTIMIZER: adam_onecycle
     LR: 0.006
