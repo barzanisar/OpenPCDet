@@ -1,5 +1,7 @@
 ################## create waymo database 1% ##################
 sbatch --time=03:00:00 --array=1-1%1 --job-name=create_database-waymo tools/scripts/create_waymo_infos.sh
+sbatch --time=06:00:00 --array=1-1%1 --job-name=create_nuscenes_infos_1sweep_100_sampled tools/scripts/create_nuscenes_infos.sh --cfg_file tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_100.yaml
+sbatch --time=06:00:00 --array=1-1%1 --job-name=create_nuscenes_infos_1sweep_20_sampled tools/scripts/create_nuscenes_infos.sh --cfg_file tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_20.yaml
 
 #################### 80 epochs #########################################
 ## scratch

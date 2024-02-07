@@ -14,6 +14,7 @@ TEST_ONLY=false
 
 
 # ========== WAYMO ==========
+DATASET=waymo
 DATA_DIR=/raid/datasets/Waymo
 KITTI_DATA_DIR=/raid/datasets/semantic_kitti
 NUSCENES_DATA_DIR=/raid/datasets/nuscenes
@@ -43,6 +44,20 @@ while :; do
     -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             CFG_FILE=$2
+
+            # Get dataset
+            echo "Checking dataset"
+            if [[ "$CFG_FILE"  == *"waymo_models"* ]]; then
+                DATASET=waymo
+                DATA_DIR=$WAYMO_DATA_DIR
+                echo "Waymo dataset cfg file"
+            elif [[ "$CFG_FILE"  == *"nuscenes_models"* ]]; then
+                DATASET=nuscenes
+                DATA_DIR=$NUSCENES_DATA_DIR
+                echo "Nuscenes dataset cfg file"
+            else
+                die 'ERROR: Could not determine backbone from cfg_file path.'
+            fi
             shift
         else
             die 'ERROR: "--cfg_file" requires a non-empty option argument.'
@@ -93,6 +108,20 @@ while :; do
     shift
 done
 
+echo "Running with the following arguments:
+train.py parameters:
+CFG_FILE=$CFG_FILE
+PRETRAINED_MODEL=$PRETRAINED_MODEL
+TCP_PORT=$TCP_PORT
+
+Additional parameters
+DATA_DIR=$DATA_DIR
+SING_IMG=$SING_IMG
+TEST_ONLY=$TEST_ONLY
+EXTRA_TAG=$EXTRA_TAG
+BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
+"
+
 
 PROJ_DIR=$PWD
 OPENPCDET_BINDS=""
@@ -116,7 +145,6 @@ BASE_CMD="SINGULARITYENV_CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
 SINGULARITYENV_WANDB_API_KEY=$WANDB_API_KEY
 SINGULARITYENV_WANDB_MODE=offline
 SINGULARITYENV_NCCL_BLOCKING_WAIT=1
-SINGULARITYENV_NCCL_DEBUG=INFO
 singularity exec
 --nv
 --pwd /OpenPCDet/tools
@@ -124,8 +152,7 @@ singularity exec
 --bind $PROJ_DIR/output:/OpenPCDet/output
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
---bind $DATA_DIR:/OpenPCDet/data/waymo
---bind $PROJ_DIR/data/waymo/ImageSets:/OpenPCDet/data/waymo/ImageSets
+--bind $DATA_DIR:/OpenPCDet/data/$DATASET
 $OPENPCDET_BINDS
 $SING_IMG
 "
@@ -138,7 +165,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --cfg_file /OpenPCDet/$CFG_FILE 
 --pretrained_model $PRETRAINED_MODEL 
 --fix_random_seed
---batch_size $BATCHSIZE_PER_GPU 
+--batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
 "
@@ -151,7 +178,7 @@ TEST_CMD+="python -m torch.distributed.launch
 /OpenPCDet/tools/test.py
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE
---batch_size $BATCHSIZE_PER_GPU 
+--batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
 --eval_all"
