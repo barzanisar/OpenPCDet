@@ -33,6 +33,7 @@ class DatasetTemplate(torch_data.Dataset):
         self.logger = logger
         self.root_path = root_path if root_path is not None else Path(self.dataset_cfg.DATA_PATH)
         self.logger = logger
+        self.mode = 'train' if self.training else 'test'
         if self.dataset_cfg is None or class_names is None:
             return
 
@@ -53,7 +54,6 @@ class DatasetTemplate(torch_data.Dataset):
         self.voxel_size = self.data_processor.voxel_size
         self.total_epochs = 0
         self._merge_all_iters_to_one_epoch = False
-        self.mode = 'train' if self.training else 'test'
 
         if hasattr(self.data_processor, "depth_downsample_factor"):
             self.depth_downsample_factor = self.data_processor.depth_downsample_factor
