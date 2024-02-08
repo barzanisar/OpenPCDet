@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --wait-all-nodes=1
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:v100l:4                     # Request 4 GPUs
+#SBATCH --gres=gpu:4                     # Request v100l 4 GPUs
 #SBATCH --ntasks=1 
 #SBATCH --ntasks-per-node=1                 # num tasks== num nodes
 #SBATCH --time=01:00:00
@@ -22,7 +22,7 @@ die() { echo "$*" 1>&2 ; exit 1; }
 # train.py script parameters
 CFG_FILE=tools/cfgs/waymo_models/pointrcnn_minkunet.yaml
 PRETRAINED_MODEL=None
-BATCH_SIZE_PER_GPU=4
+BATCH_SIZE_PER_GPU=2
 TCP_PORT=18888
 EXTRA_TAG='default'
 

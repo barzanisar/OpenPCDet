@@ -22,7 +22,7 @@ die() { echo "$*" 1>&2 ; exit 1; }
 # train.py script parameters
 CFG_FILE=tools/cfgs/waymo_models/pointrcnn_minkunet.yaml
 PRETRAINED_MODEL=None
-BATCH_SIZE_PER_GPU=4
+BATCH_SIZE_PER_GPU=2
 TCP_PORT=18888
 EXTRA_TAG='default'
 
