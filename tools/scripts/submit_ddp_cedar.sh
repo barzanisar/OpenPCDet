@@ -11,7 +11,6 @@
 #SBATCH --mem=180G                        # memory per node
 #SBATCH --output=./output/log/%x-%j.out     # STDOUT
 #SBATCH --array=1-3%1                       # 3 is the number of jobs in the chain
-#SBATCH --mail-user=barzanisar93@gmail.com
 
 hostname
 nvidia-smi

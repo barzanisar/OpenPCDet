@@ -26,7 +26,7 @@
                 "--func",
                 "create_nuscenes_infos",
                 "--cfg_file",
-                "tools/cfgs/dataset_configs/nuscenes_dataset.yaml"
+                "tools/cfgs/dataset_configs/nuscenes_dataset_practice.yaml"
             ]
         },
         // {
