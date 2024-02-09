@@ -16,8 +16,8 @@ pccm==0.3.4
 ccimport==0.3.7
 h5py==3.6.0
 ninja==1.10.2.3
-llvmlite==0.41.1
-numba==0.58.1
+llvmlite==0.36
+numba==0.53
 easydict==1.11
 pyyaml
 scikit-image==0.21.0
