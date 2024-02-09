@@ -8,7 +8,7 @@ WANDB:
     dir: '/OpenPCDet/output'
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_sampled_100.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_sampled_20.yaml
     
 MODEL:
     NAME: PointRCNN
@@ -121,7 +121,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 80
+    NUM_EPOCHS: 30
 
     OPTIMIZER: adam_onecycle
     LR: 0.006

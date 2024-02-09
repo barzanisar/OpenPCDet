@@ -8,7 +8,7 @@ WANDB:
     dir: '/OpenPCDet/output'
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_scene_sampled_20.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_sampled_20.yaml
     
 MODEL:
     NAME: PointRCNN
