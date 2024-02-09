@@ -28,9 +28,9 @@ EXTRA_TAG='default'
 
 
 # ========== WAYMO ==========
-DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
+DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
 DATASET=waymo
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
