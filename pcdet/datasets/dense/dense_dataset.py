@@ -16,7 +16,7 @@ from pcdet.ops.roiaware_pool3d import roiaware_pool3d_utils
 from pcdet.utils import box_utils, calibration_kitti, common_utils, object3d_kitti
 
 import scipy.stats as stats
-import open3d as o3d
+# import open3d as o3d
 from lib.LiDAR_snow_sim.tools.wet_ground.augmentation import ground_water_augmentation
 from lib.LiDAR_snow_sim.tools.snowfall.sampling import snowfall_rate_to_rainfall_rate
 # from lib.LISA.python.lisa import LISA

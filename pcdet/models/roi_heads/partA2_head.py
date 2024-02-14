@@ -121,7 +121,7 @@ class PartA2FCHead(RoIHeadTemplate):
         part_features = torch.cat((
             batch_dict['point_part_offset'] if not self.model_cfg.get('DISABLE_PART', False) else point_coords,
             batch_dict['point_cls_scores'].view(-1, 1).detach()
-        ), dim=1)
+        ), dim=1) # xyz points or voxel centers, class score i.e. fg objectness prob
         part_features[part_features[:, -1] < self.model_cfg.SEG_MASK_SCORE_THRESH, 0:3] = 0
 
         rois = batch_dict['rois']
@@ -137,7 +137,7 @@ class PartA2FCHead(RoIHeadTemplate):
 
             pooled_part_features = self.roiaware_pool3d_layer.forward(
                 cur_roi, cur_point_coords, cur_part_features, pool_method='avg'
-            )  # (N, out_x, out_y, out_z, 4)
+            )  # (N rois, out_x=12, out_y=12, out_z=12, 4) divide rois into 12x12x12 grid cells and get a feature for each cell
             pooled_rpn_features = self.roiaware_pool3d_layer.forward(
                 cur_roi, cur_point_coords, cur_rpn_features, pool_method='max'
             )  # (N, out_x, out_y, out_z, C)
@@ -181,8 +181,8 @@ class PartA2FCHead(RoIHeadTemplate):
         batch_size_rcnn = pooled_part_features.shape[0]  # (B * N, out_x, out_y, out_z, 4)
 
         # transform to sparse tensors
-        sparse_shape = np.array(pooled_part_features.shape[1:4], dtype=np.int32)
-        sparse_idx = pooled_part_features.sum(dim=-1).nonzero()  # (non_empty_num, 4) ==> [bs_idx, x_idx, y_idx, z_idx]
+        sparse_shape = np.array(pooled_part_features.shape[1:4], dtype=np.int32) #[12,12,12]
+        sparse_idx = pooled_part_features.sum(dim=-1).nonzero()  # (non_empty_num, 4) ==> [bs_idx or roi_idx, x_idx of the grid cell, y_idx, z_idx]
         if sparse_idx.shape[0] < 3:
             sparse_idx = self.fake_sparse_idx(sparse_idx, batch_size_rcnn)
             if self.training:
@@ -190,31 +190,31 @@ class PartA2FCHead(RoIHeadTemplate):
                 targets_dict['rcnn_cls_labels'].fill_(-1)
                 targets_dict['reg_valid_mask'].fill_(-1)
 
-        part_features = pooled_part_features[sparse_idx[:, 0], sparse_idx[:, 1], sparse_idx[:, 2], sparse_idx[:, 3]]
-        rpn_features = pooled_rpn_features[sparse_idx[:, 0], sparse_idx[:, 1], sparse_idx[:, 2], sparse_idx[:, 3]]
-        coords = sparse_idx.int().contiguous()
+        part_features = pooled_part_features[sparse_idx[:, 0], sparse_idx[:, 1], sparse_idx[:, 2], sparse_idx[:, 3]] #num nonempty grid cells, 4=avg voxel centers xyz in the grid cell, avg objectness score for the cell
+        rpn_features = pooled_rpn_features[sparse_idx[:, 0], sparse_idx[:, 1], sparse_idx[:, 2], sparse_idx[:, 3]] #num nonempty grid cells, 96 = max feature of all voxels in each grid cell
+        coords = sparse_idx.int().contiguous() #[roi_idx, x_idx of the grid cell from 0 to 12, y_idx of grid cell from 0 to 12, z_idx of grid cell from 0 to 12]
         part_features = spconv.SparseConvTensor(part_features, coords, sparse_shape, batch_size_rcnn)
         rpn_features = spconv.SparseConvTensor(rpn_features, coords, sparse_shape, batch_size_rcnn)
 
         # forward rcnn network
-        x_part = self.conv_part(part_features)
-        x_rpn = self.conv_rpn(rpn_features)
+        x_part = self.conv_part(part_features) ##num non empty grid cells, 4 -> num non empty grid cells, 64
+        x_rpn = self.conv_rpn(rpn_features)#num non empty grid cells, 96 ->  num non empty grid cells, 64
 
-        merged_feature = torch.cat((x_rpn.features, x_part.features), dim=1)  # (N, C)
-        shared_feature = spconv.SparseConvTensor(merged_feature, coords, sparse_shape, batch_size_rcnn)
-        shared_feature = shared_feature.dense().view(batch_size_rcnn, -1, 1)
+        merged_feature = torch.cat((x_rpn.features, x_part.features), dim=1)  # (N nonempty grid cells, C=128)
+        shared_feature = spconv.SparseConvTensor(merged_feature, coords, sparse_shape, batch_size_rcnn) # (N nonempty grid cells, C=128)
+        shared_feature = shared_feature.dense().view(batch_size_rcnn, -1, 1) # (N nonempty grid cells, C=128) -> dense (200, 128, 12, 12, 12) -> (200, 12x12x12x128 features of all grid cells in each roi stacked in one big vector, 1)
 
-        shared_feature = self.shared_fc_layer(shared_feature)
+        shared_feature = self.shared_fc_layer(shared_feature) # (200 rois, 256 feature vector, 1)
 
         rcnn_cls = self.cls_layers(shared_feature).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, 1 or 2)
-        rcnn_reg = self.reg_layers(shared_feature).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, C)
+        rcnn_reg = self.reg_layers(shared_feature).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, C=7)
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
                 batch_size=batch_dict['batch_size'], rois=batch_dict['rois'], cls_preds=rcnn_cls, box_preds=rcnn_reg
             )
-            batch_dict['batch_cls_preds'] = batch_cls_preds
-            batch_dict['batch_box_preds'] = batch_box_preds
+            batch_dict['batch_cls_preds'] = batch_cls_preds #predicted objectness score from rcnn output
+            batch_dict['batch_box_preds'] = batch_box_preds #final predicted boxes from rcnn output
             batch_dict['cls_preds_normalized'] = False
         else:
             targets_dict['rcnn_cls'] = rcnn_cls

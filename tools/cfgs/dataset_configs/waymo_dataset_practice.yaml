@@ -6,12 +6,12 @@ POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
 
 DATA_SPLIT: {
     'train': train_one,
-    'test': val
+    'test': train_one
 }
 # to train on 1% waymo i.e. 1500 samples
 SAMPLED_INTERVAL: {
-    'train': 2, 
-    'test': 1
+    'train': 20, 
+    'test': 30
 }
 # SCENE_SAMPLING: True
 
@@ -21,7 +21,7 @@ DATA_AUGMENTOR:
         - NAME: gt_sampling
           USE_ROAD_PLANE: False
           DB_INFO_PATH:
-              - waymo_processed_data_one_waymo_dbinfos_train_scene_sampled_2.pkl
+              - waymo_processed_data_one_waymo_dbinfos_train_sampled_1.pkl
           PREPARE: {
              filter_by_min_points: ['Vehicle:5', 'Pedestrian:5', 'Cyclist:5'],
              filter_by_difficulty: [-1],
@@ -56,7 +56,7 @@ DATA_PROCESSOR:
     - NAME: shuffle_points
       SHUFFLE_ENABLED: {
         'train': True,
-        'test': True
+        'test': False
       }
 
     - NAME: transform_points_to_voxels

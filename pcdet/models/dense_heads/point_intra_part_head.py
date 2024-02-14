@@ -92,19 +92,19 @@ class PointIntraPartOffsetHead(PointHeadTemplate):
         """
         point_features = batch_dict['point_features']
         point_cls_preds = self.cls_layers(point_features)  # (total_points, num_class)
-        point_part_preds = self.part_reg_layers(point_features)
+        point_part_preds = self.part_reg_layers(point_features) # out_c = 3
 
         ret_dict = {
             'point_cls_preds': point_cls_preds,
             'point_part_preds': point_part_preds,
         }
         if self.box_layers is not None:
-            point_box_preds = self.box_layers(point_features)
-            ret_dict['point_box_preds'] = point_box_preds
+            point_box_preds = self.box_layers(point_features) # out_c = 8
+            ret_dict['point_box_preds'] = point_box_preds # (N pts or voxels, 8 pred residuals)
 
         point_cls_scores = torch.sigmoid(point_cls_preds)
-        point_part_offset = torch.sigmoid(point_part_preds)
-        batch_dict['point_cls_scores'], _ = point_cls_scores.max(dim=-1)
+        point_part_offset = torch.sigmoid(point_part_preds) # 3 scores turned into prob for each point
+        batch_dict['point_cls_scores'], _ = point_cls_scores.max(dim=-1) #max prob from all predicted class probs
         batch_dict['point_part_offset'] = point_part_offset
 
         if self.training:
@@ -118,8 +118,8 @@ class PointIntraPartOffsetHead(PointHeadTemplate):
                 points=batch_dict['point_coords'][:, 1:4],
                 point_cls_preds=point_cls_preds, point_box_preds=ret_dict['point_box_preds']
             )
-            batch_dict['batch_cls_preds'] = point_cls_preds
-            batch_dict['batch_box_preds'] = point_box_preds
+            batch_dict['batch_cls_preds'] = point_cls_preds # pred cls scores (N,3)
+            batch_dict['batch_box_preds'] = point_box_preds # pred boxes (N, 7)
             batch_dict['batch_index'] = batch_dict['point_coords'][:, 0]
             batch_dict['cls_preds_normalized'] = False
 
