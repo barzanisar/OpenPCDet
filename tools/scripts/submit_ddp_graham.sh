@@ -33,7 +33,7 @@ NUSCENES_DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/nuscenes
 DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
 DATASET=waymo
 
-SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
+SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
 TEST_ONLY=false
 
 # Usage info
