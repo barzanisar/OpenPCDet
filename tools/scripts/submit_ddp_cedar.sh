@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --wait-all-nodes=1
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4                     # Request v100l 4 GPUs
+#SBATCH --gres=gpu:v100l:4                     # Request v100l 4 GPUs
 #SBATCH --ntasks=1 
 #SBATCH --ntasks-per-node=1                 # num tasks== num nodes
 #SBATCH --time=01:00:00
@@ -33,7 +33,7 @@ NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
 DATA_DIR_BIND=$WAYMO_DATA_DIR:/OpenPCDet/data/waymo
 DATASET=waymo
 
-SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
+SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
 TEST_ONLY=false
 
 # Usage info
