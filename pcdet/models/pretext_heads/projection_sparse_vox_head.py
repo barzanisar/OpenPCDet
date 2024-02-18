@@ -264,7 +264,7 @@ class ProjectionSparseVoxHead(nn.Module):
                             continue
                         
                         seg_mask = cluster_ids[batch_num] == segment_lbl
-                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
+                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 6).long().squeeze()
                         sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
                         sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
                     
