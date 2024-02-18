@@ -6,6 +6,90 @@ import numpy as np
 from datasets.collators.sparse_collator import list_segments_points, numpy_to_sparse_tensor
 from third_party.OpenPCDet.pcdet.models.pretext_heads.mlp import MLP
 from third_party.OpenPCDet.pcdet.models.pretext_heads.gather_utils import *
+from third_party.OpenPCDet.pcdet.ops.pointnet2.pointnet2_batch import pointnet2_utils
+
+from torch import einsum
+from einops import repeat
+
+def exists(val):
+    return val is not None
+
+def max_value(t):
+    return torch.finfo(t.dtype).max
+
+class ProposalEncodingLayerV2(nn.Module):
+    def __init__(
+        self,
+        *,
+        dim,
+        pos_mlp_hidden_dim = 64,
+        attn_mlp_hidden_mult = 4,
+        downsample = 4,
+    ):
+        super().__init__()
+
+        self.inter_channels = dim // downsample
+
+        self.g = nn.Linear(dim, self.inter_channels, bias=False)
+        self.theta = nn.Linear(dim, self.inter_channels, bias=False)
+        self.phi = nn.Linear(dim, self.inter_channels, bias=False)
+
+        self.pos_mlp = nn.Sequential(
+            nn.Linear(3, pos_mlp_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(pos_mlp_hidden_dim, self.inter_channels)
+        )
+
+        self.attn_mlp = nn.Sequential(
+            nn.Linear(self.inter_channels, self.inter_channels * attn_mlp_hidden_mult),
+            nn.ReLU(),
+            nn.Linear(self.inter_channels * attn_mlp_hidden_mult, self.inter_channels),
+        )
+
+        self.conv_out = nn.Linear(self.inter_channels, dim, bias=False)
+
+
+    def forward(self, x, pos, mode='cross', mask = None):
+
+        x, y = x[0], x[1] #(N,1,512) (N, 16, 512)
+        x_pos, y_pos = pos #(N proposals, 1, 3) (N, 16, 3)
+
+        v = self.g(y) #(N, 16, 512) -> (N, 16, 128)
+        q = self.theta(x) #(N, 1, 512) -> (N, 1, 128)
+        k = self.phi(y) #(N, 16, 512) -> (N, 16, 128)
+
+        # calculate relative positional embeddings
+        rel_pos = x_pos[:, :, None, :] - y_pos[:, None, :, :] #(N,1,1,3) - (N, 1, 16, 3)
+        rel_pos_emb = self.pos_mlp(rel_pos) #(N, 1, 16, 3) -> (N, 1, 16, 128)
+
+        # use subtraction of queries to keys. i suppose this is a better inductive bias for point clouds than dot product
+        qk_rel = q[:, :, None, :] - k[:, None, :, :]  #(N, 1, 16, 512)
+
+        # prepare mask
+        if exists(mask):
+            mask = mask[:, :, None] * mask[:, None, :]
+
+        # expand values
+        v = repeat(v, 'b j d -> b i j d', i=1) # (N, 1, 16, 128)
+
+        # add relative positional embeddings to value
+        v = v + rel_pos_emb #  (N, 1, 16, 128)
+
+        # use attention mlp, making sure to add relative positional embedding first
+        sim = self.attn_mlp(qk_rel + rel_pos_emb)#  (N, 1, 16, 128)
+
+        # masking
+        if exists(mask):
+            mask_value = -max_value(sim)
+            sim.masked_fill_(~mask[..., None], mask_value)
+
+        # attention
+        attn = sim.softmax(dim=-2)
+
+        # aggregate
+        agg = einsum('b i j d, b i j d -> b i d', attn, v)
+
+        return x + self.conv_out(agg)
 
 
 class ProjectionSparseVoxHead(nn.Module):
@@ -19,6 +103,15 @@ class ProjectionSparseVoxHead(nn.Module):
 
         self.dropout = ME.MinkowskiDropout(p=0.4)
         self.glob_pool = ME.MinkowskiGlobalMaxPooling()
+
+        self.attn = None
+        if model_cfg.get("proposal_attn_encoder", False):
+            self.attn = ProposalEncodingLayerV2(
+            dim=96,
+            pos_mlp_hidden_dim=64,
+            attn_mlp_hidden_mult=2,
+            downsample=2)
+        
 
     @torch.no_grad()
     def _batch_unshuffle_ddp(self, batch_dict, idx_unshuffle):
@@ -120,16 +213,79 @@ class ProjectionSparseVoxHead(nn.Module):
         cluster_ids = batch_dict['cluster_ids']
 
         if self.cluster:
-            x = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
 
-        # from input points dropout some (increase randomness)
-        x = self.dropout(x) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
+            if self.attn is not None:
+                sampled_batch_seg_pts = []
+                sampled_batch_seg_pt_feats = []
+                batch_seg_centers = []
+                batch_seg_center_feats =[]
+                for batch_num in range(len(cluster_ids)):
+                    num_gt_boxes = len(batch_dict['gt_boxes_cluster_ids'][batch_num])
+                    gt_box_centers = batch_dict['gt_boxes'][batch_num, :num_gt_boxes, :3]
+                    gt_box_cluster_ids = batch_dict['gt_boxes_cluster_ids'][batch_num]
+                    unique_cluster_ids = np.unique(cluster_ids[batch_num])
+                    assert gt_box_centers.shape[0] == gt_box_cluster_ids.shape[0]
 
-        # global max pooling over the remaining points
-        x = self.glob_pool(x) #[num segments x 96] max pools pts in each seg
+                    gt_box_idx_of_unique_clusters=np.where(np.isin(gt_box_cluster_ids, unique_cluster_ids))[0]
+                    
+                    #sanity check that unique cluster lbls match with the gt box idx found
+                    # gt_box_idx_of_unique_clusters_list1 = []
+                    # for lbl in np.unique(cluster_ids[batch_num]):
+                    #     if lbl == -1:
+                    #         continue
+                    #     gt_box_idx_for_this_lbl = np.where(gt_box_cluster_ids==lbl)[0][0]
+                    #     gt_box_idx_of_unique_clusters_list1.append(gt_box_idx_for_this_lbl)
 
-        # project the max pooled features
-        out = self.head(x.F) #[num segments x 96] -> [num segments x 128]
+                    # assert (gt_box_idx_of_unique_clusters_list1 == gt_box_idx_of_unique_clusters).all()
+                    # i = 0
+                    # for lbl in unique_cluster_ids:
+                    #     if lbl == -1:
+                    #         continue
+                    #     assert gt_box_cluster_ids[gt_box_idx_of_unique_clusters[i]] == lbl   
+                    #     i +=1
+                    
+                    gt_box_centers_of_unique_clusters = gt_box_centers[gt_box_idx_of_unique_clusters]
+
+                    b_mask = x.C[:,0] == batch_num
+                    pts_xyz = batch_dict['point_coords'][b_mask][:,1:]
+                    pts_feats = x.F[b_mask, :]
+                    
+                    dist, idx = pointnet2_utils.three_nn(gt_box_centers_of_unique_clusters.contiguous().unsqueeze(0), pts_xyz.contiguous().unsqueeze(0))
+                    dist_recip = 1.0 / (dist + 1e-8)
+                    norm = torch.sum(dist_recip, dim=2, keepdim=True)
+                    weight = dist_recip / norm
+                    interpolated_feats_at_centers = pointnet2_utils.three_interpolate(pts_feats.transpose(1,0).contiguous().unsqueeze(0), idx, weight) #(num gt centers, C)
+
+                    batch_seg_centers.append(gt_box_centers_of_unique_clusters)
+                    batch_seg_center_feats.append(interpolated_feats_at_centers.squeeze(0).transpose(1,0))
+
+                    for segment_lbl in unique_cluster_ids:
+                        if segment_lbl == -1:
+                            continue
+                        
+                        seg_mask = cluster_ids[batch_num] == segment_lbl
+                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
+                        sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
+                        sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
+                    
+                sampled_batch_seg_pts = torch.stack(sampled_batch_seg_pts) # (N segs, 16 pts each seg, 3)
+                sampled_batch_seg_pt_feats = torch.stack(sampled_batch_seg_pt_feats) # (N segs, 16 pts each seg, 96)
+                batch_seg_centers = torch.cat(batch_seg_centers, dim=0).unsqueeze(1) #(N segs, 1, 3)
+                batch_seg_center_feats = torch.cat(batch_seg_center_feats, dim=0).unsqueeze(1) #(N segs, 1, 96)
+                input_xyz = (batch_seg_centers, sampled_batch_seg_pts)
+                input_features = (batch_seg_center_feats, sampled_batch_seg_pt_feats)
+                x = self.attn(input_features, input_xyz).squeeze() #[num segments x 96]
+                out = self.head(x)
+            else:
+                x = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
+
+                x = self.dropout(x) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
+
+                # global max pooling over the remaining points
+                x = self.glob_pool(x) #[num segments x 96] max pools pts in each seg
+
+                # project the max pooled features
+                out = self.head(x.F) #[num segments x 96] -> [num segments x 128]
 
         batch_dict["pretext_head_feats"] = out
         batch_dict['point_features'] = batch_dict['sparse_point_feats'].F
