@@ -250,11 +250,11 @@ class ProjectionSparseVoxHead(nn.Module):
                     pts_xyz = batch_dict['point_coords'][b_mask][:,1:]
                     pts_feats = x.F[b_mask, :]
                     
-                    dist, idx = pointnet2_utils.three_nn(gt_box_centers_of_unique_clusters.contiguous().unsqueeze(0), pts_xyz.contiguous().unsqueeze(0))
+                    dist, idx = pointnet2_utils.three_nn(gt_box_centers_of_unique_clusters.unsqueeze(0).contiguous(), pts_xyz.unsqueeze(0).contiguous())
                     dist_recip = 1.0 / (dist + 1e-8)
                     norm = torch.sum(dist_recip, dim=2, keepdim=True)
                     weight = dist_recip / norm
-                    interpolated_feats_at_centers = pointnet2_utils.three_interpolate(pts_feats.transpose(1,0).contiguous().unsqueeze(0), idx, weight) #(num gt centers, C)
+                    interpolated_feats_at_centers = pointnet2_utils.three_interpolate(pts_feats.transpose(1,0).unsqueeze(0).contiguous(), idx, weight) #(num gt centers, C)
 
                     batch_seg_centers.append(gt_box_centers_of_unique_clusters)
                     batch_seg_center_feats.append(interpolated_feats_at_centers.squeeze(0).transpose(1,0))
@@ -264,7 +264,7 @@ class ProjectionSparseVoxHead(nn.Module):
                             continue
                         
                         seg_mask = cluster_ids[batch_num] == segment_lbl
-                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 6).long().squeeze()
+                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
                         sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
                         sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
                     
