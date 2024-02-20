@@ -6,6 +6,7 @@ sbatch --time=06:00:00 --array=1-1%1 --job-name=create_database-waymo_scene_samp
 
 sbatch --time=02:00:00 --array=1-1%1 --job-name=create_nuscenes_infos_1sweep_100_sampled tools/scripts/create_nuscenes_infos.sh --cfg_file /OpenPCDet/tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_100.yaml
 # sbatch --time=02:00:00 --array=1-1%1 --job-name=create_nuscenes_infos_1sweep_20_sampled tools/scripts/create_nuscenes_infos.sh --cfg_file /OpenPCDet/tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_20.yaml
+tools/scripts/create_nuscenes_infos_turing.sh --cfg_file /OpenPCDet/tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_100.yaml > ./output/log/create_nuscenes_val_infos_$(date +%Y-%m-%d_%H:%M).out 2>&1
 
 #################### 80 epochs #########################################
 ## scratch
@@ -36,12 +37,16 @@ sbatch --time=10:00:00 --array=1-3%1 --job-name=segdet-30ep-ignore_mv tools/scri
 sbatch --time=10:00:00 --array=1-3%1 --job-name=segdet-25ep-ignore_bn tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_25ep_scene_sampled_100_bn_ignored.yaml --tcp_port 17414 --extra_tag segcontrast_plus_dethead_0p8w --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar
 sbatch --time=10:00:00 --array=1-3%1 --job-name=segdet-30ep-ignore_bn tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_30ep_scene_sampled_100_bn_ignored.yaml --tcp_port 17415 --extra_tag segcontrast_plus_dethead_0p8w --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar
 
-tools/scripts/create_nuscenes_infos_turing.sh --cfg_file /OpenPCDet/tools/cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_100.yaml > ./output/log/create_nuscenes_val_infos_$(date +%Y-%m-%d_%H:%M).out 2>&1
 
 
 ########################## waymo sampled 20 i.e. 5%  #########################################
 ### 30, 80, 200 epochs
 ########################## nuscenes sampled 100 i.e. 1%  #########################################
 ### 30, 80, 200 epochs
+sbatch --time=8:00:00 --array=1-5%1 --job-name=30ep-nus-1perc tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/nuscenes_models/pointrcnn_minkunet_30ep_1sweeps_sampled_100.yaml --tcp_port 16911 --extra_tag scratch 
+sbatch --time=8:00:00 --array=1-5%1 --job-name=t2_30ep-nus-1perc tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/nuscenes_models/pointrcnn_minkunet_30ep_1sweeps_sampled_100.yaml --tcp_port 16912 --extra_tag scratch_t2
+tools/scripts/submit_ddp_turing.sh --num_gpus 2 --cuda_visible_devices 0,1 --tcp_port 19835 --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_30ep_scene_sampled_100_run_mv_ignored.yaml --extra_tag segcontrast_plus_dethead_0p8w --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar > ./output/log/segdet_30ep_waymo1perc_mv_ignored_$(date +%Y-%m-%d_%H:%M).out 2>&1
+tools/scripts/submit_ddp_turing.sh --num_gpus 2 --cuda_visible_devices 2,3 --tcp_port 19836 --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_30ep_scene_sampled_100.yaml --extra_tag scratch > ./output/log/scratch_30ep_waymo1perc_$(date +%Y-%m-%d_%H:%M).out 2>&1
+
 ########################## nuscenes sampled 20 i.e. 5%  #########################################
 ### 30, 80, 200 epochs
