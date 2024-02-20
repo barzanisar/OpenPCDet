@@ -1,18 +1,16 @@
 CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist']
-# python train.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml
-# python -m torch.distributed.launch --nproc_per_node=1 /OpenPCDet/tools/train.py  --launcher pytorch --cfg_file /OpenPCDet/tools/cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar --fix_random_seed --extra_tag segcontrast_plus_dethead_0p8w 
-#python test.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --ckpt /OpenPCDet/output/waymo_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_22.pth
+
 WANDB:
-    ENABLED: False
+    ENABLED: True
     PROJECT: SSL3dObject
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
     dir: '/OpenPCDet/output'
-    tags: ['scratch']
 
-SKIP_INIT_LAYER: ['bn.weight', 'bn.bias', 'running_mean', 'running_var'] #'bn.weight', 'bn.bias', 
+SKIP_INIT_LAYER: ['running_mean', 'running_var'] #'bn.weight', 'bn.bias', 
+
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_practice.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_scene_sampled_100.yaml
     
 MODEL:
     NAME: PointRCNN
@@ -118,14 +116,14 @@ MODEL:
         NMS_CONFIG:
             MULTI_CLASSES_NMS: False
             NMS_TYPE: nms_gpu
-            NMS_THRESH: 0.1
+            NMS_THRESH: 0.7
             NMS_PRE_MAXSIZE: 4096
             NMS_POST_MAXSIZE: 500
 
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 5
+    NUM_EPOCHS: 25
 
     OPTIMIZER: adam_onecycle
     LR: 0.006

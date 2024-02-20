@@ -80,13 +80,29 @@ def init_model_from_weights(
     #local_rank = int(os.environ.get("LOCAL_RANK", 0))
     not_found, not_init = [], []
     for layername in all_layers.keys():
-        if (
-            skip_layers and len(skip_layers) > 0 and layername.find(skip_layers) >= 0
-        ) or layername.find("num_batches_tracked") >= 0:
+        if layername.find("num_batches_tracked") >= 0:
+            not_init.append(layername)
             if print_init_layers and (rank == 0):
-                not_init.append(layername)
                 logger.info(f"Ignored layer:\t{layername}")
             continue
+
+        if skip_layers is not None and len(skip_layers) > 0:
+            for sl in skip_layers:
+                if layername.find(sl) >= 0:
+                    not_init.append(layername)
+                    if print_init_layers and (rank == 0):
+                        logger.info(f"Ignored layer:\t{layername}")
+                    break
+            if len(not_init) and not_init[-1] == layername:        
+                continue
+
+        # if (
+        #     skip_layers and len(skip_layers) > 0 and layername.find(skip_layers) >= 0
+        # ) or layername.find("num_batches_tracked") >= 0:
+        #     if print_init_layers and (rank == 0):
+        #         not_init.append(layername)
+        #         logger.info(f"Ignored layer:\t{layername}")
+        #     continue
         if layername in state_dict:
             param = state_dict[layername]
             if not isinstance(param, torch.Tensor):

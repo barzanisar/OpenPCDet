@@ -65,9 +65,10 @@ docker run -it --env="WANDB_API_KEY=$WANDB_API_KEY" \
         --volume $PROJ_DIR/output:/OpenPCDet/output \
         --volume $PROJ_DIR/tools:/OpenPCDet/tools \
         --volume $PROJ_DIR/lib:/OpenPCDet/lib \
+        --volume $PROJ_DIR/checkpoints:/OpenPCDet/checkpoints \
         $PCDET_VOLUMES \
         --rm \
-        ssl_openpcdet:numba_fixed bash
+        ssl_openpcdet:waymo_fixed bash
 
         # --volume $DENSE_LIDAR \
         # --volume $SNOWFALL_LIDAR \
