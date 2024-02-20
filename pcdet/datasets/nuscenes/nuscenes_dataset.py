@@ -351,9 +351,9 @@ def create_nuscenes_info(version, data_path, save_path, sampling_interval, max_s
             pickle.dump(train_nusc_infos, f)
     else:
         print('train sample: %d, val sample: %d' % (len(train_nusc_infos), len(val_nusc_infos)))
-        s_interval = sampling_interval['train']
-        with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_train_sampled_{s_interval}.pkl', 'wb') as f:
-            pickle.dump(train_nusc_infos, f)
+        # s_interval = sampling_interval['train']
+        # with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_train_sampled_{s_interval}.pkl', 'wb') as f:
+        #     pickle.dump(train_nusc_infos, f)
         s_interval = sampling_interval['test']
         with open(save_path / f'nuscenes_infos_{max_sweeps}sweeps_val_sampled_{s_interval}.pkl', 'wb') as f:
             pickle.dump(val_nusc_infos, f)
@@ -382,9 +382,9 @@ if __name__ == '__main__':
             max_sweeps=dataset_cfg.MAX_SWEEPS, sampling_interval=dataset_cfg.SCENE_SAMPLING_INTERVAL
         )
 
-        nuscenes_dataset = NuScenesDataset(
-            dataset_cfg=dataset_cfg, class_names=None,
-            root_path=ROOT_DIR / 'data' / 'nuscenes',
-            logger=common_utils.create_logger(), training=True
-        )
-        nuscenes_dataset.create_groundtruth_database(sampling_interval=dataset_cfg.SCENE_SAMPLING_INTERVAL['train'], max_sweeps=dataset_cfg.MAX_SWEEPS)
+        # nuscenes_dataset = NuScenesDataset(
+        #     dataset_cfg=dataset_cfg, class_names=None,
+        #     root_path=ROOT_DIR / 'data' / 'nuscenes',
+        #     logger=common_utils.create_logger(), training=True
+        # )
+        # nuscenes_dataset.create_groundtruth_database(sampling_interval=dataset_cfg.SCENE_SAMPLING_INTERVAL['train'], max_sweeps=dataset_cfg.MAX_SWEEPS)

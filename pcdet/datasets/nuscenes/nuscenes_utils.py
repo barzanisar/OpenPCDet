@@ -373,7 +373,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
 
         if sample['scene_token'] in train_scenes:
             train_nusc_infos.append(info)
-        else:
+        elif sample['scene_token'] in val_scenes:
             val_nusc_infos.append(info)
 
     progress_bar.close()
@@ -494,7 +494,8 @@ def format_nuscene_results(metrics, class_names, version='default'):
 
     details.update({
         'mAP': metrics['mean_ap'],
-        'NDS': metrics['nd_score'],
+        'NDS': metrics['nd_score']
     })
-
+    
+    details.update(metrics['mean_dist_aps'])
     return result, details
