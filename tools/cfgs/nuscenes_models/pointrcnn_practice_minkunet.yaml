@@ -9,7 +9,7 @@ WANDB:
     dir: '/OpenPCDet/output'
 
 DATA_CONFIG:
-    _BASE_CONFIG_: cfgs/dataset_configs/nuscenes_dataset_1sweeps_sampled_100.yaml
+    _BASE_CONFIG_: cfgs/dataset_configs/nuscenes_dataset_practice.yaml
     
 MODEL:
     NAME: PointRCNN
@@ -77,8 +77,8 @@ MODEL:
             TEST:
                 NMS_TYPE: nms_gpu
                 MULTI_CLASSES_NMS: False
-                NMS_PRE_MAXSIZE: 4096
-                NMS_POST_MAXSIZE: 300
+                NMS_PRE_MAXSIZE: 9000
+                NMS_POST_MAXSIZE: 100
                 NMS_THRESH: 0.85
 
         ROI_AWARE_POOL:
@@ -122,14 +122,14 @@ MODEL:
         NMS_CONFIG:
             MULTI_CLASSES_NMS: False
             NMS_TYPE: nms_gpu
-            NMS_THRESH: 0.7
+            NMS_THRESH: 0.1
             NMS_PRE_MAXSIZE: 4096
             NMS_POST_MAXSIZE: 500
 
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 80
+    NUM_EPOCHS: 30
 
     OPTIMIZER: adam_onecycle
     LR: 0.006
