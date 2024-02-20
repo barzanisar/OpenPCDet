@@ -5,8 +5,8 @@ die() { echo "$*" 1>&2 ; exit 1; }
 
 
 # ========== NuScenes ==========
-DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
-SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
+DATA_DIR=/raid/datasets/nuscenes
+SING_IMG=/raid/home/nisarbar/singularity/ssl_openpcdet.sif
 CFG_FILE=tools/cfgs/dataset_configs/nuscenes_dataset.yaml
 CUDA_VISIBLE_DEVICES=0
 
