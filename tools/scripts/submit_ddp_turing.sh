@@ -175,7 +175,7 @@ $SING_IMG
 
 TRAIN_CMD=$BASE_CMD
 TRAIN_CMD+="python -m torch.distributed.launch 
---nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0
+--nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0
 /OpenPCDet/tools/train.py 
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE 
@@ -190,7 +190,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 TEST_CMD=$BASE_CMD
 
 TEST_CMD+="python -m torch.distributed.launch
---nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
+--nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
 /OpenPCDet/tools/test.py
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE
@@ -202,15 +202,11 @@ TEST_CMD+="python -m torch.distributed.launch
 if [ $TEST_ONLY == "true" ]
 then
     echo "Running ONLY evaluation"
-    echo "Node $SLURM_NODEID says: Launching python script..."
-
     echo "$TEST_CMD"
     eval $TEST_CMD
     echo "Done evaluation"
 else
     echo "Running training"
-    echo "Node $SLURM_NODEID says: Launching python script..."
-
     echo "$TRAIN_CMD"
     eval $TRAIN_CMD
     echo "Done training"
