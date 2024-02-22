@@ -35,7 +35,7 @@ DATA_AUGMENTOR:
           }
 
           SAMPLE_GROUPS: [
-              'car:25'
+              'car:20'
           ]
 
           NUM_POINT_FEATURES: 5
