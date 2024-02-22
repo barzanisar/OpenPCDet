@@ -1,3 +1,8 @@
+
+#seg_49 is from turing segcontrast_waymo10
+#seg_plus_det_nusc_ep49 is from lovelace segcontrast_waymo10_lidar_aug_single_randh_det0p5w
+#seg_plus_det0p8_ep49 is from narval /home/nisarbar/projects/rrg-swasland/nisarbar/DepthContrast/checkpoints/minkunet/minkunet_pretrain_segcontrast_waymo10_dethead_0p8w/pretrain_waymo
+
 ## waymo 1 %, 30 ep
 sbatch --time=10:00:00 --array=1-3%1 --job-name=car-scratch-30ep-scene100 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_30ep_scene_sampled_100.yaml --tcp_port 17910 --extra_tag scratch_car --test_start_epoch 20
 sbatch --time=10:00:00 --array=1-3%1 --job-name=car-scratch-30ep-scene100_t2 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_30ep_scene_sampled_100.yaml --tcp_port 17911 --extra_tag scratch_car_t2 --test_start_epoch 20

@@ -29,7 +29,7 @@ DATA_DIR_BIND=/home/$USER/scratch/Datasets/Waymo:/OpenPCDet/data/waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
 
-SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet.sif
+SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
 TEST_ONLY=false
 
 # Usage info
@@ -124,6 +124,14 @@ while :; do
             die 'ERROR: "--extra_tag" requires a non-empty option argument.'
         fi
         ;;
+    -e|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            TEST_START_EPOCH=$2
+            shift
+        else
+            die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -163,5 +171,6 @@ export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
+export TEST_START_EPOCH=$TEST_START_EPOCH
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
