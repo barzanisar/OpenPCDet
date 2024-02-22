@@ -13,7 +13,7 @@ DATA_SPLIT: {
 
 SAMPLED_INTERVAL: {
     'train': 20,
-    'test': 5
+    'test': 2
 }
 SCENE_SAMPLING: True
 
@@ -25,11 +25,11 @@ DATA_AUGMENTOR:
           DB_INFO_PATH:
               - waymo_processed_data_v_1_2_0_waymo_dbinfos_train_scene_sampled_20.pkl
           PREPARE: {
-             filter_by_min_points: ['Vehicle:5', 'Pedestrian:5', 'Cyclist:5'],
+             filter_by_min_points: ['Vehicle:5'],
              filter_by_difficulty: [-1],
           }
 
-          SAMPLE_GROUPS: ['Vehicle:15', 'Pedestrian:10', 'Cyclist:10']
+          SAMPLE_GROUPS: ['Vehicle:25']
           NUM_POINT_FEATURES: 5
           REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
           LIMIT_WHOLE_SCENE: True

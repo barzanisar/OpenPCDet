@@ -1,5 +1,4 @@
-CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
-              'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone']
+CLASS_NAMES: ['car']
 # python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
 WANDB:
     ENABLED: True
@@ -35,15 +34,15 @@ MODEL:
                 'use_mean_size': True,
                 'mean_size': [
                     [4.63, 1.97, 1.74],
-                    [6.93, 2.51, 2.84],
-                    [6.37, 2.85, 3.19],
-                    [10.5, 2.94, 3.47],
-                    [12.29, 2.90, 3.87],
-                    [0.50, 2.53, 0.98],
-                    [2.11, 0.77, 1.47],
-                    [1.70, 0.60, 1.28],
-                    [0.73, 0.67, 1.77],
-                    [0.41, 0.41, 1.07]
+                    # [6.93, 2.51, 2.84],
+                    # [6.37, 2.85, 3.19],
+                    # [10.5, 2.94, 3.47],
+                    # [12.29, 2.90, 3.87],
+                    # [0.50, 2.53, 0.98],
+                    # [2.11, 0.77, 1.47],
+                    # [1.70, 0.60, 1.28],
+                    # [0.73, 0.67, 1.77],
+                    # [0.41, 0.41, 1.07]
                 ]
             }
 

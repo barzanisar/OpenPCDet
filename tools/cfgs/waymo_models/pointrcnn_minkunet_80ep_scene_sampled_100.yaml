@@ -1,4 +1,4 @@
-CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist']
+CLASS_NAMES: ['Vehicle']
 
 WANDB:
     ENABLED: True
@@ -34,8 +34,8 @@ MODEL:
                 'use_mean_size': True,
                 'mean_size': [
                     [4.7, 2.1, 1.7],
-                    [0.91, 0.86, 1.73],
-                    [1.78, 0.84, 1.78]
+                    # [0.91, 0.86, 1.73],
+                    # [1.78, 0.84, 1.78]
                 ]
             }
 

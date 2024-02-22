@@ -25,6 +25,7 @@ PRETRAINED_MODEL=None
 BATCH_SIZE_PER_GPU=2
 TCP_PORT=18888
 EXTRA_TAG='default'
+TEST_START_EPOCH=0
 
 
 # ========== WAYMO ==========
@@ -128,6 +129,15 @@ while :; do
             die 'ERROR: "--extra_tag" requires a non-empty option argument.'
         fi
         ;;
+    -e|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            TEST_START_EPOCH=$2
+            shift
+        else
+            die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
+        fi
+        ;;
+    
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -167,5 +177,6 @@ export PRETRAINED_MODEL=$PRETRAINED_MODEL
 export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
+export TEST_START_EPOCH=$TEST_START_EPOCH
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR

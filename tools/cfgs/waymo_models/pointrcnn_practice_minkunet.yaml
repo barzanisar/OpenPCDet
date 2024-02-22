@@ -1,5 +1,5 @@
-CLASS_NAMES: ['Vehicle', 'Pedestrian', 'Cyclist']
-# python train.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml
+CLASS_NAMES: ['Vehicle'] #, 'Pedestrian', 'Cyclist'
+# python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
 # python -m torch.distributed.launch --nproc_per_node=1 /OpenPCDet/tools/train.py  --launcher pytorch --cfg_file /OpenPCDet/tools/cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar --fix_random_seed --extra_tag segcontrast_plus_dethead_0p8w 
 #python test.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --ckpt /OpenPCDet/output/waymo_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_22.pth
 WANDB:
@@ -10,7 +10,7 @@ WANDB:
     dir: '/OpenPCDet/output'
     tags: ['scratch']
 
-SKIP_INIT_LAYER: ['bn.weight', 'bn.bias', 'running_mean', 'running_var'] #'bn.weight', 'bn.bias', 
+# SKIP_INIT_LAYER: ['bn.weight', 'bn.bias', 'running_mean', 'running_var'] #'bn.weight', 'bn.bias', 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/waymo_dataset_practice.yaml
     
@@ -38,8 +38,8 @@ MODEL:
                 'use_mean_size': True,
                 'mean_size': [
                     [4.7, 2.1, 1.7],
-                    [0.91, 0.86, 1.73],
-                    [1.78, 0.84, 1.78]
+                    # [0.91, 0.86, 1.73],
+                    # [1.78, 0.84, 1.78]
                 ]
             }
 

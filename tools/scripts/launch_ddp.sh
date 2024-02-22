@@ -75,6 +75,7 @@ TEST_CMD+="python -m torch.distributed.launch
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
+--start_epoch $TEST_START_EPOCH 
 --eval_all"
 
 if [ $TEST_ONLY == "true" ]

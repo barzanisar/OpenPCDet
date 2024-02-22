@@ -2,7 +2,7 @@ CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
               'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone']
 # python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
 WANDB:
-    ENABLED: True
+    ENABLED: False
     PROJECT: SSL3dObject
     ENTITY: trailab
     SUMMARY_HIGHEST_METRIC: None
