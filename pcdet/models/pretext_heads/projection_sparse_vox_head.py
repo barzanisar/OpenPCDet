@@ -236,12 +236,12 @@ class ProjectionSparseVoxHead(nn.Module):
                     #     gt_box_idx_of_unique_clusters_list1.append(gt_box_idx_for_this_lbl)
 
                     # assert (gt_box_idx_of_unique_clusters_list1 == gt_box_idx_of_unique_clusters).all()
-                    # i = 0
-                    # for lbl in unique_cluster_ids:
-                    #     if lbl == -1:
-                    #         continue
-                    #     assert gt_box_cluster_ids[gt_box_idx_of_unique_clusters[i]] == lbl   
-                    #     i +=1
+                    i = 0
+                    for lbl in unique_cluster_ids:
+                        if lbl == -1:
+                            continue
+                        assert gt_box_cluster_ids[gt_box_idx_of_unique_clusters[i]] == lbl   
+                        i +=1
                     
                     gt_box_centers_of_unique_clusters = gt_box_centers[gt_box_idx_of_unique_clusters]
 
@@ -249,14 +249,14 @@ class ProjectionSparseVoxHead(nn.Module):
                     pts_xyz = batch_dict['point_coords'][b_mask][:,1:]
                     pts_feats = x.F[b_mask, :]
                     
-                    dist, idx = pointnet2_utils.three_nn(gt_box_centers_of_unique_clusters.unsqueeze(0).contiguous(), pts_xyz.unsqueeze(0).contiguous())
-                    dist_recip = 1.0 / (dist + 1e-8)
-                    norm = torch.sum(dist_recip, dim=2, keepdim=True)
-                    weight = dist_recip / norm
-                    interpolated_feats_at_centers = pointnet2_utils.three_interpolate(pts_feats.transpose(1,0).unsqueeze(0).contiguous(), idx, weight) #(num gt centers, C)
+                    # dist, idx = pointnet2_utils.three_nn(gt_box_centers_of_unique_clusters.unsqueeze(0).contiguous(), pts_xyz.unsqueeze(0).contiguous())
+                    # dist_recip = 1.0 / (dist + 1e-8)
+                    # norm = torch.sum(dist_recip, dim=2, keepdim=True)
+                    # weight = dist_recip / norm
+                    # interpolated_feats_at_centers = pointnet2_utils.three_interpolate(pts_feats.transpose(1,0).unsqueeze(0).contiguous(), idx, weight) #(num gt centers, C)
 
                     batch_seg_centers.append(gt_box_centers_of_unique_clusters)
-                    batch_seg_center_feats.append(interpolated_feats_at_centers.squeeze(0).transpose(1,0))
+                    # batch_seg_center_feats.append(interpolated_feats_at_centers.squeeze(0).transpose(1,0)) #[nm segs this pc, 96]
 
                     for segment_lbl in unique_cluster_ids:
                         if segment_lbl == -1:
@@ -266,16 +266,20 @@ class ProjectionSparseVoxHead(nn.Module):
                         fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
                         sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
                         sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
+                        # interpolated_feats_at_centers = pts_feats[seg_mask][fps_choice]
+                        # batch_seg_center_feats.append()
                     
                 sampled_batch_seg_pts = torch.stack(sampled_batch_seg_pts) # (N segs, 16 pts each seg, 3)
                 sampled_batch_seg_pt_feats = torch.stack(sampled_batch_seg_pt_feats) # (N segs, 16 pts each seg, 96)
                 batch_seg_centers = torch.cat(batch_seg_centers, dim=0).unsqueeze(1) #(N segs, 1, 3)
-                batch_seg_center_feats = torch.cat(batch_seg_center_feats, dim=0).unsqueeze(1) #(N segs, 1, 96)
+                batch_seg_feats = list_segments_points(x.C, x.F, cluster_ids)
+                batch_seg_feats = self.glob_pool(batch_seg_feats)
+                # batch_seg_feats = torch.cat(batch_seg_feats, dim=0).unsqueeze(1) #(N segs, 1, 96)
                 input_xyz = (batch_seg_centers, sampled_batch_seg_pts)
-                input_features = (batch_seg_center_feats, sampled_batch_seg_pt_feats)
-                x = self.attn(input_features, input_xyz).squeeze() #[num segments x 96]
+                input_features = (batch_seg_feats.F.unsqueeze(1), sampled_batch_seg_pt_feats)
+                y = self.attn(input_features, input_xyz).squeeze() #[num segments x 96]
                 # x = torch.cat(batch_seg_center_feats, dim=0)
-                out = self.head(x)
+                out = self.head(y)
             else:
                 x = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
                 x = self.dropout(x) #x is a sparse tensor:(C:(numpts in all segs, 4=bidx of seg, xyz vox coord), F:(numpts on all segs,96))[num points belonging to segments x 96]
