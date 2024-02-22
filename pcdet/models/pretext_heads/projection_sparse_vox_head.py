@@ -106,12 +106,11 @@ class ProjectionSparseVoxHead(nn.Module):
 
         self.attn = None
         if model_cfg.get("proposal_attn_encoder", False):
-            self.attn = True
-            #ProposalEncodingLayerV2(
-            # dim=96,
-            # pos_mlp_hidden_dim=64,
-            # attn_mlp_hidden_mult=2,
-            # downsample=2)
+            self.attn = ProposalEncodingLayerV2(
+            dim=96,
+            pos_mlp_hidden_dim=64,
+            attn_mlp_hidden_mult=2,
+            downsample=2)
         
 
     @torch.no_grad()
@@ -259,23 +258,23 @@ class ProjectionSparseVoxHead(nn.Module):
                     batch_seg_centers.append(gt_box_centers_of_unique_clusters)
                     batch_seg_center_feats.append(interpolated_feats_at_centers.squeeze(0).transpose(1,0))
 
-                #     for segment_lbl in unique_cluster_ids:
-                #         if segment_lbl == -1:
-                #             continue
+                    for segment_lbl in unique_cluster_ids:
+                        if segment_lbl == -1:
+                            continue
                         
-                #         seg_mask = cluster_ids[batch_num] == segment_lbl
-                #         fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
-                #         sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
-                #         sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
+                        seg_mask = cluster_ids[batch_num] == segment_lbl
+                        fps_choice = pointnet2_utils.furthest_point_sample(pts_xyz[seg_mask].unsqueeze(0).contiguous(), 16).long().squeeze()
+                        sampled_batch_seg_pts.append(pts_xyz[seg_mask][fps_choice])
+                        sampled_batch_seg_pt_feats.append(pts_feats[seg_mask][fps_choice])
                     
-                # sampled_batch_seg_pts = torch.stack(sampled_batch_seg_pts) # (N segs, 16 pts each seg, 3)
-                # sampled_batch_seg_pt_feats = torch.stack(sampled_batch_seg_pt_feats) # (N segs, 16 pts each seg, 96)
-                # batch_seg_centers = torch.cat(batch_seg_centers, dim=0).unsqueeze(1) #(N segs, 1, 3)
-                # batch_seg_center_feats = torch.cat(batch_seg_center_feats, dim=0).unsqueeze(1) #(N segs, 1, 96)
-                # input_xyz = (batch_seg_centers, sampled_batch_seg_pts)
-                # input_features = (batch_seg_center_feats, sampled_batch_seg_pt_feats)
-                # x = self.attn(input_features, input_xyz).squeeze() #[num segments x 96]
-                x = torch.cat(batch_seg_center_feats, dim=0)
+                sampled_batch_seg_pts = torch.stack(sampled_batch_seg_pts) # (N segs, 16 pts each seg, 3)
+                sampled_batch_seg_pt_feats = torch.stack(sampled_batch_seg_pt_feats) # (N segs, 16 pts each seg, 96)
+                batch_seg_centers = torch.cat(batch_seg_centers, dim=0).unsqueeze(1) #(N segs, 1, 3)
+                batch_seg_center_feats = torch.cat(batch_seg_center_feats, dim=0).unsqueeze(1) #(N segs, 1, 96)
+                input_xyz = (batch_seg_centers, sampled_batch_seg_pts)
+                input_features = (batch_seg_center_feats, sampled_batch_seg_pt_feats)
+                x = self.attn(input_features, input_xyz).squeeze() #[num segments x 96]
+                # x = torch.cat(batch_seg_center_feats, dim=0)
                 out = self.head(x)
             else:
                 x = list_segments_points(x.C, x.F, cluster_ids) #[num points in all segments of all 8 pcs x 96]
