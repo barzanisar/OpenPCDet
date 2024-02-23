@@ -19,12 +19,18 @@ def make_fc_layers(fc_cfg, input_channels, output_channels):
 class RegHead(nn.Module):
     def __init__(self, model_cfg, point_cloud_range, voxel_size):
         super().__init__()
-        self.loss_weight = model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['seg_reg_weight']
-        self.reg_fc_layers = make_fc_layers(
+        self.loss_weight = model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loss_weight']
+        self.rot_reg_fc_layers = make_fc_layers(
             fc_cfg=model_cfg.REG_FC,
             input_channels=256,
-            output_channels=3
-        ) #[256+bn+relu, 256+bn+relu, 3=cos(r1-r2), sin(r1-r2), s1/s2]
+            output_channels=2
+        ) #[256+bn+relu, 256+bn+relu, 2=cos(r1-r2), sin(r1-r2)]
+
+        self.scale_reg_fc_layers = make_fc_layers(
+            fc_cfg=model_cfg.REG_FC,
+            input_channels=256,
+            output_channels=1
+        ) #[256+bn+relu, 256+bn+relu, 1=s1/s2]
 
         reg_loss_type = model_cfg.LOSS_CONFIG.get('LOSS_REG', None)
         if reg_loss_type == 'smooth-l1':
@@ -55,7 +61,10 @@ class RegHead(nn.Module):
         seg_feats = batch_dict['pretext_head_feats'] # (num common clusters, 128+128)
         num_segs = seg_feats.shape[0]
 
-        delta_rot_scale_ratio_preds = self.reg_fc_layers(seg_feats) #(num common clusters, 128+128) -> (num common clusters, 2)
+        delta_rot_preds = self.rot_reg_fc_layers(seg_feats) #(num common clusters, 128+128) -> (num common clusters, 2)
+        scale_ratio_preds = self.scale_reg_fc_layers(seg_feats) #(num common clusters, 128+128) -> (num common clusters, 1)
+        preds = torch.cat([delta_rot_preds, scale_ratio_preds], dim=1)
+        
         gt_boxes = batch_dict['gt_boxes'][0:batch_size]
         gt_boxes_moco = batch_dict['gt_boxes'][batch_size:]
         seg_labels = gt_boxes.new_zeros((num_segs, 3))
@@ -73,19 +82,22 @@ class RegHead(nn.Module):
 
             start_seg_idx+=num_boxes
 
-        seg_reg_loss_src = self.reg_loss_func(
-            delta_rot_scale_ratio_preds[None, ...], seg_labels[None, ...]
-        )# (1, 16384x2, 8)
+        rot_scale_reg_loss = self.reg_loss_func(
+            preds[None, ...], seg_labels[None, ...]
+        )
 
         normalizer = max(float(num_segs), 1.0) #torch.clamp(num_segs, min=1.0)
-
-        loss_sum = seg_reg_loss_src.sum(dim=1)/normalizer #(1, rot loss on cos(delta_rot), rot loss on sin(delta_rot), scale loss)
-        batch_dict['seg_reg_loss_rot'] = (loss_sum[0, 0] + loss_sum[0, 1]).item() 
-        batch_dict['seg_reg_loss_scale'] = loss_sum[0, 2].item()
-
-        seg_reg_loss = self.loss_weight * loss_sum.sum() 
+        rot_scale_reg_loss_sum = rot_scale_reg_loss.sum(dim=1) / normalizer
 
 
-        batch_dict['seg_reg_loss'] = seg_reg_loss
+        rot_loss_sum = rot_scale_reg_loss_sum[0,0] +  rot_scale_reg_loss_sum[0,1] #(1, rot loss on cos(delta_rot), rot loss on sin(delta_rot), scale loss)
+        scale_loss_sum = rot_scale_reg_loss_sum[0,2]
+        
+        # For logging
+        batch_dict['seg_reg_loss_rot'] = rot_loss_sum.item() 
+        batch_dict['seg_reg_loss_scale'] = scale_loss_sum.item()
+
+        # for back prop
+        batch_dict['seg_reg_loss'] = self.loss_weight * (rot_loss_sum + scale_loss_sum)
 
         return batch_dict        
