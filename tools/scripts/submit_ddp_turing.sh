@@ -194,7 +194,7 @@ TEST_CMD+="python -m torch.distributed.launch
 /OpenPCDet/tools/test.py
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE
---batch_size $BATCH_SIZE_PER_GPU 
+--batch_size 20 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
 --eval_all"
