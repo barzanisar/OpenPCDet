@@ -12,6 +12,7 @@ TCP_PORT=18888
 EXTRA_TAG='default'
 TEST_ONLY=false
 NUM_EPOCHS=30
+TEST_START_EPOCH=0
 
 # ========== WAYMO ==========
 DATASET=waymo
@@ -97,6 +98,14 @@ while :; do
             shift
         else
             die 'ERROR: "--extra_tag" requires a non-empty option argument.'
+        fi
+        ;;
+    -e|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            TEST_START_EPOCH=$2
+            shift
+        else
+            die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
         fi
         ;;
     -n|--num_gpus)       # Takes an option argument; ensure it has been specified.
@@ -207,6 +216,7 @@ TEST_CMD+="python -m torch.distributed.launch
 --batch_size 20 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
+--start_epoch $TEST_START_EPOCH 
 --eval_all"
 
 if [ $TEST_ONLY == "true" ]
