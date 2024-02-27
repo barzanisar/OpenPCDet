@@ -11,7 +11,7 @@ BATCH_SIZE_PER_GPU=4
 TCP_PORT=18888
 EXTRA_TAG='default'
 TEST_ONLY=false
-
+NUM_EPOCHS=30
 
 # ========== WAYMO ==========
 DATASET=waymo
@@ -107,6 +107,14 @@ while :; do
             die 'ERROR: "--num_gpus" requires a non-empty option argument.'
         fi
         ;;
+    -a|--num_epochs)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            NUM_EPOCHS=$2
+            shift
+        else
+            die 'ERROR: "--num_epochs" requires a non-empty option argument.'
+        fi
+        ;;
     -c|--cuda_visible_devices)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             CUDA_VISIBLE_DEVICES=$2
@@ -130,6 +138,7 @@ train.py parameters:
 CFG_FILE=$CFG_FILE
 PRETRAINED_MODEL=$PRETRAINED_MODEL
 TCP_PORT=$TCP_PORT
+NUM_EPOCHS=$NUM_EPOCHS
 
 Additional parameters
 DATA_DIR=$DATA_DIR_BIND
@@ -184,6 +193,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
+--epochs $NUM_EPOCHS
 "
 
 
