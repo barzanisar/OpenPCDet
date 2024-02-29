@@ -139,6 +139,13 @@ class PointHeadBox(PointHeadTemplate):
 
             ret_dict['point_cls_labels'] = targets_dict['point_cls_labels']
             ret_dict['point_box_labels'] = targets_dict['point_box_labels']
+            if 'lidar_aug_batch_mask' in batch_dict:
+                b_ids = batch_dict['point_coords'][:,0]
+                points_include_mask = torch.ones_like(b_ids, dtype=torch.bool) 
+                for i in range(batch_dict['batch_size']):
+                    if batch_dict['lidar_aug_batch_mask'][i]:
+                        points_include_mask[b_ids==i] = False
+                ret_dict['points_include_mask'] = points_include_mask
 
         if not self.training or self.predict_boxes_when_training: # for testing or for rcnn head training we need box predictions from 1st stage as anchors in rcnn stage
             # Extract predicted boxes from predicted box residuals

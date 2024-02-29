@@ -221,12 +221,13 @@ class PointHeadTemplate(nn.Module):
 
         # Classes to ignore for regression
         # We dont want to regress big classes
-        cls_wise_wts = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['class_wise_reg_weights']
-        cls_to_ignore = np.where(np.array(cls_wise_wts) == 0)[0]+1
+        # cls_wise_wts = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['class_wise_reg_weights']
+        # cls_to_ignore = np.where(np.array(cls_wise_wts) == 0)[0]+1
         pos_mask = self.forward_ret_dict['point_cls_labels'] > 0 # (num points: 16382 x 2): true for gt object pts TODO: exclude 0 weight classes from here
-        
-        for cls in cls_to_ignore:
-            pos_mask[self.forward_ret_dict['point_cls_labels'] == cls] = False
+        if 'points_include_mask' in self.forward_ret_dict:
+            pos_mask = pos_mask & self.forward_ret_dict['points_include_mask']
+        # for cls in cls_to_ignore:
+        #     pos_mask[self.forward_ret_dict['point_cls_labels'] == cls] = False
 
         point_box_labels = self.forward_ret_dict['point_box_labels']
         point_box_preds = self.forward_ret_dict['point_box_preds']
@@ -235,10 +236,10 @@ class PointHeadTemplate(nn.Module):
         pos_normalizer = pos_mask.sum().float() #num gt object pts
         reg_weights /= torch.clamp(pos_normalizer, min=1.0) # (16384x2): (1/num gt obj pts) for gt object pt, 0 else
 
-        # Class balancing:
-        for i, wt in enumerate(cls_wise_wts):
-            cls_lbl = i+1
-            reg_weights[self.forward_ret_dict['point_cls_labels'] == cls_lbl] *= wt
+        # # Class balancing:
+        # for i, wt in enumerate(cls_wise_wts):
+        #     cls_lbl = i+1
+        #     reg_weights[self.forward_ret_dict['point_cls_labels'] == cls_lbl] *= wt
 
         point_loss_box_src = self.reg_loss_func(
             point_box_preds[None, ...], point_box_labels[None, ...], weights=reg_weights[None, ...]
