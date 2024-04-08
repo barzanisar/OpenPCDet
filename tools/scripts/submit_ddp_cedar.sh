@@ -26,6 +26,7 @@ BATCH_SIZE_PER_GPU=2
 TCP_PORT=18888
 EXTRA_TAG='default'
 TEST_START_EPOCH=0
+NUM_EPOCHS=-1
 
 
 # ========== WAYMO ==========
@@ -137,7 +138,14 @@ while :; do
             die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
         fi
         ;;
-    
+    -a|--num_epochs)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            NUM_EPOCHS=$2
+            shift
+        else
+            die 'ERROR: "--num_epochs" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -153,6 +161,7 @@ train.py parameters:
 CFG_FILE=$CFG_FILE
 PRETRAINED_MODEL=$PRETRAINED_MODEL
 TCP_PORT=$TCP_PORT
+NUM_EPOCHS=$NUM_EPOCHS
 
 Additional parameters
 DATA_DIR_BIND=$DATA_DIR_BIND
@@ -178,5 +187,6 @@ export BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
 export TEST_START_EPOCH=$TEST_START_EPOCH
+export NUM_EPOCHS=$NUM_EPOCHS
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR
