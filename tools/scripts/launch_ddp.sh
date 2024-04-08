@@ -15,7 +15,7 @@ echo "Node $SLURM_NODEID says: Loading Singularity Env..."
 
 # Load Singularity
 module load StdEnv/2020
-module load singularity/3.7
+module load apptainer #singularity/3.7
 
 PROJ_DIR=$PWD
 OPENPCDET_BINDS=""
@@ -35,11 +35,11 @@ OPENPCDET_BINDS+="
     --bind $PROJ_DIR/pcdet/ops/pointnet2/pointnet2_stack/pointnet2_utils.py:/OpenPCDet/pcdet/ops/pointnet2/pointnet2_stack/pointnet2_utils.py
 "
 
-BASE_CMD="SINGULARITYENV_CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
-SINGULARITYENV_WANDB_API_KEY=$WANDB_API_KEY
-SINGULARITYENV_WANDB_MODE=offline
-SINGULARITYENV_NCCL_BLOCKING_WAIT=1
-singularity exec
+BASE_CMD="APPTAINERENV_CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
+APPTAINERENV_WANDB_API_KEY=$WANDB_API_KEY
+APPTAINERENV_WANDB_MODE=offline
+APPTAINERENV_NCCL_BLOCKING_WAIT=1
+apptainer exec
 --nv
 --pwd /OpenPCDet/tools
 --bind $PROJ_DIR/checkpoints:/OpenPCDet/checkpoints
@@ -62,6 +62,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
+--epochs $NUM_EPOCHS
 "
 
 
