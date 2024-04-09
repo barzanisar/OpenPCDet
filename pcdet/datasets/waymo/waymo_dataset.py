@@ -102,7 +102,7 @@ class WaymoDataset(DatasetTemplate):
         waymo_infos = []
 
         self.logger.info(f'Total {mode} sequences {len(self.sample_sequence_list)}')
-        if self.dataset_cfg.get('SCENE_SAMPLING', False):
+        if mode == 'train' and self.dataset_cfg.get('SCENE_SAMPLING', False):
             sample_sequence_list_range = range(0, len(self.sample_sequence_list), self.dataset_cfg.SAMPLED_INTERVAL[mode])
             self.logger.info(f'Total {mode} sampled sequences {len(sample_sequence_list_range)}')
         else:
@@ -128,7 +128,7 @@ class WaymoDataset(DatasetTemplate):
         self.logger.info(f'Total {mode} skipped info {num_skipped_infos}')
         self.logger.info(f'Total {mode} samples for Waymo dataset: {len(waymo_infos)}') # total frames
 
-        if 'SCENE_SAMPLING' not in self.dataset_cfg:
+        if mode != 'train' or 'SCENE_SAMPLING' not in self.dataset_cfg:
             # Frame sampling
             if self.dataset_cfg.SAMPLED_INTERVAL[mode] > 1: # not needed since our pkl file was already sampled at 10
                 sampled_waymo_infos = []
