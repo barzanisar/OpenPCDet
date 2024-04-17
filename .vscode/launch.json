@@ -85,8 +85,57 @@
                 "tools/cfgs/dataset_configs/waymo_dataset_practice.yaml"
             ]
         },
+        // {
+        //     "name": "train_waymo_centerpoint",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint.yaml"
+        //     ]
+        // },
+        // {
+        //     "name": "train_waymo_pointrcnn_practice",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/pointrcnn_practice.yaml"
+        //     ]
+        // },
+        // {
+        //     "name": "train_waymo_centerpoint_clus",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint_clus.yaml"
+        //     ]
+        // },
+        // {
+        //     "name": "test_waymo_centerpoint_clus",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint_clus.yaml", "--eval_all"
+        //     ]
+        // },
+
         {
-            "name": "train_waymo_centerpoint",
+            "name": "train_minkunet_waymo",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -94,35 +143,11 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint.yaml"
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml"
             ]
         },
         {
-            "name": "train_waymo_pointrcnn_practice",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_practice.yaml"
-            ]
-        },
-        {
-            "name": "train_waymo_centerpoint_clus",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/waymo_models/centerpoint_clus.yaml"
-            ]
-        },
-        {
-            "name": "test_waymo_centerpoint_clus",
+            "name": "test_minkunet_waymo",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/test.py",
@@ -130,11 +155,13 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint_clus.yaml", "--eval_all"
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml", 
+                "--eval_all",
+                "--start_epoch", "3"
             ]
         },
         {
-            "name": "finetune_pointrcnn_waymo",
+            "name": "finetune_minkunet_waymo",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -142,14 +169,19 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_practice_minkunet_finetune.yaml",
-                "--pretrained_model",
-                "../checkpoints/checkpoint_minkunet_plus_reg_pretrain.pth.tar",
-                "--fix_random_seed"
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml",
+                "--extra_tag", "segcontrast_plus_dethead_0p8w_5epochs",
+                // "--extra_tag", "segcontrast_plus_dethead_0p8w_frozen_bb", 
+                // "--pretrained_model",
+                // "../checkpoints/seg_plus_det0p8_ep49.pth.tar",
+                "--fix_random_seed",
+                // "--freeze_bb",
+                "--pretrained_model", "../output/waymo_models/pointrcnn_practice_minkunet/segcontrast_plus_dethead_0p8w_frozen_bb/ckpt/checkpoint_epoch_5.pth",
+                "--load_whole_model"
             ]
         },
         {
-            "name": "train_pointrcnn_nuscenes",
+            "name": "train_minkunet_nuscenes",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tools/train.py",
@@ -161,72 +193,136 @@
             ]
         },
         {
-            "name": "finetune_centerpoint_waymo",
+            "name": "test_minkunet_nuscenes",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/tools/train.py",
+            "program": "${workspaceFolder}/tools/test.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/centerpoint_finetune.yaml",
+                "cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml", 
+                "--ckpt", "/home/barza/OpenPCDet/output/nuscenes_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_5.pth"
+            ]
+        },
+        {
+            "name": "test_all_minkunet_nuscenes",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml", 
+                "--eval_all"
+            ]
+        },
+        {
+            "name": "finetune-dist-mink",
+            "type": "python",
+            "request": "launch",
+            "module": "torch.distributed.launch",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--nproc_per_node=1",
+                "${workspaceFolder}/tools/train.py",
+                "--launcher",
+                "pytorch",
+                "--cfg_file",
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml",
                 "--pretrained_model",
-                "../checkpoints/waymo_ssl3d_centerpoint_checkpoint.pth.tar",
-                "--fix_random_seed"
+                "/home/barza/OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar",
+                "--fix_random_seed", 
+                "--extra_tag", "segcontrast_plus_dethead_0p8w",
             ]
         },
         {
-            "name": "test_waymo_pointrcnn",
+            "name": "finetune-dist-pts",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
+            "module": "torch.distributed.launch",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/tools",
             "args": [
+                "--nproc_per_node=1",
+                "${workspaceFolder}/tools/train.py",
+                "--launcher",
+                "pytorch",
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_1percent.yaml",
-                "--eval_all"
+                "cfgs/waymo_models/pointrcnn_practice.yaml",
+                "--pretrained_model",
+                "/home/barza/OpenPCDet/checkpoints/checkpoint-ep1.pth.tar"
             ]
         },
-        {
-            "name": "test_waymo_centerpoint",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/waymo_models/centerpoint.yaml",
-                "--eval_all"
-            ]
-        },
-        {
-            "name": "test_waymo_pointrcnn_ssl",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_finetune.yaml",
-                "--eval_all"
-            ]
-        },
-        {
-            "name": "test_waymo_centerpoint_ssl",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/tools/test.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/tools",
-            "args": [
-                "--cfg_file",
-                "cfgs/waymo_models/centerpoint_finetune.yaml",
-                "--eval_all"
-            ]
-        },
+        // {
+        //     "name": "finetune_centerpoint_waymo",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/train.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint_finetune.yaml",
+        //         "--pretrained_model",
+        //         "../checkpoints/waymo_ssl3d_centerpoint_checkpoint.pth.tar",
+        //         "--fix_random_seed"
+        //     ]
+        // },
+        // {
+        //     "name": "test_waymo_pointrcnn",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/pointrcnn_1percent.yaml",
+        //         "--eval_all"
+        //     ]
+        // },
+        // {
+        //     "name": "test_waymo_centerpoint",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint.yaml",
+        //         "--eval_all"
+        //     ]
+        // },
+        // {
+        //     "name": "test_waymo_pointrcnn_ssl",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/pointrcnn_finetune.yaml",
+        //         "--eval_all"
+        //     ]
+        // },
+        // {
+        //     "name": "test_waymo_centerpoint_ssl",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/tools/test.py",
+        //     "console": "integratedTerminal",
+        //     "cwd": "${workspaceFolder}/tools",
+        //     "args": [
+        //         "--cfg_file",
+        //         "cfgs/waymo_models/centerpoint_finetune.yaml",
+        //         "--eval_all"
+        //     ]
+        // },
         // {
         //     "name": "test-upsample",
         //     "type": "python",

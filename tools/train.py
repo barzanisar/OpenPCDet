@@ -42,9 +42,11 @@ def parse_config():
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=none_or_str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=none_or_str, default=None, help='pretrained_model')
+    parser.add_argument('--load_whole_model', action='store_true', default=False, help='')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
+    parser.add_argument('--freeze_bb', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--save_ckpt_after_epoch', type=int, default=0, help='number of training epochs to save ckpt after')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
@@ -80,6 +82,8 @@ def main():
         )
         dist_train = True
 
+    if args.freeze_bb:
+        cfg.OPTIMIZATION.FREEZE_BB = True
     if args.batch_size is None:
         args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
     else:
@@ -140,7 +144,7 @@ def main():
     start_epoch = it = 0
     last_epoch = -1
     if args.pretrained_model is not None:
-        if cfg.get('LOAD_WHOLE_MODEL', False):
+        if cfg.get('LOAD_WHOLE_MODEL', False) or args.load_whole_model:
             ## For project
             logger.info('**********************Loading whole model**********************')
             model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist_train, logger=logger) 
