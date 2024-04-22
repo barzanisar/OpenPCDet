@@ -296,7 +296,7 @@ TEST_CMD_2+="python -m torch.distributed.launch
 --batch_size 8 
 --workers $WORKERS_PER_GPU 
 --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_2}"
---start_epoch $((NUM_EPOCHS_2-10))
+--start_epoch $((NUM_EPOCHS_2-20))
 --eval_all"
 
 if [ $TEST_ONLY == "true" ]
