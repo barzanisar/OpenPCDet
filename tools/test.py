@@ -36,6 +36,8 @@ def parse_config():
 
     parser.add_argument('--max_waiting_mins', type=int, default=30, help='max waiting minutes')
     parser.add_argument('--start_epoch', type=int, default=0, help='')
+    parser.add_argument('--test_sample_interval', type=int, default=0, help='')
+
     parser.add_argument('--eval_tag', type=str, default='default', help='eval tag for this experiment')
     parser.add_argument('--eval_all', action='store_true', default=False, help='whether to evaluate all checkpoints')
     parser.add_argument('--ckpt_dir', type=str, default=None, help='specify a ckpt directory to be evaluated if needed')
@@ -152,6 +154,9 @@ def main():
         )
         dist_test = True
 
+    if args.test_sample_interval > 0:
+        cfg.DATA_CONFIG.SAMPLED_INTERVAL['test'] = args.test_sample_interval
+        
     if args.batch_size is None:
         args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
     else:

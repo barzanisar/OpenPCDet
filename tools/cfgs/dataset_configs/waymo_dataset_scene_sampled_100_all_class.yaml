@@ -13,7 +13,7 @@ DATA_SPLIT: {
 
 SAMPLED_INTERVAL: {
     'train': 100,
-    'test': 4
+    'test': 20
 }
 SCENE_SAMPLING: True
 

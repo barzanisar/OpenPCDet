@@ -301,12 +301,12 @@ TEST_CMD_2+="python -m torch.distributed.launch
 
 if [ $TEST_ONLY == "true" ]
 then
-    echo "Running ONLY evaluation"
-    echo "Node $SLURM_NODEID says: Launching python script..."
+    # echo "Running ONLY evaluation"
+    # echo "Node $SLURM_NODEID says: Launching python script..."
 
-    echo "$TEST_CMD_1"
-    eval $TEST_CMD_1
-    echo "Done evaluation 1"
+    # echo "$TEST_CMD_1"
+    # eval $TEST_CMD_1
+    # echo "Done evaluation 1"
 
     echo "$TEST_CMD_2"
     eval $TEST_CMD_2
