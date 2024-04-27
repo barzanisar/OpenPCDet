@@ -27,6 +27,7 @@ TEST_START_EPOCH=0
 TEST_SAMPLE_INTERVAL=-1
 CKPT_TO_EVAL='default'
 EVAL_TAG='default'
+LR_BB=0
 
 
 # ========== WAYMO ==========
@@ -169,6 +170,14 @@ while :; do
             die 'ERROR: "--eval_tag" requires a non-empty option argument.'
         fi
         ;;
+    -l|--lr_bb)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            LR_BB=$2
+            shift
+        else
+            die 'ERROR: "--lr_bb" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -214,5 +223,6 @@ export NUM_EPOCHS=$NUM_EPOCHS
 export TEST_SAMPLE_INTERVAL=$TEST_SAMPLE_INTERVAL
 export CKPT_TO_EVAL=$CKPT_TO_EVAL
 export EVAL_TAG=$EVAL_TAG
+export LR_BB=$LR_BB
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR

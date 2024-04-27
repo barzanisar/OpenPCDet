@@ -54,7 +54,8 @@ def parse_config():
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
-
+    parser.add_argument('--lr_bb', type=float, default=0, help='lr for backbone')
+    
     parser.add_argument('--max_waiting_mins', type=int, default=0, help='max waiting minutes')
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--num_epochs_to_eval', type=int, default=0, help='number of checkpoints to be evaluated')
@@ -82,6 +83,8 @@ def main():
         )
         dist_train = True
 
+    if args.lr_bb > 0:
+        cfg.OPTIMIZATION.LR_BB = args.lr_bb
     if args.freeze_bb:
         cfg.OPTIMIZATION.FREEZE_BB = True
     if args.batch_size is None:

@@ -63,6 +63,7 @@ TRAIN_CMD+="python -m torch.distributed.launch
 --workers $WORKERS_PER_GPU 
 --extra_tag $EXTRA_TAG
 --epochs $NUM_EPOCHS
+--lr_bb $LR_BB
 "
 
 

@@ -58,7 +58,10 @@ sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo_seg_frozen_fintune_30ep_80e
 sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo_seglidarplusdet_frozen_fintune_30ep_80ep-test-all-5perc-val tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16918 --extra_tag segcontrast_lidarplusdet --num_epochs_2 80 --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
 
 
-
+# lower lr bb, segcontrast only car 30 epochs
+sbatch --time=8:00:00 --array=1-3%1 --job-name=waymo-segcar-30ep-lrbb-0p003 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 16919 --extra_tag segcontrast_car_lrbb0p003_30ep --lr_bb 0.003 --pretrained_model /OpenPCDet/checkpoints/seg_ep199.pth.tar --test_start_epoch 25 --test_sample_interval 2 --eval_tag val_50perc
+sbatch --time=8:00:00 --array=1-3%1 --job-name=waymo-segcar-30ep-lrbb-0p0006 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 16920 --extra_tag segcontrast_car_lrbb0p0006_30ep --lr_bb 0.0006 --pretrained_model /OpenPCDet/checkpoints/seg_ep199.pth.tar --test_start_epoch 25 --test_sample_interval 2 --eval_tag val_50perc
+sbatch --time=8:00:00 --array=1-3%1 --job-name=waymo-segcar-30ep-lrbb-0p001 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 16921 --extra_tag segcontrast_car_lrbb0p001_30ep --lr_bb 0.001 --pretrained_model /OpenPCDet/checkpoints/seg_ep199.pth.tar --test_start_epoch 25 --test_sample_interval 2 --eval_tag val_50perc
 
 
 
