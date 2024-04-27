@@ -68,16 +68,36 @@ TRAIN_CMD+="python -m torch.distributed.launch
 
 TEST_CMD=$BASE_CMD
 
-TEST_CMD+="python -m torch.distributed.launch
---nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
-/OpenPCDet/tools/test.py
---launcher pytorch 
---cfg_file /OpenPCDet/$CFG_FILE
---batch_size 12 
---workers $WORKERS_PER_GPU 
---extra_tag $EXTRA_TAG
---start_epoch $TEST_START_EPOCH 
---eval_all"
+if [ "$CKPT_TO_EVAL" == 'default' ]; then
+    
+    TEST_CMD+="python -m torch.distributed.launch
+    --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
+    /OpenPCDet/tools/test.py
+    --launcher pytorch 
+    --cfg_file /OpenPCDet/$CFG_FILE
+    --batch_size 12 
+    --workers $WORKERS_PER_GPU 
+    --extra_tag $EXTRA_TAG
+    --test_sample_interval $TEST_SAMPLE_INTERVAL 
+    --eval_tag $EVAL_TAG 
+    --start_epoch $TEST_START_EPOCH
+    --eval_all"
+
+else
+
+    TEST_CMD+="python -m torch.distributed.launch
+    --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
+    /OpenPCDet/tools/test.py
+    --launcher pytorch 
+    --cfg_file /OpenPCDet/$CFG_FILE
+    --batch_size 12 
+    --workers $WORKERS_PER_GPU 
+    --extra_tag $EXTRA_TAG
+    --test_sample_interval $TEST_SAMPLE_INTERVAL 
+    --eval_tag $EVAL_TAG 
+    --ckpt $CKPT_TO_EVAL"
+
+fi
 
 if [ $TEST_ONLY == "true" ]
 then

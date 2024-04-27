@@ -24,6 +24,9 @@ TCP_PORT=18888
 EXTRA_TAG='default'
 NUM_EPOCHS=-1
 TEST_START_EPOCH=0
+TEST_SAMPLE_INTERVAL=-1
+CKPT_TO_EVAL='default'
+EVAL_TAG='default'
 
 
 # ========== WAYMO ==========
@@ -142,6 +145,30 @@ while :; do
             die 'ERROR: "--num_epochs" requires a non-empty option argument.'
         fi
         ;;
+    -g|--test_sample_interval)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            TEST_SAMPLE_INTERVAL=$2
+            shift
+        else
+            die 'ERROR: "--test_sample_interval" requires a non-empty option argument.'
+        fi
+        ;;
+    -i|--ckpt_to_eval)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CKPT_TO_EVAL=$2
+            shift
+        else
+            die 'ERROR: "--ckpt_to_eval" requires a non-empty option argument.'
+        fi
+        ;;
+    -j|--eval_tag)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            EVAL_TAG=$2
+            shift
+        else
+            die 'ERROR: "--eval_tag" requires a non-empty option argument.'
+        fi
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -184,5 +211,8 @@ export TEST_ONLY=$TEST_ONLY
 export EXTRA_TAG=$EXTRA_TAG
 export TEST_START_EPOCH=$TEST_START_EPOCH
 export NUM_EPOCHS=$NUM_EPOCHS
+export TEST_SAMPLE_INTERVAL=$TEST_SAMPLE_INTERVAL
+export CKPT_TO_EVAL=$CKPT_TO_EVAL
+export EVAL_TAG=$EVAL_TAG
 
 srun tools/scripts/launch_ddp.sh #$MASTER_ADDR $TCP_PORT $CFG_FILE $SING_IMG $DATA_DIR

@@ -180,14 +180,6 @@ while :; do
             die 'ERROR: "--ckpt_to_eval" requires a non-empty option argument.'
         fi
         ;;
-    -h|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
-        if [ "$2" ]; then
-            TEST_START_EPOCH=$2
-            shift
-        else
-            die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
-        fi
-        ;;
     -j|--eval_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             EVAL_TAG=$2

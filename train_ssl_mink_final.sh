@@ -24,6 +24,55 @@ tools/scripts/submit_ddp_turing.sh --num_gpus 2 --cuda_visible_devices 2,3 --tcp
 # sbatch --time=8:30:00 --array=1-3%1 --job-name=seglidarplusdetcar-80ep-scene100-pretrained_ep_200 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_80ep_scene_sampled_100.yaml --tcp_port 17917 --extra_tag segcontrast_lidarplusdet_car_pretrained_ep198 --pretrained_model /OpenPCDet/checkpoints/seg_lidar_plus_det_ep198.pth.tar --test_start_epoch 70
 ############################################################3
 #only car frozen finetune-eval on 25% waymo val set left, eval on 5% val set done
+# 	Eval on waymo all
+# scratch car 30	last 5
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo-scratchcar-30ep-test-last5 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17911 --extra_tag scratch_car_30ep --test_only --test_start_epoch 25 --test_sample_interval 2 --eval_tag val_50perc
+# scratch car 40	40th epoch
+sbatch --time=4:00:00 --array=1-1%1 --job-name=waymo-scratchcar-40ep-test-last tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17912 --extra_tag scratch_car_40ep --test_only --test_start_epoch 29 --test_sample_interval 2 --eval_tag val_50perc
+# scratch car 80	80th epoch
+sbatch --time=4:00:00 --array=1-1%1 --job-name=waymo-scratchcar-80ep-test-last tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17913 --extra_tag scratch_car_80ep --test_only --test_start_epoch 79 --test_sample_interval 2 --eval_tag val_50perc
+# scratch car 110	last 10
+sbatch --time=8:00:00 --array=1-3%1 --job-name=waymo-scratchcar-110ep-test-last10 tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17914 --extra_tag scratch_car_110ep --test_only --test_start_epoch 100 --test_sample_interval 2 --eval_tag val_50perc
+
+# segcontrast car 30	last 5
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo_segcar_frozen_fintune_10ep_30ep-testlast5 tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17915 --extra_tag segcontrast_car --num_epochs_2 30 --test_only --test_start_epoch 25 --test_sample_interval 2 --eval_tag val_50perc
+
+# segcontrast car 80	78th epoch
+sbatch --time=3:00:00 --array=1-1%1 --job-name=waymo_segcar_frozen_fintune_30ep_80ep-test78ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17916 --extra_tag segcontrast_car --num_epochs_2 80 --test_only --ckpt_to_eval /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_car_ep80/ckpt/checkpoint_epoch_78.pth --test_sample_interval 2 --eval_tag val_50perc
+
+# ours car 30	29th epoch
+sbatch --time=3:00:00 --array=1-1%1 --job-name=waymo_seglidarplusdetcar_frozen_fintune_10ep_30ep-test29ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17917 --extra_tag segcontrast_lidarplusdet_car --num_epochs_2 30 --test_only --ckpt_to_eval /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_lidarplusdet_car_ep30/ckpt/checkpoint_epoch_29.pth --test_sample_interval 2 --eval_tag val_50perc
+
+# ours car 80	71th epoch
+sbatch --time=3:00:00 --array=1-1%1 --job-name=waymo_seglidarplusdetcar_frozen_fintune_30ep_80ep-test71ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17918 --extra_tag segcontrast_lidarplusdet_car --num_epochs_2 80 --test_only --ckpt_to_eval /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_lidarplusdet_car_ep80/ckpt/checkpoint_epoch_71.pth --test_sample_interval 2 --eval_tag val_50perc
+
+# 	Eval on waymo 5%, all class experiments on all epochs
+sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo-scratch-30ep-test-all-5perc-val tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16911 --extra_tag scratch_30ep --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo-scratch-40ep-test-all-5perc-val tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16912 --extra_tag scratch_40ep --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo-scratch-80ep-test-all-5perc-val tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16913 --extra_tag scratch_80ep --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo-scratch-110ep-test-all-5perc-val tools/scripts/submit_ddp_$CLUSTER_NAME.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16914 --extra_tag scratch_110ep --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+
+sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo_seg_frozen_fintune_10ep_30ep-test-all-5perc-val tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16915 --extra_tag segcontrast --num_epochs_2 30 --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo_seglidarplusdet_frozen_fintune_10ep_30ep-test-all-5perc-val tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16916 --extra_tag segcontrast_lidarplusdet --num_epochs_2 30 --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo_seg_frozen_fintune_30ep_80ep-test-all-5perc-val tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16917 --extra_tag segcontrast --num_epochs_2 80 --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+sbatch --time=8:00:00 --array=1-2%1 --job-name=waymo_seglidarplusdet_frozen_fintune_30ep_80ep-test-all-5perc-val tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100_all_class.yaml --tcp_port 16918 --extra_tag segcontrast_lidarplusdet --num_epochs_2 80 --test_only --test_start_epoch 0 --test_sample_interval 20 --eval_tag val_5perc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo_segcar_frozen_fintune_10ep_30ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17914 --extra_tag segcontrast_car --pretrained_model_1 /OpenPCDet/checkpoints/seg_ep199.pth.tar --num_epochs_1 10 --pretrained_model_2 /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_car_ep10_frozen_bb/ckpt/checkpoint_epoch_10.pth --num_epochs_2 30 --test_only
 # sbatch --time=8:00:00 --array=1-1%1 --job-name=waymo_seglidarplusdetcar_frozen_fintune_10ep_30ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17915 --extra_tag segcontrast_lidarplusdet_car --pretrained_model_1 /OpenPCDet/checkpoints/seg_lidar_plus_det_ep198.pth.tar --num_epochs_1 10 --pretrained_model_2 /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_lidarplusdet_car_ep10_frozen_bb/ckpt/checkpoint_epoch_10.pth --num_epochs_2 30 --test_only
 sbatch --time=8:00:00 --array=1-4%1 --job-name=waymo_segcar_frozen_fintune_30ep_80ep tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen.sh --cfg_file tools/cfgs/waymo_models/pointrcnn_minkunet_scene_sampled_100.yaml --tcp_port 17916 --extra_tag segcontrast_car --pretrained_model_1 /OpenPCDet/checkpoints/seg_ep199.pth.tar --num_epochs_1 30 --pretrained_model_2 /OpenPCDet/output/waymo_models/pointrcnn_minkunet_scene_sampled_100/segcontrast_car_ep30_frozen_bb/ckpt/checkpoint_epoch_30.pth --num_epochs_2 80 --test_only
