@@ -37,7 +37,7 @@ WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
-TEST_ONLY=false
+MODE=train_all #train_frozen, train-second, train_all, test_only
 EVAL_ALL=false
 
 # Usage info
@@ -52,7 +52,7 @@ train.py parameters
 additional parameters
 [--data_dir DATA_DIR_BIND]
 [--sing_img SING_IMG]
-[--test_only]
+[--mode]
 
 --cfg_file             CFG_FILE           Config file                         [default=$CFG_FILE]
 --pretrained_model     PRETRAINED_MODEL   Pretrained model                    [default=$PRETRAINED_MODEL]
@@ -61,7 +61,7 @@ additional parameters
 
 --data_dir             DATA_DIR_BIND           Data directory               [default=$DATA_DIR_BIND]
 --sing_img             SING_IMG           Singularity image file              [default=$SING_IMG]
---test_only            TEST_ONLY          Test only flag                      [default=$TEST_ONLY]
+--mode            MODE          Test only flag                      [default=$MODE]
 "
 }
 
@@ -129,8 +129,8 @@ while :; do
             die 'ERROR: "--train_batch_size" requires a non-empty option argument.'
         fi
         ;;
-    -z|--test_only)       # Takes an option argument; ensure it has been specified.
-        TEST_ONLY="true"
+    -z|--mode)       # Takes an option argument; ensure it has been specified.
+        MODE="true"
         ;;
     -t|--extra_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
@@ -208,7 +208,7 @@ NUM_EPOCHS=$NUM_EPOCHS
 Additional parameters
 DATA_DIR_BIND=$DATA_DIR_BIND
 SING_IMG=$SING_IMG
-TEST_ONLY=$TEST_ONLY
+MODE=$MODE
 EXTRA_TAG=$EXTRA_TAG
 BATCH_SIZE_PER_GPU=$BATCH_SIZE_PER_GPU
 "
@@ -309,7 +309,7 @@ TRAIN_CMD_2+="python -m torch.distributed.launch
 --fix_random_seed
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
---extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_2}"
+--extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
 --epochs $NUM_EPOCHS_2 
 --load_whole_model
 "
@@ -324,7 +324,7 @@ if [ "$CKPT_TO_EVAL" == 'default' ]; then
     --cfg_file /OpenPCDet/$CFG_FILE
     --batch_size 12 
     --workers $WORKERS_PER_GPU 
-    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_2}"
+    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
     --start_epoch $TEST_START_EPOCH
     --test_sample_interval $TEST_SAMPLE_INTERVAL 
     --eval_tag $EVAL_TAG 
@@ -339,7 +339,7 @@ else
     --cfg_file /OpenPCDet/$CFG_FILE
     --batch_size 12 
     --workers $WORKERS_PER_GPU 
-    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_2}"
+    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
     --test_sample_interval $TEST_SAMPLE_INTERVAL 
     --eval_tag $EVAL_TAG 
     --ckpt $CKPT_TO_EVAL"
@@ -347,7 +347,7 @@ else
 fi
 
 
-if [ $TEST_ONLY == "true" ]
+if [ "$MODE" == "test_only" ]
 then
     # echo "Running ONLY evaluation"
     # echo "Node $SLURM_NODEID says: Launching python script..."
@@ -356,6 +356,32 @@ then
     # eval $TEST_CMD_1
     # echo "Done evaluation 1"
 
+    echo "$TEST_CMD_2"
+    eval $TEST_CMD_2
+    echo "Done evaluation 2"
+elif [ "$MODE" == "train_frozen" ]
+then
+    echo "Running training"
+    echo "Node $SLURM_NODEID says: Launching python script..."
+
+    echo "$TRAIN_CMD_1"
+    eval $TRAIN_CMD_1
+    echo "Done training 1"
+
+    echo "Running evaluation"
+    echo "$TEST_CMD_1"
+    eval $TEST_CMD_1
+    echo "Done evaluation 1"
+elif [ "$MODE" == "train_second" ]
+then
+    echo "Running training"
+    echo "Node $SLURM_NODEID says: Launching python script..."
+
+    echo "$TRAIN_CMD_2"
+    eval $TRAIN_CMD_2
+    echo "Done training 2"
+
+    echo "Running evaluation"
     echo "$TEST_CMD_2"
     eval $TEST_CMD_2
     echo "Done evaluation 2"
