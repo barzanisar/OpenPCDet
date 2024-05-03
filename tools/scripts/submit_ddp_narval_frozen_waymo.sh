@@ -130,7 +130,12 @@ while :; do
         fi
         ;;
     -z|--mode)       # Takes an option argument; ensure it has been specified.
-        MODE="true"
+        if [ "$2" ]; then
+            MODE=$2
+            shift
+        else
+            die 'ERROR: "--mode" requires a non-empty option argument.'
+        fi
         ;;
     -t|--extra_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
