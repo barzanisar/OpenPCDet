@@ -18,7 +18,12 @@ from pcdet.datasets import build_dataloader
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
 from pcdet.utils import wandb_utils
+import wandb
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -53,6 +58,10 @@ def parse_config():
     parser.add_argument('--time_profile', action='store_true', default=False)
     parser.add_argument('--time_profile_iterations', type=int, default=100)
 
+    parser.add_argument('--wandb_run_name', type=none_or_str, default=None, help='wandb_run_name')
+    parser.add_argument('--wandb_group', type=none_or_str, default=None, help='wandb_group')
+
+
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
@@ -83,7 +92,7 @@ def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id
         result_dir=eval_output_dir, save_to_file=args.save_to_file
     )
 
-    wandb_utils.log_and_summary(cfg, eval_dict, step=int(epoch_id))
+    # wandb_utils.log_and_summary(cfg, eval_dict, step=int(epoch_id))
 
 def get_no_evaluated_ckpt(ckpt_dir, ckpt_record_file, args):
     ckpt_list = glob.glob(os.path.join(ckpt_dir, '*checkpoint_epoch_*.pth'))
@@ -131,9 +140,15 @@ def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir
             result_dir=cur_result_dir, save_to_file=args.save_to_file
         )
 
-        highest_metric = wandb_utils.log_and_summary(cfg, tb_dict, step=int(cur_epoch_id), highest_metric=highest_metric)
+        # highest_metric = wandb_utils.log_and_summary(cfg, tb_dict, step=int(cur_epoch_id), highest_metric=highest_metric)
 
         if cfg.GLOBAL_RANK == 0:
+            if cfg.wandb.enabled:
+                wb_dict={}
+                for k, v in tb_dict.items():
+                    wb_dict[f'{cfg.wandb.job_type}/{k}'] = v
+                wandb.log(wb_dict, int(cur_epoch_id))
+
             for key, val in tb_dict.items():
                 tb_log.add_scalar(key, val, cur_epoch_id)
 
@@ -153,6 +168,13 @@ def main():
             args.tcp_port, args.local_rank, backend='nccl'
         )
         dist_test = True
+
+    if args.disable_wandb:
+        cfg['wandb']['enabled'] = False
+    if args.wandb_run_name is not None:
+        cfg['wandb']['run_name'] = args.wandb_run_name
+    if args.wandb_group is not None:
+        cfg['wandb']['group'] = args.wandb_group 
 
     if args.test_sample_interval > 0:
         cfg.DATA_CONFIG.SAMPLED_INTERVAL['test'] = args.test_sample_interval
@@ -186,8 +208,8 @@ def main():
     log_file = eval_output_dir / ('log_eval_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
     logger = common_utils.create_logger(log_file, rank=cfg.GLOBAL_RANK)
 
-    if not args.disable_wandb:
-        wandb_utils.init(cfg, args, job_type='eval', eval_tag=args.eval_tag)
+    # if not args.disable_wandb:
+    #     wandb_utils.init(cfg, args, job_type='eval', eval_tag=args.eval_tag)
 
     # log to file
     logger.info('**********************Start logging**********************')
@@ -212,8 +234,8 @@ def main():
 
     if args.pickle_file:
         eval_dict = eval_utils.eval_pickle(cfg, args.pickle_file, args.discard_results, test_loader, eval_output_dir, epoch_id, logger)
-        if not args.disable_wandb:
-            wandb_utils.log_and_summary(cfg, eval_dict, step=0)
+        # if not args.disable_wandb:
+        #     wandb_utils.log_and_summary(cfg, eval_dict, step=0)
     elif args.time_profile:
         model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
         model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
@@ -234,6 +256,10 @@ def main():
         model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
         with torch.no_grad():
             if args.eval_all:
+                # Wandb
+                if cfg['wandb']['enabled'] and cfg.GLOBAL_RANK == 0:
+                    run_id_file = eval_output_dir / 'wandb_run_id.txt'
+                    wandb_utils.init_or_resume_wandb_run(run_id_file, cfg)
                 repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
             else:
                 eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=dist_test)

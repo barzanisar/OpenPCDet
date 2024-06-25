@@ -60,6 +60,10 @@ def parse_config():
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--num_epochs_to_eval', type=int, default=0, help='number of checkpoints to be evaluated')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
+    
+    parser.add_argument('--disable_wandb', action='store_true', default=False, help='Turn off wandb reporting')
+    parser.add_argument('--wandb_run_name', type=none_or_str, default=None, help='wandb_run_name')
+    parser.add_argument('--wandb_group', type=none_or_str, default=None, help='wandb_group')
 
     args = parser.parse_args()
 
@@ -83,6 +87,12 @@ def main():
         )
         dist_train = True
 
+    if args.disable_wandb:
+        cfg['wandb']['enabled'] = False
+    if args.wandb_run_name is not None:
+        cfg['wandb']['run_name'] = args.wandb_run_name
+    if args.wandb_group is not None:
+        cfg['wandb']['group'] = args.wandb_group    
     if args.lr_bb > 0:
         cfg.OPTIMIZATION.LR_BB = args.lr_bb
     if args.freeze_bb:
@@ -183,10 +193,22 @@ def main():
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
     
-    wandb_utils.init(cfg, args, job_type='train')
+    # total_params = sum(p.numel() for p in model.parameters())
+    # num_params_head = sum(param.numel() for name, param in model.named_parameters()
+    #         if param.requires_grad and 'backbone_3d.' not in name)
+    # num_params_backbone = sum(param.numel() for name, param in model.named_parameters()
+    #         if param.requires_grad and 'backbone_3d.' in name)
+    
+    #wandb_utils.init(cfg, args, job_type='train')
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
+    
+        # Wandb
+    if cfg['wandb']['enabled'] and cfg.GLOBAL_RANK == 0:
+        run_id_file = output_dir / 'wandb_run_id.txt'
+        wandb_utils.init_or_resume_wandb_run(run_id_file, cfg)
+
     train_model(cfg, 
         model,
         optimizer,

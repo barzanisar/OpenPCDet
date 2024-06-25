@@ -6,11 +6,12 @@ import tqdm
 import time
 from torch.nn.utils import clip_grad_norm_
 from pcdet.utils import common_utils, commu_utils
-from pcdet.utils import wandb_utils
+# from pcdet.utils import wandb_utils
 from pcdet.datasets import build_dataloader
 import copy
 import math
 import numpy as np
+import wandb
 #from matplotlib import pyplot as plt
 
 def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
@@ -90,18 +91,20 @@ def train_one_epoch(cfg, cur_epoch, model, optimizer, train_loader, model_func, 
             tbar.set_postfix(disp_dict)
             tbar.refresh()
 
+            if rank == 0 and cfg['wandb']['enabled']:
+                wandb_cfg = cfg['wandb']
+                wb_dict = {}
+                if len(optimizer.param_groups) > 1:
+                    for i, pg in enumerate(optimizer.param_groups):
+                        wb_dict[f'{wandb_cfg.job_type}/train/lr_{i}'] = pg['lr']
+                else:
+                    wb_dict[f'{wandb_cfg.job_type}/train/lr'] = cur_lr
+                wb_dict[f'{wandb_cfg.job_type}/train/loss'] = loss
+                wb_dict[f'{wandb_cfg.job_type}/train/epoch'] = cur_epoch
+                wb_dict[f'{wandb_cfg.job_type}/train/accum_iter'] = accumulated_iter
+                wandb.log(wb_dict, accumulated_iter)
 
-            wb_dict = {}
-            if len(optimizer.param_groups) > 1:
-                for i, pg in enumerate(optimizer.param_groups):
-                    wb_dict[f'lr_{i}'] = pg['lr']
-            else:
-                wb_dict['lr'] = cur_lr
-            wb_dict['loss'] = loss
-            wb_dict['epoch'] = cur_epoch
-
-
-            wandb_utils.log(cfg, wb_dict, accumulated_iter)
+            # wandb_utils.log(cfg, wb_dict, accumulated_iter)
 
             # if tb_log is not None:
             #     tb_log.add_scalar('train/loss', loss, accumulated_iter)
