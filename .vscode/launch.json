@@ -135,6 +135,19 @@
         // },
 
         {
+            "name": "train_minkunet_waymo_lowlr_bb",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml", 
+                "--lr_bb", "0.003"
+            ]
+        },
+        {
             "name": "train_minkunet_waymo",
             "type": "python",
             "request": "launch",
@@ -155,9 +168,35 @@
             "cwd": "${workspaceFolder}/tools",
             "args": [
                 "--cfg_file",
-                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml", 
-                "--eval_all",
-                "--start_epoch", "3"
+                "cfgs/waymo_models/pointrcnn_practice_minkunet.yaml", "--eval_all"
+                // "--ckpt", "/home/barza/OpenPCDet/output/waymo_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_2.pth"
+                // "--start_epoch", "3"
+            ]
+        },
+        {
+            "name": "train_minkunet_kitti",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/kitti_models/pointrcnn_minkunet_0p05_0_practice.yaml"
+            ]
+        },
+        {
+            "name": "test_minkunet_kitti",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/tools",
+            "args": [
+                "--cfg_file",
+                "cfgs/kitti_models/pointrcnn_minkunet_0p05_0_practice.yaml", "--eval_all", "--batch_size", "6"
+                // "--ckpt", "/home/barza/OpenPCDet/output/waymo_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_2.pth"
+                // "--start_epoch", "3"
             ]
         },
         {

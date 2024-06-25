@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --wait-all-nodes=1
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:a100:2                     # Request 4 GPUs
+#SBATCH --gres=gpu:a100:1                     # Request 1 GPUs
 #SBATCH --ntasks=1 
 #SBATCH --ntasks-per-node=1                 # num tasks== num nodes
 #SBATCH --time=01:00:00
@@ -20,7 +20,8 @@ die() { echo "$*" 1>&2 ; exit 1; }
 CFG_FILE=tools/cfgs/waymo_models/pointrcnn_minkunet.yaml
 PRETRAINED_MODEL_1=None
 PRETRAINED_MODEL_2=None
-BATCH_SIZE_PER_GPU=4
+BATCH_SIZE_PER_GPU=8
+TEST_BATCH_SIZE_PER_GPU=20
 TCP_PORT=18888
 EXTRA_TAG='default'
 NUM_EPOCHS_1=-1
@@ -29,15 +30,18 @@ TEST_SAMPLE_INTERVAL=-1
 TEST_START_EPOCH=0
 CKPT_TO_EVAL='default'
 EVAL_TAG='default'
+WANDB_RUN_NAME=None
+WANDB_GROUP=None
 
 
 # ========== WAYMO ==========
 DATA_DIR_BIND=/home/$USER/scratch/Datasets/Waymo:/OpenPCDet/data/waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
+KITTI_DATA_DIR=/home/$USER/projects/rrg-swasland/datasets3/Kitti
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
-MODE=train_all #train_frozen, train-second, train_all, test_only
+MODE=train_all #train_frozen, train_second, train_all, test_only
 EVAL_ALL=false
 
 # Usage info
@@ -75,7 +79,7 @@ while :; do
         exit
         ;;
     # train.py parameters
-    -c|--cfg_file)       # Takes an option argument; ensure it has been specified.
+    -a|--cfg_file)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             CFG_FILE=$2
 
@@ -89,6 +93,9 @@ while :; do
                 DATASET=nuscenes
                 DATA_DIR_BIND=$NUSCENES_DATA_DIR:/OpenPCDet/data/nuscenes/v1.0-trainval
                 echo "Nuscenes dataset cfg file"
+            elif [[ "$CFG_FILE"  == *"kitti_models"* ]]; then
+                DATASET=kitti
+                echo "KITTI dataset cfg file"
             else
                 die 'ERROR: Could not determine backbone from cfg_file path.'
             fi
@@ -97,7 +104,7 @@ while :; do
             die 'ERROR: "--cfg_file" requires a non-empty option argument.'
         fi
         ;;
-    -p|--pretrained_model_1)       # Takes an option argument; ensure it has been specified.
+    -b|--pretrained_model_1)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             PRETRAINED_MODEL_1=$2
             shift
@@ -105,7 +112,7 @@ while :; do
             die 'ERROR: "--pretrained_model 1" requires a non-empty option argument.'
         fi
         ;;
-    -f|--pretrained_model_2)       # Takes an option argument; ensure it has been specified.
+    -c|--pretrained_model_2)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             PRETRAINED_MODEL_2=$2
             shift
@@ -113,7 +120,7 @@ while :; do
             die 'ERROR: "--pretrained_model 2" requires a non-empty option argument.'
         fi
         ;;
-    -o|--tcp_port)       # Takes an option argument; ensure it has been specified.
+    -d|--tcp_port)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             TCP_PORT=$2
             shift
@@ -121,7 +128,7 @@ while :; do
             die 'ERROR: "--tcp_port" requires a non-empty option argument.'
         fi
         ;;
-    -b|--batch_size_per_gpu)       # Takes an option argument; ensure it has been specified.
+    -e|--batch_size_per_gpu)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             BATCH_SIZE_PER_GPU=$2
             shift
@@ -129,7 +136,7 @@ while :; do
             die 'ERROR: "--train_batch_size" requires a non-empty option argument.'
         fi
         ;;
-    -z|--mode)       # Takes an option argument; ensure it has been specified.
+    -f|--mode)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             MODE=$2
             shift
@@ -137,7 +144,7 @@ while :; do
             die 'ERROR: "--mode" requires a non-empty option argument.'
         fi
         ;;
-    -t|--extra_tag)       # Takes an option argument; ensure it has been specified.
+    -g|--extra_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             EXTRA_TAG=$2
             shift
@@ -145,7 +152,7 @@ while :; do
             die 'ERROR: "--extra_tag" requires a non-empty option argument.'
         fi
         ;;
-    -e|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
+    -h|--test_start_epoch)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             TEST_START_EPOCH=$2
             shift
@@ -153,7 +160,7 @@ while :; do
             die 'ERROR: "--test_start_epoch" requires a non-empty option argument.'
         fi
         ;;
-    -a|--num_epochs_1)       # Takes an option argument; ensure it has been specified.
+    -i|--num_epochs_1)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             NUM_EPOCHS_1=$2
             shift
@@ -161,7 +168,7 @@ while :; do
             die 'ERROR: "--num_epochs_1" requires a non-empty option argument.'
         fi
         ;;
-    -d|--num_epochs_2)       # Takes an option argument; ensure it has been specified.
+    -j|--num_epochs_2)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             NUM_EPOCHS_2=$2
             shift
@@ -169,7 +176,7 @@ while :; do
             die 'ERROR: "--num_epochs_2" requires a non-empty option argument.'
         fi
         ;;
-    -g|--test_sample_interval)       # Takes an option argument; ensure it has been specified.
+    -k|--test_sample_interval)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             TEST_SAMPLE_INTERVAL=$2
             shift
@@ -177,7 +184,7 @@ while :; do
             die 'ERROR: "--test_sample_interval" requires a non-empty option argument.'
         fi
         ;;
-    -i|--ckpt_to_eval)       # Takes an option argument; ensure it has been specified.
+    -l|--ckpt_to_eval)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             CKPT_TO_EVAL=$2
             shift
@@ -185,12 +192,28 @@ while :; do
             die 'ERROR: "--ckpt_to_eval" requires a non-empty option argument.'
         fi
         ;;
-    -j|--eval_tag)       # Takes an option argument; ensure it has been specified.
+    -m|--eval_tag)       # Takes an option argument; ensure it has been specified.
         if [ "$2" ]; then
             EVAL_TAG=$2
             shift
         else
             die 'ERROR: "--eval_tag" requires a non-empty option argument.'
+        fi
+        ;;
+    -n|--wandb_run_name)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            WANDB_RUN_NAME=$2
+            shift
+        else
+            die 'ERROR: "--wandb_run_name" requires a non-empty option argument.'
+        fi
+        ;;
+    -o|--wandb_group)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            WANDB_GROUP=$2
+            shift
+        else
+            die 'ERROR: "--wandb_group" requires a non-empty option argument.'
         fi
         ;;
     -?*)
@@ -238,6 +261,28 @@ echo "Node $SLURM_NODEID says: WORLD_SIZE=$WORLD_SIZE"
 echo "Node $SLURM_NODEID says: WORKERS_PER_GPU=$SLURM_CPUS_PER_TASK / $NUM_GPUS=$WORKERS_PER_GPU"
 echo "Node $SLURM_NODEID says: Loading Singularity Env..."
 
+if [ "$DATASET" == 'kitti' ]; then
+    # Extract Dataset
+    echo "Extracting kitti data"
+
+    TMP_DATA_DIR=$SLURM_TMPDIR/data
+    unzip -qq $KITTI_DATA_DIR/data_object_calib.zip -d $TMP_DATA_DIR
+    unzip -qq $KITTI_DATA_DIR/data_object_label_2.zip -d $TMP_DATA_DIR
+    unzip -qq $KITTI_DATA_DIR/data_object_velodyne.zip -d $TMP_DATA_DIR
+    unzip -qq $KITTI_DATA_DIR/planes.zip -d $TMP_DATA_DIR
+    
+    echo "Done extracting kitti data"
+
+    # Extract dataset infos
+    echo "Extracting kitti infos"
+    unzip -qq $KITTI_DATA_DIR/Infos/kitti_train_infos_5.zip -d $TMP_DATA_DIR
+    unzip -qq $$KITTI_DATA_DIR/Infos/kitti_infos.zip -d $TMP_DATA_DIR # contains gt database with labels
+    echo "Done extracting kitti infos"
+
+    DATA_DIR_BIND=$TMP_DATA_DIR:/OpenPCDet/data/kitti
+
+fi
+
 # Load Singularity
 module load StdEnv/2020
 module load apptainer #singularity/3.7
@@ -272,6 +317,7 @@ apptainer exec
 --bind $PROJ_DIR/tools:/OpenPCDet/tools
 --bind $PROJ_DIR/lib:/OpenPCDet/lib
 --bind $DATA_DIR_BIND
+--bind $PROJ_DIR/data/kitti/ImageSets:/OpenPCDet/data/kitti/ImageSets
 $OPENPCDET_BINDS
 $SING_IMG
 "
@@ -283,12 +329,12 @@ TRAIN_CMD_1+="python -m torch.distributed.launch
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE 
 --pretrained_model $PRETRAINED_MODEL_1 
---fix_random_seed
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_frozen_bb"
 --epochs $NUM_EPOCHS_1 
---freeze_bb
+--freeze_bb 
+--disable_wandb
 "
 
 
@@ -298,11 +344,12 @@ TEST_CMD_1+="python -m torch.distributed.launch
 /OpenPCDet/tools/test.py
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE
---batch_size 12 
+--batch_size $TEST_BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_frozen_bb"
 --start_epoch $((NUM_EPOCHS_1-10)) 
---eval_all"
+--eval_all 
+--disable_wandb"
 
 TRAIN_CMD_2=$BASE_CMD
 TRAIN_CMD_2+="python -m torch.distributed.launch 
@@ -311,12 +358,13 @@ TRAIN_CMD_2+="python -m torch.distributed.launch
 --launcher pytorch 
 --cfg_file /OpenPCDet/$CFG_FILE 
 --pretrained_model $PRETRAINED_MODEL_2 
---fix_random_seed
 --batch_size $BATCH_SIZE_PER_GPU 
 --workers $WORKERS_PER_GPU 
 --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
 --epochs $NUM_EPOCHS_2 
---load_whole_model
+--load_whole_model 
+--wandb_run_name $WANDB_RUN_NAME 
+--wandb_group $WANDB_GROUP
 "
  
 TEST_CMD_2=$BASE_CMD
@@ -327,13 +375,14 @@ if [ "$CKPT_TO_EVAL" == 'default' ]; then
     /OpenPCDet/tools/test.py
     --launcher pytorch 
     --cfg_file /OpenPCDet/$CFG_FILE
-    --batch_size 12 
+    --batch_size $TEST_BATCH_SIZE_PER_GPU 
     --workers $WORKERS_PER_GPU 
-    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
     --start_epoch $TEST_START_EPOCH
     --test_sample_interval $TEST_SAMPLE_INTERVAL 
     --eval_tag $EVAL_TAG 
-    --eval_all"
+    --eval_all 
+    --wandb_run_name $WANDB_RUN_NAME 
+    --wandb_group $WANDB_GROUP"
 
 else
 
@@ -342,15 +391,48 @@ else
     /OpenPCDet/tools/test.py
     --launcher pytorch 
     --cfg_file /OpenPCDet/$CFG_FILE
-    --batch_size 12 
+    --batch_size $TEST_BATCH_SIZE_PER_GPU 
     --workers $WORKERS_PER_GPU 
-    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
     --test_sample_interval $TEST_SAMPLE_INTERVAL 
     --eval_tag $EVAL_TAG 
-    --ckpt $CKPT_TO_EVAL"
+    --ckpt $CKPT_TO_EVAL 
+    --disable_wandb"
 
 fi
 
+if [ "$MODE" == "scratch" ]; then
+    TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
+else
+    TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""
+fi
+
+if [ "$MODE" == "scratch" ]; then
+    TRAIN_CMD=$BASE_CMD
+    TRAIN_CMD+="python -m torch.distributed.launch 
+    --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0
+    /OpenPCDet/tools/train.py 
+    --launcher pytorch 
+    --cfg_file /OpenPCDet/$CFG_FILE 
+    --batch_size $BATCH_SIZE_PER_GPU 
+    --workers $WORKERS_PER_GPU 
+    --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}"
+    --epochs $NUM_EPOCHS_1
+    --wandb_run_name $WANDB_RUN_NAME 
+    --wandb_group $WANDB_GROUP
+    "
+
+    echo "Running training scratch"
+    echo "Node $SLURM_NODEID says: Launching python script..."
+
+    echo "$TRAIN_CMD"
+    eval $TRAIN_CMD
+    echo "Done training scratch"
+
+    echo "Running evaluation scratch"
+    echo "$TEST_CMD_2"
+    eval $TEST_CMD_2
+    echo "Done evaluation scratch"
+fi
 
 if [ "$MODE" == "test_only" ]
 then
@@ -402,10 +484,10 @@ else
     eval $TRAIN_CMD_2
     echo "Done training 2"
 
-    echo "Running evaluation"
-    echo "$TEST_CMD_1"
-    eval $TEST_CMD_1
-    echo "Done evaluation 1"
+    # echo "Running evaluation"
+    # echo "$TEST_CMD_1"
+    # eval $TEST_CMD_1
+    # echo "Done evaluation 1"
 
     echo "$TEST_CMD_2"
     eval $TEST_CMD_2

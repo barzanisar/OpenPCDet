@@ -2,13 +2,14 @@ CLASS_NAMES: ['Vehicle'] #, 'Pedestrian', 'Cyclist'
 # python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
 # python -m torch.distributed.launch --nproc_per_node=1 /OpenPCDet/tools/train.py  --launcher pytorch --cfg_file /OpenPCDet/tools/cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --pretrained_model /OpenPCDet/checkpoints/seg_plus_det0p8_ep49.pth.tar --fix_random_seed --extra_tag segcontrast_plus_dethead_0p8w 
 #python test.py --cfg_file cfgs/waymo_models/pointrcnn_practice_minkunet.yaml --ckpt /OpenPCDet/output/waymo_models/pointrcnn_practice_minkunet/ckpt/checkpoint_epoch_22.pth
-WANDB:
-    ENABLED: False
-    PROJECT: SSL3dObject
-    ENTITY: trailab
-    SUMMARY_HIGHEST_METRIC: None
+wandb:
+    enabled: True
+    project: SSL3dObject_new
+    entity: trailab
+    run_name: scratch_pointrcnn #segcontrast_10perc_waymo_minkunet #scratch_pointrcnn
+    job_type: finetune_3dOD_waymo_1percent
+    group: ep5_try0 #ep5_ep60_try0 #ep60_try0
     dir: '/OpenPCDet/output'
-    tags: ['scratch']
 
 # SKIP_INIT_LAYER: ['bn.weight', 'bn.bias', 'running_mean', 'running_var'] #'bn.weight', 'bn.bias', 
 DATA_CONFIG:
