@@ -276,7 +276,7 @@ if [ "$DATASET" == 'kitti' ]; then
     # Extract dataset infos
     echo "Extracting kitti infos"
     unzip -qq $KITTI_DATA_DIR/Infos/kitti_train_infos_5.zip -d $TMP_DATA_DIR
-    unzip -qq $$KITTI_DATA_DIR/Infos/kitti_infos.zip -d $TMP_DATA_DIR # contains gt database with labels
+    unzip -qq $KITTI_DATA_DIR/Infos/kitti_infos.zip -d $TMP_DATA_DIR # contains gt database with labels
     echo "Done extracting kitti infos"
 
     DATA_DIR_BIND=$TMP_DATA_DIR:/OpenPCDet/data/kitti
