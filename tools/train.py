@@ -65,6 +65,8 @@ def parse_config():
     parser.add_argument('--wandb_run_name', type=none_or_str, default=None, help='wandb_run_name')
     parser.add_argument('--wandb_group', type=none_or_str, default=None, help='wandb_group')
 
+    parser.add_argument('--load_num_batches_tracked', action='store_true', default=False, help='load num batches tracked')
+
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
@@ -165,7 +167,7 @@ def main():
             ### Change for finetuning
             logger.info('**********************Loading SSL backbone**********************')
             state = torch.load(args.pretrained_model)
-            init_model_from_weights(model, state, skip_layers=cfg.get('SKIP_INIT_LAYER', None), freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger, rank=cfg.GLOBAL_RANK)
+            init_model_from_weights(model, state, skip_layers=cfg.get('SKIP_INIT_LAYER', None), freeze_bb=cfg.OPTIMIZATION.get('FREEZE_BB', False), logger=logger, rank=cfg.GLOBAL_RANK, ignore_num_batches_tracked=not args.load_num_batches_tracked)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 

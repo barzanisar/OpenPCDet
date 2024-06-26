@@ -32,6 +32,7 @@ CKPT_TO_EVAL='default'
 EVAL_TAG='default'
 WANDB_RUN_NAME=None
 WANDB_GROUP=None
+LOAD_NUM_BATCHES_TRACKED=false
 
 
 # ========== WAYMO ==========
@@ -216,6 +217,9 @@ while :; do
             die 'ERROR: "--wandb_group" requires a non-empty option argument.'
         fi
         ;;
+    -p|--load_num_batches_tracked)       # Takes an option argument; ensure it has been specified.
+        LOAD_NUM_BATCHES_TRACKED="true"
+        ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
         ;;
@@ -337,6 +341,9 @@ TRAIN_CMD_1+="python -m torch.distributed.launch
 --disable_wandb
 "
 
+if [ "$LOAD_NUM_BATCHES_TRACKED" == 'true' ]; then
+    TRAIN_CMD_1+=" --load_num_batches_tracked"
+fi
 
 TEST_CMD_1=$BASE_CMD
 TEST_CMD_1+="python -m torch.distributed.launch

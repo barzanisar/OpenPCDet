@@ -41,7 +41,8 @@ def init_model_from_weights(
     skip_layers=None,
     print_init_layers=True,
     freeze_bb=False,
-    rank=0
+    rank=0,
+    ignore_num_batches_tracked=True
 ):
     """
     Initialize the model from any given params file. This is particularly useful
@@ -80,7 +81,7 @@ def init_model_from_weights(
     #local_rank = int(os.environ.get("LOCAL_RANK", 0))
     not_found, not_init = [], []
     for layername in all_layers.keys():
-        if layername.find("num_batches_tracked") >= 0:
+        if ignore_num_batches_tracked and layername.find("num_batches_tracked") >= 0:
             not_init.append(layername)
             if print_init_layers and (rank == 0):
                 logger.info(f"Ignored layer:\t{layername}")
