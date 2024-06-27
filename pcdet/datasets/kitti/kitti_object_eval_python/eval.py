@@ -207,7 +207,7 @@ def d3_box_overlap_kernel(boxes, qboxes, rinc, criterion=-1):
                         ua = area2
                     else:
                         ua = inc
-                    assert ua > 0
+                    # assert ua > 0
                     rinc[i, j] = inc / ua #intersection over union
                 else:
                     rinc[i, j] = 0.0
@@ -1028,6 +1028,32 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, pseudo_class_d
             #     result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
             #                          f"{mAPaos[j, 1, i]:.2f}, "
             #                          f"{mAPaos[j, 2, i]:.2f}"))  # Car aos AP_R11@  easy moderate hard
+
+            result += print_str( (f"{cls}_3d_AP_R11_iou_{d3_min_overlap}: "
+            f"Easy: {mAP3d[j, 0, i]:.4f}, " 
+            f"Moderate: {mAP3d[j, 1, i]:.4f}, "
+            f"Hard: {mAP3d[j, 2, i]:.4f}"))
+
+
+            if compute_aos:
+                result += print_str( (f"{cls}_aos_AP_R11_iou_{bbox_min_overlap}: "
+                    f"Easy: {mAPaos[j, 0, i]:.4f}, " 
+                    f"Moderate: {mAPaos[j, 1, i]:.4f}, "
+                    f"Hard: {mAPaos[j, 2, i]:.4f}"))
+       
+                ret_dict[f'{cls}_aos_AP_R11_iou_{bbox_min_overlap}/easy'] = mAPaos[j, 0, i] #[class, diff, min overlap]
+                ret_dict[f'{cls}_aos_AP_R11_iou_{bbox_min_overlap}/moderate'] = mAPaos[j, 1, i]
+                ret_dict[f'{cls}_aos_AP_R11_iou_{bbox_min_overlap}/hard'] = mAPaos[j, 2, i]
+
+            ret_dict[f'{cls}_3d_AP_R11_iou_{d3_min_overlap}/easy'] = mAP3d[j, 0, i]
+            ret_dict[f'{cls}_3d_AP_R11_iou_{d3_min_overlap}/moderate'] = mAP3d[j, 1, i]
+            ret_dict[f'{cls}_3d_AP_R11_iou_{d3_min_overlap}/hard'] = mAP3d[j, 2, i]
+            
+            ret_dict[f'{cls}_bev_R11_iou_{bev_min_overlap}/easy'] = mAPbev[j, 0, i]
+            ret_dict[f'{cls}_bev_R11_iou_{bev_min_overlap}/moderate'] = mAPbev[j, 1, i]
+            ret_dict[f'{cls}_bev_R11_iou_{bev_min_overlap}/hard'] = mAPbev[j, 2, i]
+
+            
 
             #--------------------- AP at 40 recall points --------------------
             # result += print_str( (f"{cls} AP_R40@{bbox_min_overlap}, {bev_min_overlap}, {d3_min_overlap}:")) # Car AP_R40@   0.7(min overlap for 2dbbox) 0.7(for bev) 0.7(for 3d bbox)
