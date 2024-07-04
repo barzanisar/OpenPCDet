@@ -29,6 +29,7 @@ NUM_EPOCHS_2=-1
 TEST_SAMPLE_INTERVAL=-1
 TEST_START_EPOCH=0
 CKPT_TO_EVAL='default'
+CKPT_DIR='default'
 EVAL_TAG='default'
 WANDB_RUN_NAME=None
 WANDB_GROUP=None
@@ -217,7 +218,15 @@ while :; do
             die 'ERROR: "--wandb_group" requires a non-empty option argument.'
         fi
         ;;
-    -p|--load_num_batches_tracked)       # Takes an option argument; ensure it has been specified.
+    -p|--ckpt_dir)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            CKPT_DIR=$2
+            shift
+        else
+            die 'ERROR: "--ckpt_dir" requires a non-empty option argument.'
+        fi
+        ;;
+    -q|--load_num_batches_tracked)       # Takes an option argument; ensure it has been specified.
         LOAD_NUM_BATCHES_TRACKED="true"
         ;;
     -?*)
@@ -244,6 +253,7 @@ NUM_EPOCHS_2=$NUM_EPOCHS_2
 TEST_SAMPLE_INTERVAL=$TEST_SAMPLE_INTERVAL
 TEST_START_EPOCH=$TEST_START_EPOCH
 CKPT_TO_EVAL=$CKPT_TO_EVAL
+CKPT_DIR=$CKPT_DIR
 EVAL_TAG=$EVAL_TAG
 WANDB_RUN_NAME=$WANDB_RUN_NAME
 WANDB_GROUP=$WANDB_GROUP
@@ -393,7 +403,7 @@ TRAIN_CMD_2+="python -m torch.distributed.launch
  
 TEST_CMD_2=$BASE_CMD
 if [ "$CKPT_TO_EVAL" == 'default' ]; then
-    
+    # eval all
     TEST_CMD_2+="python -m torch.distributed.launch
     --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
     /OpenPCDet/tools/test.py
@@ -408,26 +418,48 @@ if [ "$CKPT_TO_EVAL" == 'default' ]; then
     --wandb_run_name $WANDB_RUN_NAME 
     --wandb_group $WANDB_GROUP"
 
+    if [ "$MODE" == "scratch" ]; then
+        TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
+    else
+        TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""
+    fi
+
+    if [ "$MODE" == "test_only" ]; then
+        echo "$TEST_CMD_2"
+        eval $TEST_CMD_2
+        echo "Done evaluation 2"
+    fi
+
 else
+    IFS=',' read -r -a CKPT_ARRAY <<< "$CKPT_TO_EVAL"
 
-    TEST_CMD_2+="python -m torch.distributed.launch
-    --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
-    /OpenPCDet/tools/test.py
-    --launcher pytorch 
-    --cfg_file /OpenPCDet/$CFG_FILE
-    --batch_size $TEST_BATCH_SIZE_PER_GPU 
-    --workers $WORKERS_PER_GPU 
-    --test_sample_interval $TEST_SAMPLE_INTERVAL 
-    --eval_tag $EVAL_TAG 
-    --ckpt $CKPT_TO_EVAL 
-    --disable_wandb"
+    # Loop through each ckpt_to_eval list 
+    for ckpt in "${CKPT_ARRAY[@]}"; do
+        TEST_CMD_2=$BASE_CMD
+        TEST_CMD_2+="python -m torch.distributed.launch
+        --nproc_per_node=$NUM_GPUS --nnodes=$SLURM_NNODES --node_rank=$SLURM_NODEID --master_addr=$MASTER_ADDR --master_port=$TCP_PORT --max_restarts=0 
+        /OpenPCDet/tools/test.py
+        --launcher pytorch 
+        --cfg_file /OpenPCDet/$CFG_FILE
+        --batch_size $TEST_BATCH_SIZE_PER_GPU 
+        --workers $WORKERS_PER_GPU 
+        --test_sample_interval $TEST_SAMPLE_INTERVAL 
+        --eval_tag $EVAL_TAG 
+        --ckpt $CKPT_DIR/checkpoint_epoch_"$CKPT_TO_EVAL".pth
+        --disable_wandb"
 
-fi
+        if [ "$MODE" == "scratch" ]; then
+            TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
+        else
+            TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""
+        fi
 
-if [ "$MODE" == "scratch" ]; then
-    TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
-else
-    TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""
+        if [ "$MODE" == "test_only" ]; then
+            echo "$TEST_CMD_2"
+            eval $TEST_CMD_2
+            echo "Done evaluation for checkpoint_epoch_"$CKPT_TO_EVAL".pth"
+        fi
+    done
 fi
 
 if [ "$MODE" == "scratch" ]; then
@@ -458,19 +490,19 @@ if [ "$MODE" == "scratch" ]; then
     echo "Done evaluation scratch"
 fi
 
-if [ "$MODE" == "test_only" ]
-then
-    # echo "Running ONLY evaluation"
-    # echo "Node $SLURM_NODEID says: Launching python script..."
+# if [ "$MODE" == "test_only" ]
+# then
+#     # echo "Running ONLY evaluation"
+#     # echo "Node $SLURM_NODEID says: Launching python script..."
 
-    # echo "$TEST_CMD_1"
-    # eval $TEST_CMD_1
-    # echo "Done evaluation 1"
+#     # echo "$TEST_CMD_1"
+#     # eval $TEST_CMD_1
+#     # echo "Done evaluation 1"
 
-    echo "$TEST_CMD_2"
-    eval $TEST_CMD_2
-    echo "Done evaluation 2"
-elif [ "$MODE" == "train_frozen" ]
+#     echo "$TEST_CMD_2"
+#     eval $TEST_CMD_2
+#     echo "Done evaluation 2"
+if [ "$MODE" == "train_frozen" ]
 then
     echo "Running training"
     echo "Node $SLURM_NODEID says: Launching python script..."
