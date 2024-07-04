@@ -1,11 +1,13 @@
 CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
               'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone']
 # python train.py --cfg_file cfgs/nuscenes_models/pointrcnn_practice_minkunet.yaml
-WANDB:
-    ENABLED: True
-    PROJECT: SSL3dObject
-    ENTITY: trailab
-    SUMMARY_HIGHEST_METRIC: None
+wandb:
+    enabled: True
+    project: SSL3dObject_new
+    entity: trailab
+    run_name: segcontrast_10perc_waymo_minkunet #scratch_pointrcnn
+    job_type: finetune_3dOD_nuscenes_5percent
+    group: ep5_ep80_try0 #ep80_try0
     dir: '/OpenPCDet/output'
 
 DATA_CONFIG:
