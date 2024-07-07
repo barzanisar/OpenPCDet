@@ -426,7 +426,7 @@ if [ "$CKPT_TO_EVAL" == 'default' ]; then
     --wandb_run_name $WANDB_RUN_NAME 
     --wandb_group $WANDB_GROUP"
 
-    if [ "$MODE" == "scratch" ]; then
+    if [[ "$EXTRA_TAG" == *"scratch"* ]]; then
         TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
     else
         TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""
@@ -453,10 +453,10 @@ else
         --workers $WORKERS_PER_GPU 
         --test_sample_interval $TEST_SAMPLE_INTERVAL 
         --eval_tag $EVAL_TAG 
-        --ckpt $CKPT_DIR/checkpoint_epoch_"$CKPT_TO_EVAL".pth
+        --ckpt $CKPT_DIR/checkpoint_epoch_"$ckpt".pth
         --disable_wandb"
 
-        if [ "$MODE" == "scratch" ]; then
+        if [[ "$EXTRA_TAG" == *"scratch"* ]]; then
             TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}""
         else
             TEST_CMD_2+=" --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}""

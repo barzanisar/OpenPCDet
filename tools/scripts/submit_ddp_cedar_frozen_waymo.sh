@@ -453,7 +453,7 @@ else
         --workers $WORKERS_PER_GPU 
         --test_sample_interval $TEST_SAMPLE_INTERVAL 
         --eval_tag $EVAL_TAG 
-        --ckpt $CKPT_DIR/checkpoint_epoch_"$CKPT_TO_EVAL".pth
+        --ckpt $CKPT_DIR/checkpoint_epoch_"$ckpt".pth
         --disable_wandb"
 
         if [[ "$EXTRA_TAG" == *"scratch"* ]]; then
