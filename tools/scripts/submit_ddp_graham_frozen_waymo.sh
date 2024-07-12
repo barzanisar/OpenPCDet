@@ -20,8 +20,8 @@ die() { echo "$*" 1>&2 ; exit 1; }
 CFG_FILE=tools/cfgs/waymo_models/pointrcnn_minkunet.yaml
 PRETRAINED_MODEL_1=None
 PRETRAINED_MODEL_2=None
-BATCH_SIZE_PER_GPU=8
-TEST_BATCH_SIZE_PER_GPU=8
+BATCH_SIZE_PER_GPU=2
+TEST_BATCH_SIZE_PER_GPU=4
 TCP_PORT=18888
 EXTRA_TAG='default'
 NUM_EPOCHS_1=-1
