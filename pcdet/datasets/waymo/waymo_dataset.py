@@ -235,7 +235,7 @@ class WaymoDataset(DatasetTemplate):
         try:
             point_features = np.load(lidar_file)  # (N, 7): [x, y, z, intensity, elongation, NLZ_flag]
         except:
-            raise ValueError, f"{lidar_file} is corrupt"
+            raise ValueError(f"{lidar_file} is corrupt")
 
         points_all, NLZ_flag = point_features[:, 0:5], point_features[:, 5]
         if not self.dataset_cfg.get('DISABLE_NLZ_FLAG_ON_POINTS', False):
