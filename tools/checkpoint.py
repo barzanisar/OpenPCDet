@@ -74,8 +74,8 @@ def init_model_from_weights(
             new_state_dict[param_name] = state_dict["module.trunk.0."+param_name] # this layer will be transfered to opdmodel
         # elif "module.det_head."+param_name in state_dict:
         #     new_state_dict[param_name] = state_dict["module.det_head."+param_name] # this layer will be transfered to opdmodel
-        else:
-            logger.info(f"{param_name} not found in ssl model!")
+        # else:
+        #     logger.info(f"{param_name} not found in ssl model!")
     state_dict = new_state_dict
             
     #local_rank = int(os.environ.get("LOCAL_RANK", 0))
