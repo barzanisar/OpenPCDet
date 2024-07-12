@@ -7,8 +7,8 @@
 #SBATCH --time=01:00:00
 #SBATCH --job-name=OpenPCDet-train
 #SBATCH --account=rrg-swasland
-#SBATCH --cpus-per-task=32                  # CPU cores/threads
-#SBATCH --mem=180G                        # memory per node
+#SBATCH --cpus-per-task=16                  # CPU cores/threads
+#SBATCH --mem=100G                        # memory per node
 #SBATCH --output=./output/log/%x-%j.out     # STDOUT
 #SBATCH --array=1-3%1                       # 3 is the number of jobs in the chain
 
@@ -40,7 +40,7 @@ LOAD_NUM_BATCHES_TRACKED=false
 DATA_DIR_BIND=/home/$USER/scratch/Datasets/Waymo:/OpenPCDet/data/waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/nuscenes
-KITTI_DATA_DIR=/home/$USER/projects/rrg-swasland/datasets3/Kitti
+KITTI_DATA_DIR=/home/$USER/projects/rrg-swasland/Datasets/Kitti
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
 MODE=train_all #train_frozen, train_second, train_all, test_only
