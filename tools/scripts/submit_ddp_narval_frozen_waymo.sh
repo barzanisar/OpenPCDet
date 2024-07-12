@@ -7,8 +7,8 @@
 #SBATCH --time=01:00:00
 #SBATCH --job-name=OpenPCDet-train
 #SBATCH --account=rrg-swasland
-#SBATCH --cpus-per-task=24                  # CPU cores/threads
-#SBATCH --mem=200G                        # memory per node
+#SBATCH --cpus-per-task=16                  # CPU cores/threads
+#SBATCH --mem=80G                        # memory per node
 #SBATCH --output=./output/log/%x-%j.out     # STDOUT
 #SBATCH --array=1-3%1                       # 3 is the number of jobs in the chain
 
@@ -228,6 +228,14 @@ while :; do
         ;;
     -q|--load_num_batches_tracked)       # Takes an option argument; ensure it has been specified.
         LOAD_NUM_BATCHES_TRACKED="true"
+        ;;
+    -r|--test_batch_size_per_gpu)       # Takes an option argument; ensure it has been specified.
+        if [ "$2" ]; then
+            TEST_BATCH_SIZE_PER_GPU=$2
+            shift
+        else
+            die 'ERROR: "--test_batch_size_per_gpu" requires a non-empty option argument.'
+        fi
         ;;
     -?*)
         printf 'WARN: Unknown option (ignored): %s\n' "$1" >&2
