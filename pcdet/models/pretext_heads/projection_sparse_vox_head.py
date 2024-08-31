@@ -223,8 +223,9 @@ class ProjectionSparseVoxHead(nn.Module):
                     gt_box_cluster_ids = batch_dict['gt_boxes_cluster_ids'][batch_num]
                     unique_cluster_ids = np.unique(cluster_ids[batch_num])
                     assert gt_box_centers.shape[0] == gt_box_cluster_ids.shape[0]
-
-                    gt_box_idx_of_unique_clusters=np.where(np.isin(gt_box_cluster_ids, unique_cluster_ids))[0]
+                    
+                    gt_box_idx_of_unique_clusters= batch_dict['common_cluster_gtbox_idx'][batch_num]#np.where(np.isin(gt_box_cluster_ids, unique_cluster_ids))[0]
+                    # assert (batch_dict['common_cluster_gtbox_idx'][batch_num] == gt_box_idx_of_unique_clusters).all()
                     
                     #sanity check that unique cluster lbls match with the gt box idx found
                     # gt_box_idx_of_unique_clusters_list1 = []
