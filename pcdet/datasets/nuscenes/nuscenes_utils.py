@@ -197,8 +197,8 @@ def get_sample_data(nusc, sample_data_token, selected_anntokens=None):
     # Retrieve sensor & pose records
     sd_record = nusc.get('sample_data', sample_data_token)
     cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-    sensor_record = nusc.get('sensor', cs_record['sensor_token'])
-    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
+    sensor_record = nusc.get('sensor', cs_record['sensor_token']) # lidar wrt ego i.e. Transform_ego_lidar
+    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token']) # ego wrt world i.e. Transform_world_lidar
 
     data_path = nusc.get_sample_data_path(sample_data_token)
 
@@ -262,9 +262,9 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
 
         ref_sd_token = sample['data'][ref_chan] #LIDAR_TOP token of this keyframe
         ref_sd_rec = nusc.get('sample_data', ref_sd_token) #sample_data of LIDAR_TOP token 
-        ref_cs_rec = nusc.get('calibrated_sensor', ref_sd_rec['calibrated_sensor_token']) # transl and rot of LIDAR_TOP wrt ego vehicle frame
-        ref_pose_rec = nusc.get('ego_pose', ref_sd_rec['ego_pose_token'])
-        ref_time = 1e-6 * ref_sd_rec['timestamp']
+        ref_cs_rec = nusc.get('calibrated_sensor', ref_sd_rec['calibrated_sensor_token']) # transl and rot of LIDAR_TOP wrt ego vehicle frame i.e. T_ego_lidar
+        ref_pose_rec = nusc.get('ego_pose', ref_sd_rec['ego_pose_token']) # pose of ego wrt global frame 
+        ref_time = 1e-6 * ref_sd_rec['timestamp'] #timestamp of lidar_top
 
         ref_lidar_path, ref_boxes, _ = get_sample_data(nusc, ref_sd_token) # ref boxes in current lidar keyframe
 
@@ -274,12 +274,12 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
         # Homogeneous transform from ego car frame to reference frame
         ref_from_car = transform_matrix(
             ref_cs_rec['translation'], Quaternion(ref_cs_rec['rotation']), inverse=True
-        ) # Lidar_frame_from_car
+        ) # Lidar_frame_from_car i.e. T_lidar_ego
 
         # Homogeneous transformation matrix from global to _current_ ego car frame
         car_from_global = transform_matrix(
             ref_pose_rec['translation'], Quaternion(ref_pose_rec['rotation']), inverse=True,
-        )
+        ) #T_ego_global
 
         info = {
             'lidar_path': Path(ref_lidar_path).relative_to(data_path).__str__(),
@@ -292,11 +292,11 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
             'timestamp': ref_time,
         }
 
-        sample_data_token = sample['data'][chan]
-        curr_sd_rec = nusc.get('sample_data', sample_data_token)
+        sample_data_token = sample['data'][chan] #lidar_top data token
+        curr_sd_rec = nusc.get('sample_data', sample_data_token) #lidar_top data
         sweeps = [] # get current keyframe and 10 frames before with timelag to current keyframe and transform to ref/current lidar keyframe
         while len(sweeps) < max_sweeps - 1:
-            if curr_sd_rec['prev'] == '':
+            if curr_sd_rec['prev'] == '': #if current frame is the first frame of the scene
                 if len(sweeps) == 0:
                     sweep = {
                         'lidar_path': Path(ref_lidar_path).relative_to(data_path).__str__(),
@@ -304,17 +304,17 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
                         'transform_matrix': None,
                         'time_lag': curr_sd_rec['timestamp'] * 0,
                     }
-                    sweeps.append(sweep)
+                    sweeps.append(sweep) # 1. append current frame
                 else:
-                    sweeps.append(sweeps[-1])
+                    sweeps.append(sweeps[-1]) #2. append current frame
             else:
-                curr_sd_rec = nusc.get('sample_data', curr_sd_rec['prev'])
+                curr_sd_rec = nusc.get('sample_data', curr_sd_rec['prev']) #get prev frame data
 
                 # Get past pose
                 current_pose_rec = nusc.get('ego_pose', curr_sd_rec['ego_pose_token'])
                 global_from_car = transform_matrix(
                     current_pose_rec['translation'], Quaternion(current_pose_rec['rotation']), inverse=False,
-                )
+                ) # T_global_prevego
 
                 # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
                 current_cs_rec = nusc.get(
@@ -322,9 +322,9 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
                 )
                 car_from_current = transform_matrix(
                     current_cs_rec['translation'], Quaternion(current_cs_rec['rotation']), inverse=False,
-                )
+                ) #T_prevego_prevlidar
 
-                tm = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current]) # transf ref LIDAR keyframe from current lidar frame
+                tm = reduce(np.dot, [ref_from_car, car_from_global, global_from_car, car_from_current]) # transf ref LIDAR keyframe from prev lidar frame
 
                 lidar_path = nusc.get_sample_data_path(curr_sd_rec['token'])
 

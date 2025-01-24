@@ -197,9 +197,9 @@ def main():
     
     # total_params = sum(p.numel() for p in model.parameters())
     # num_params_head = sum(param.numel() for name, param in model.named_parameters()
-    #         if param.requires_grad and 'backbone_3d.' not in name)
+    #         if param.requires_grad and 'backbone_3d.' not in name) #57.5M
     # num_params_backbone = sum(param.numel() for name, param in model.named_parameters()
-    #         if param.requires_grad and 'backbone_3d.' in name)
+    #         if param.requires_grad and 'backbone_3d.' in name) # 21.7M
     
     #wandb_utils.init(cfg, args, job_type='train')
     # -----------------------start training---------------------------

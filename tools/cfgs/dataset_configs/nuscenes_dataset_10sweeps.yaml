@@ -6,6 +6,8 @@ MAX_SWEEPS: 10
 PRED_VELOCITY: False
 SET_NAN_VELOCITY_TO_ZEROS: True
 FILTER_MIN_POINTS_IN_GT: 1
+SCENE_SAMPLING_INTERVAL: {'train': 1, 'test': 1}
+
 
 DATA_SPLIT: {
     'train': train,
