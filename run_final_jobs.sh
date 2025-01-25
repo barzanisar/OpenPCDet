@@ -68,7 +68,7 @@ sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_scratch_bs2_"$KITTI_EPOCH_2
 sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_seglidarplusdet_bs2_"$KITTI_EPOCH_1"ep_"$KITTI_EPOCH_2"ep_5percent_$TRY tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minkunet_0p05_$TRY.yaml --mode test_only --tcp_port 16928 --extra_tag segcontrast_lidarplusdet_bs2 --pretrained_model_1 /OpenPCDet/checkpoints/seg_lidar_plus_det_ep199_t2.pth.tar --num_epochs_1 $KITTI_EPOCH_1 --pretrained_model_2 /OpenPCDet/output/kitti_models/pointrcnn_minkunet_0p05_$TRY/segcontrast_lidarplusdet_bs2_ep"$KITTI_EPOCH_1"_frozen_bb/ckpt/checkpoint_epoch_$KITTI_EPOCH_1.pth --num_epochs_2 $KITTI_EPOCH_2 --test_start_epoch 0 --wandb_run_name segcontrast_lidarplusdet_10perc_waymo_minkunet --wandb_group ep"$KITTI_EPOCH_1"_ep"$KITTI_EPOCH_2"_bs2_try$TRY --batch_size_per_gpu 2
 
 
-
+#!/bin/bash
 KITTI_EPOCH_1=0
 KITTI_EPOCH_2=80
 BATCH_SIZE=2

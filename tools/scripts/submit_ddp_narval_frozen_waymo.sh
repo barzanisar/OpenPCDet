@@ -40,7 +40,7 @@ LOAD_NUM_BATCHES_TRACKED=false
 DATA_DIR_BIND=/home/$USER/scratch/Datasets/Waymo:/OpenPCDet/data/waymo
 WAYMO_DATA_DIR=/home/$USER/scratch/Datasets/Waymo
 NUSCENES_DATA_DIR=/home/$USER/projects/def-swasland-ab/datasets/nuscenes
-KITTI_DATA_DIR=/home/$USER/projects/rrg-swasland/datasets3/Kitti
+KITTI_DATA_DIR=/home/$USER/projects/rrg-swasland/datasets/Kitti
 
 SING_IMG=/home/$USER/scratch/singularity/ssl_openpcdet_waymo.sif
 MODE=train_all #train_frozen, train_second, train_all, test_only
