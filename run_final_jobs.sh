@@ -69,6 +69,18 @@ sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_seglidarplusdet_bs2_"$KITTI
 
 
 
+KITTI_EPOCH_1=0
+KITTI_EPOCH_2=80
+BATCH_SIZE=2
+TRY=0_bs"$BATCH_SIZE"
+sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_semkitti-seglidarplusdet_"$KITTI_EPOCH_1"ep_"$KITTI_EPOCH_2"ep_100percent_try$TRY tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minkunet.yaml --mode train_second --tcp_port 16927 --extra_tag semkitti_segcontrast_lidarplusdet_t$TRY --pretrained_model_2 /OpenPCDet/checkpoints/semkitti_seg_lidarplusdet_ep199.pth.tar --num_epochs_1 $KITTI_EPOCH_1 --num_epochs_2 $KITTI_EPOCH_2 --test_start_epoch 0 --wandb_run_name semantickitti_minkunet_segcontrast_lidarplusdet --wandb_group ep"$KITTI_EPOCH_1"_ep"$KITTI_EPOCH_2"_try$TRY --batch_size_per_gpu $BATCH_SIZE
+sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_waymo-seglidarplusdet_"$KITTI_EPOCH_1"ep_"$KITTI_EPOCH_2"ep_100percent_try$TRY tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minkunet.yaml --mode train_second --tcp_port 16930 --extra_tag segcontrast_lidarplusdet_t$TRY --pretrained_model_2 /OpenPCDet/checkpoints/seg_lidar_plus_det_ep199.pth.tar --num_epochs_1 $KITTI_EPOCH_1 --num_epochs_2 $KITTI_EPOCH_2 --test_start_epoch 0 --wandb_run_name segcontrast_10perc_waymo_minkunet --wandb_group ep"$KITTI_EPOCH_1"_ep"$KITTI_EPOCH_2"_try$TRY --batch_size_per_gpu $BATCH_SIZE
+
+BATCH_SIZE=8
+TRY=0_bs"$BATCH_SIZE"
+sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_semkitti-seglidarplusdet_"$KITTI_EPOCH_1"ep_"$KITTI_EPOCH_2"ep_100percent_try$TRY tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minkunet.yaml --mode train_second --tcp_port 16928 --extra_tag semkitti_segcontrast_lidarplusdet_t$TRY --pretrained_model_2 /OpenPCDet/checkpoints/semkitti_seg_lidarplusdet_ep199.pth.tar --num_epochs_1 $KITTI_EPOCH_1 --num_epochs_2 $KITTI_EPOCH_2 --test_start_epoch 0 --wandb_run_name semantickitti_minkunet_segcontrast_lidarplusdet --wandb_group ep"$KITTI_EPOCH_1"_ep"$KITTI_EPOCH_2"_try$TRY --batch_size_per_gpu $BATCH_SIZE
+sbatch --time=8:00:00 --array=1-3%1 --job-name=kitti_waymo-seglidarplusdet_"$KITTI_EPOCH_1"ep_"$KITTI_EPOCH_2"ep_100percent_try$TRY tools/scripts/submit_ddp_${CLUSTER_NAME}_frozen_waymo.sh --cfg_file tools/cfgs/kitti_models/pointrcnn_minkunet.yaml --mode train_second --tcp_port 16929 --extra_tag segcontrast_lidarplusdet_t$TRY --pretrained_model_2 /OpenPCDet/checkpoints/seg_lidar_plus_det_ep199.pth.tar --num_epochs_1 $KITTI_EPOCH_1 --num_epochs_2 $KITTI_EPOCH_2 --test_start_epoch 0 --wandb_run_name segcontrast_10perc_waymo_minkunet --wandb_group ep"$KITTI_EPOCH_1"_ep"$KITTI_EPOCH_2"_try$TRY --batch_size_per_gpu $BATCH_SIZE
+
 #Waymo
 #1 percent
 # which is better without or with batches tracked? and run more tries of that

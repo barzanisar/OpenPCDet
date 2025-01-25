@@ -404,10 +404,13 @@ TRAIN_CMD_2+="python -m torch.distributed.launch
 --workers $WORKERS_PER_GPU 
 --extra_tag "${EXTRA_TAG}_ep${NUM_EPOCHS_1}_ep${NUM_EPOCHS_2}"
 --epochs $NUM_EPOCHS_2 
---load_whole_model 
 --wandb_run_name $WANDB_RUN_NAME 
 --wandb_group $WANDB_GROUP
 "
+
+if [ "$NUM_EPOCHS_1" -gt 0 ]; then
+  TRAIN_CMD_2+=" --load_whole_model"
+fi
  
 TEST_CMD_2=$BASE_CMD
 if [ "$CKPT_TO_EVAL" == 'default' ]; then
